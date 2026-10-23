@@ -1,0 +1,7 @@
+name: Lapsed
+prefix: LP
+supply_chain:
+  allow:
+    "left-pad@1.3.0": { reason: "Held for a release that never came", expires: 2099-12-31 }
+  exceptions:
+    GHSA-35jh-r3h4-6jhm: { reason: "Dev only, never shipped", expires: 2026-01-01 }

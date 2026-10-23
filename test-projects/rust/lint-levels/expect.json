@@ -1,0 +1,5 @@
+{
+  "checks": ["rust/lint"],
+  "rules": ["clippy/unwrap_used", "clippy/must_use_candidate", "rustc/unsafe_code"],
+  "os": ["linux", "windows"]
+}

@@ -1,0 +1,1 @@
+{ "checks": ["docs/glossary"], "rules": ["glossary/avoid"] }

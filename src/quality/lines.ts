@@ -9,7 +9,7 @@ export const CHANGED_LINES_FLOOR = 90;
 /** How many uncovered changed lines the finding's message names. */
 const LISTED = 10;
 
-function byPath<T>(entries: Iterable<[string, T]>): [string, T][] {
+function byPath<T>(entries: ReadonlyMap<string, T>): [string, T][] {
   return [...entries].sort(([a], [b]) => a.localeCompare(b));
 }
 

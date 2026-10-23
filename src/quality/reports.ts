@@ -15,12 +15,16 @@ import type { CoverageFormat, Report } from './protocol.js';
 import type { TestResult } from './verdicts.js';
 import { type CheckContext, EngineError } from '../core/check.js';
 
-/** A report the tool was asked to write; an unreadable one is an engine error. */
-export async function readReport(path: string, what: string): Promise<string> {
+/** A file a check needs, such as a tool's report; one it can't read is an engine error. */
+export async function readReport(
+  path: string,
+  what: string,
+  encoding: 'utf8' | 'latin1' = 'utf8',
+): Promise<string> {
   try {
-    return await readFile(path, 'utf8');
+    return await readFile(path, encoding);
   } catch {
-    throw new EngineError(`the ${what} report ${path} could not be read`);
+    throw new EngineError(`could not read the ${what} ${path}`);
   }
 }
 
@@ -31,7 +35,7 @@ export async function readTests(
 ): Promise<TestResult[]> {
   const results: TestResult[] = [];
   for (const report of reports) {
-    for (const test of parseJunit(await readReport(report.path, 'JUnit'))) {
+    for (const test of parseJunit(await readReport(report.path, 'JUnit report'))) {
       const reportFile = caseFile(test);
       const file =
         reportFile === undefined ? undefined : inRepository(ctx.root, report.base, reportFile);
@@ -71,7 +75,8 @@ async function luacovFiles(ctx: CheckContext, text: string, locate: Locate): Pro
   for (const [name, hits] of parseLuacovStats(text)) {
     const file = locate(name, []);
     if (file === undefined) continue;
-    const source = await readReport(join(ctx.root, file), 'luacov source');
+    // luacov scans bytes; Latin-1 gives each byte one character, as Lua's patterns see them.
+    const source = await readReport(join(ctx.root, file), 'luacov source', 'latin1');
     files.push({ path: file, hits: luacovLines(source, hits) });
   }
   return files;
@@ -82,7 +87,7 @@ export async function readCoverage(
   ctx: CheckContext,
   report: Report & { readonly format: CoverageFormat },
 ): Promise<Map<string, FileLines>> {
-  const text = await readReport(report.path, `${report.format} coverage`);
+  const text = await readReport(report.path, `${report.format} coverage report`);
   const locate = locator(ctx, report.base);
   switch (report.format) {
     case 'lcov':

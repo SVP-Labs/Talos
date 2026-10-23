@@ -19,3 +19,21 @@ export function generatedHeader(style: CommentStyle, version: string, extension?
 export function generatedJsonNote(version: string, extension?: string): string {
   return generatedHeader('//', version, extension).slice(3).trim();
 }
+
+/** How far into a file the marker may sit: the header line, or a JSON file's `//` key. */
+const MARKER_LINES = 3;
+
+/** Whether a file's text starts with a generated-file header (any pack's). */
+export function carriesGeneratedMarker(text: string): boolean {
+  return text.split('\n', MARKER_LINES).some((line) => line.includes(GENERATED_MARKER));
+}
+
+const VERSION_STAMP = new RegExp(`${GENERATED_MARKER} \\S+?\\.(?=\\s|"|$)`, 'g');
+
+/**
+ * The text with the version in its generated-file header left out, so a copy written by an
+ * earlier release that renders the same rules compares equal to this release's rendering.
+ */
+export function withoutVersion(text: string): string {
+  return text.replaceAll(VERSION_STAMP, `${GENERATED_MARKER}.`);
+}

@@ -1,0 +1,15 @@
+[project]
+name = "flaky"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "coverage==7.17.0",
+  "pytest==9.1.1",
+]

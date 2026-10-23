@@ -1,0 +1,262 @@
+{
+  "8.3.36": {
+    "announcement": true,
+    "tags": [
+      "security"
+    ],
+    "date": "21 Oct 2026"
+  },
+  "8.3.35": {
+    "announcement": {
+      "English": "/releases/8_3_35.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "24 Sep 2026"
+  },
+  "8.3.33": {
+    "announcement": {
+      "English": "/releases/8_3_33.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "30 Jul 2026"
+  },
+  "8.3.32": {
+    "announcement": {
+      "English": "/releases/8_3_32.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "02 Jul 2026"
+  },
+  "8.3.31": {
+    "announcement": {
+      "English": "/releases/8_3_31.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "07 May 2026"
+  },
+  "8.3.30": {
+    "announcement": {
+      "English": "/releases/8_3_30.php"
+    },
+    "tags": [],
+    "date": "15 Jan 2026"
+  },
+  "8.3.29": {
+    "announcement": {
+      "English": "/releases/8_3_29.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "18 Dec 2025"
+  },
+  "8.3.28": {
+    "announcement": {
+      "English": "/releases/8_3_28.php"
+    },
+    "tags": [],
+    "date": "20 Nov 2025"
+  },
+  "8.3.27": {
+    "announcement": {
+      "English": "/releases/8_3_27.php"
+    },
+    "tags": [],
+    "date": "23 Oct 2025"
+  },
+  "8.3.26": {
+    "announcement": {
+      "English": "/releases/8_3_26.php"
+    },
+    "tags": [],
+    "date": "25 Sep 2025"
+  },
+  "8.3.25": {
+    "announcement": {
+      "English": "/releases/8_3_25.php"
+    },
+    "tags": [],
+    "date": "28 Aug 2025"
+  },
+  "8.3.24": {
+    "announcement": {
+      "English": "/releases/8_3_24.php"
+    },
+    "tags": [],
+    "date": "31 Jul 2025"
+  },
+  "8.3.23": {
+    "announcement": {
+      "English": "/releases/8_3_23.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "3 Jul 2025"
+  },
+  "8.3.22": {
+    "announcement": {
+      "English": "/releases/8_3_22.php"
+    },
+    "tags": [],
+    "date": "5 Jun 2025"
+  },
+  "8.3.21": {
+    "announcement": {
+      "English": "/releases/8_3_21.php"
+    },
+    "tags": [],
+    "date": "8 May 2025"
+  },
+  "8.3.20": {
+    "announcement": {
+      "English": "/releases/8_3_20.php"
+    },
+    "tags": [],
+    "date": "10 Apr 2025"
+  },
+  "8.3.19": {
+    "announcement": {
+      "English": "/releases/8_3_19.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "13 Mar 2025"
+  },
+  "8.3.17": {
+    "announcement": {
+      "English": "/releases/8_3_17.php"
+    },
+    "tags": [],
+    "date": "13 Feb 2025"
+  },
+  "8.3.16": {
+    "announcement": {
+      "English": "/releases/8_3_16.php"
+    },
+    "tags": [],
+    "date": "16 Jan 2025"
+  },
+  "8.3.15": {
+    "announcement": {
+      "English": "/releases/8_3_15.php"
+    },
+    "tags": [],
+    "date": "19 Dec 2024"
+  },
+  "8.3.14": {
+    "announcement": {
+      "English": "/releases/8_3_14.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "21 Nov 2024"
+  },
+  "8.3.13": {
+    "announcement": {
+      "English": "/releases/8_3_13.php"
+    },
+    "tags": [],
+    "date": "24 Oct 2024"
+  },
+  "8.3.12": {
+    "announcement": {
+      "English": "/releases/8_3_12.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "26 Sep 2024"
+  },
+  "8.3.11": {
+    "announcement": {
+      "English": "/releases/8_3_11.php"
+    },
+    "tags": [],
+    "date": "29 Aug 2024"
+  },
+  "8.3.10": {
+    "announcement": {
+      "English": "/releases/8_3_10.php"
+    },
+    "tags": [],
+    "date": "01 Aug 2024"
+  },
+  "8.3.9": {
+    "announcement": {
+      "English": "/releases/8_3_9.php"
+    },
+    "tags": [],
+    "date": "04 Jul 2024"
+  },
+  "8.3.8": {
+    "announcement": {
+      "English": "/releases/8_3_8.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "06 Jun 2024"
+  },
+  "8.3.7": {
+    "announcement": {
+      "English": "/releases/8_3_7.php"
+    },
+    "tags": [],
+    "date": "09 May 2024"
+  },
+  "8.3.6": {
+    "announcement": {
+      "English": "/releases/8_3_6.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "11 Apr 2024"
+  },
+  "8.3.4": {
+    "announcement": {
+      "English": "/releases/8_3_4.php"
+    },
+    "tags": [],
+    "date": "14 Mar 2024"
+  },
+  "8.3.3": {
+    "announcement": {
+      "English": "/releases/8_3_3.php"
+    },
+    "tags": [],
+    "date": "15 Feb 2024"
+  },
+  "8.3.2": {
+    "announcement": {
+      "English": "/releases/8_3_2.php"
+    },
+    "tags": [],
+    "date": "18 Jan 2024"
+  },
+  "8.3.1": {
+    "announcement": {
+      "English": "/releases/8_3_1.php"
+    },
+    "tags": [],
+    "date": "21 Dec 2023"
+  },
+  "8.3.0": {
+    "announcement": {
+      "English": "/releases/8_3_0.php"
+    },
+    "tags": [],
+    "date": "23 Nov 2023"
+  }
+}

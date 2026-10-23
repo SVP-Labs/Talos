@@ -1,0 +1,4 @@
+name: Case
+prefix: TC
+components:
+  - { lang: py }

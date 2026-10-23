@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type Mutant,
@@ -23,8 +22,9 @@ import {
 import type { Finding } from '../core/finding.js';
 import { excludeMatcher } from '../repo/facts.js';
 
+/** Each language's source files; a TypeScript declaration file holds nothing to mutate. */
 const SOURCE: Readonly<Record<Lang, RegExp>> = {
-  ts: /\.(?:[cm]?[jt]s|[jt]sx)$/,
+  ts: /(?<!\.d)\.(?:[cm]?[jt]s|[jt]sx)$/,
   py: /\.py$/,
   php: /\.php$/,
   lua: /\.lua$/,
@@ -44,9 +44,11 @@ const TEST_NAMES = [
 
 /** Test code, which mutation never targets: test directories and each language's test names. */
 function isTest(file: string): boolean {
-  const parts = file.split('/');
-  const name = parts.pop() ?? '';
-  return parts.some((part) => TEST_DIRECTORIES.has(part)) || TEST_NAMES.some((re) => re.test(name));
+  const name = file.slice(file.lastIndexOf('/') + 1);
+  const directories = file.split('/').slice(0, -1);
+  return (
+    directories.some((part) => TEST_DIRECTORIES.has(part)) || TEST_NAMES.some((re) => re.test(name))
+  );
 }
 
 /** Whether a repository-relative path is shipped source of the language under mutation paths. */
@@ -91,7 +93,9 @@ export function mutationTargets(lang: Lang, ctx: ApplyContext): string[] {
 
 async function sources(ctx: CheckContext, files: readonly string[]): Promise<Map<string, string>> {
   const texts = new Map<string, string>();
-  for (const file of files) texts.set(file, await readFile(join(ctx.root, file), 'utf8'));
+  for (const file of files) {
+    texts.set(file, await readReport(join(ctx.root, file), 'mutated source'));
+  }
   return texts;
 }
 
@@ -100,7 +104,7 @@ async function readMutants(
   report: Report & { readonly format: MutationFormat },
   targets: readonly string[],
 ): Promise<Mutant[]> {
-  const text = await readReport(report.path, `${report.format} mutation`);
+  const text = await readReport(report.path, `${report.format} mutation report`);
   switch (report.format) {
     case 'stryker':
       return parseStryker(text);

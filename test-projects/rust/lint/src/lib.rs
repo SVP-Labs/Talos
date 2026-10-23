@@ -107,3 +107,50 @@ pub fn long_one(seed: u32) -> u32 {
     n = n.wrapping_mul(31).wrapping_add(61);
     n
 }
+
+/// Branches on everything.
+#[must_use]
+pub fn knotty(a: u32, b: u32, c: u32) -> u32 {
+    let mut out = 0;
+    for i in 0..a {
+        if i == 1 {
+            out += 1;
+        } else if i == 2 {
+            out += 2;
+        } else if i == 3 {
+            out += 3;
+        } else if i == 4 {
+            out += 4;
+        }
+        if i == b {
+            out += 5;
+        } else if i == c {
+            out += 6;
+        }
+        match i {
+            7 => out += 7,
+            8 => out += 8,
+            9 if a > b => out += 9,
+            _ => {}
+        }
+        while out > 100 {
+            out -= 50;
+            if out == 60 {
+                break;
+            }
+        }
+    }
+    if a == b {
+        out += 1;
+    }
+    if b == c {
+        out += 1;
+    }
+    if a == c {
+        out += 1;
+    }
+    if a > 1000 {
+        out += 1;
+    }
+    out
+}

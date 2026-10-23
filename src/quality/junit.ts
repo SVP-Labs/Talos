@@ -1,7 +1,7 @@
 import { posix, win32 } from 'node:path';
-import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 import { firstLine } from './text.js';
+import { parseXml } from './xml.js';
 import { EngineError } from '../core/check.js';
 
 export type TestStatus = 'passed' | 'failed' | 'errored' | 'skipped';
@@ -18,16 +18,7 @@ export type JunitCase = {
   readonly message?: string;
 };
 
-const LISTS = new Set(['testsuite', 'testcase', 'failure', 'error', 'skipped']);
-
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_',
-  parseTagValue: false,
-  parseAttributeValue: false,
-  htmlEntities: true,
-  isArray: (name) => LISTS.has(name),
-});
+const LISTS = ['testsuite', 'testcase', 'failure', 'error', 'skipped'];
 
 const outcome = z.union([
   z.string(),
@@ -45,6 +36,7 @@ const testcase = z.looseObject({
 });
 
 const suite = z.looseObject({
+  '@_name': z.string().optional(),
   '@_file': z.string().optional(),
   testcase: z.array(z.union([z.literal(''), testcase])).optional(),
   testsuite: z.array(z.unknown()).optional(),
@@ -52,13 +44,26 @@ const suite = z.looseObject({
 
 const document = z.looseObject({
   testsuites: z
-    .union([z.literal(''), z.looseObject({ testsuite: z.array(z.unknown()).optional() })])
+    .union([
+      z.literal(''),
+      z.looseObject({
+        '@_name': z.string().optional(),
+        testsuite: z.array(z.unknown()).optional(),
+      }),
+    ])
     .optional(),
   testsuite: z.array(z.unknown()).optional(),
 });
 
 type Outcome = z.infer<typeof outcome>;
 type Testcase = z.infer<typeof testcase>;
+
+/** What a suite passes to its test cases. */
+type Inherited = {
+  readonly file: string | undefined;
+  /** Added to a `line` attribute: pytest numbers lines from 0, every other tool from 1. */
+  readonly offset: number;
+};
 
 function messageOf(outcomes: readonly Outcome[] | undefined): string | undefined {
   const first = outcomes?.[0];
@@ -82,16 +87,22 @@ function splitLine(classname: string | undefined): { classname?: string; line?: 
   return { classname: match[1], line: Number(match[2]) };
 }
 
-function lineOf(attribute: string | undefined, fallback: number | undefined): number | undefined {
+function lineOf(test: Testcase, offset: number, fallback: number | undefined): number | undefined {
+  const attribute = test['@_line'];
   const line = attribute === undefined ? Number.NaN : Number.parseInt(attribute, 10);
-  return Number.isInteger(line) ? line : fallback;
+  return Number.isInteger(line) ? line + offset : fallback;
 }
 
-function toCase(test: Testcase, suiteFile: string | undefined): JunitCase {
+/** Pest names a test's file `path::test name`; the path is the file. */
+function fileOf(attribute: string | undefined): string | undefined {
+  return attribute?.split('::')[0];
+}
+
+function toCase(test: Testcase, inherited: Inherited): JunitCase {
   const status = statusOf(test);
   const { classname, line } = splitLine(test['@_classname']);
-  const file = test['@_file'] ?? suiteFile;
-  const found = lineOf(test['@_line'], line);
+  const file = fileOf(test['@_file']) ?? inherited.file;
+  const found = lineOf(test, inherited.offset, line);
   const message = messageOf(test.error ?? test.failure ?? test.skipped);
   return {
     name: test['@_name'],
@@ -103,16 +114,24 @@ function toCase(test: Testcase, suiteFile: string | undefined): JunitCase {
   };
 }
 
-function suiteCases(node: unknown, inherited: string | undefined): JunitCase[] {
+function suiteCases(node: unknown, inherited: Inherited): JunitCase[] {
   if (node === '') return [];
   const parsed = suite.safeParse(node);
   if (!parsed.success) throw new EngineError('a JUnit <testsuite> has an unexpected shape');
-  const file = parsed.data['@_file'] ?? inherited;
+  const here = { ...inherited, file: fileOf(parsed.data['@_file']) ?? inherited.file };
   const own = (parsed.data.testcase ?? []).flatMap((test) =>
-    test === '' ? [] : [toCase(test, file)],
+    test === '' ? [] : [toCase(test, here)],
   );
-  const nested = (parsed.data.testsuite ?? []).flatMap((child) => suiteCases(child, file));
+  const nested = (parsed.data.testsuite ?? []).flatMap((child) => suiteCases(child, here));
   return [...own, ...nested];
+}
+
+const named = z.looseObject({ '@_name': z.string() });
+
+/** pytest names its report's root `pytest tests`; older versions name its one suite `pytest`. */
+function isPytest(rootName: string | undefined, suites: readonly unknown[]): boolean {
+  if (rootName === 'pytest tests') return true;
+  return suites.some((node) => named.safeParse(node).data?.['@_name'] === 'pytest');
 }
 
 /**
@@ -120,23 +139,16 @@ function suiteCases(node: unknown, inherited: string | undefined): JunitCase[] {
  * `<error>` makes it errored, a `<failure>` failed, a `<skipped>` skipped.
  */
 export function parseJunit(xml: string): JunitCase[] {
-  let raw: unknown;
-  try {
-    raw = parser.parse(xml);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new EngineError(`a JUnit report is not XML: ${firstLine(reason)}`);
-  }
-  const parsed = document.safeParse(raw);
-  const root = parsed.success ? parsed.data : undefined;
-  if (root === undefined || (root.testsuites === undefined && root.testsuite === undefined)) {
+  const parsed = document.safeParse(parseXml(xml, 'JUnit', LISTS));
+  if (!parsed.success) throw new EngineError('a JUnit report has an unexpected shape');
+  const root = parsed.data;
+  if (root.testsuites === undefined && root.testsuite === undefined) {
     throw new EngineError('a JUnit report has neither <testsuites> nor <testsuite>');
   }
-  const suites =
-    root.testsuites === undefined || root.testsuites === ''
-      ? (root.testsuite ?? [])
-      : (root.testsuites.testsuite ?? []);
-  return suites.flatMap((node) => suiteCases(node, undefined));
+  const wrapper = root.testsuites === '' ? undefined : root.testsuites;
+  const suites = wrapper === undefined ? (root.testsuite ?? []) : (wrapper.testsuite ?? []);
+  const offset = isPytest(wrapper?.['@_name'], suites) ? 1 : 0;
+  return suites.flatMap((node) => suiteCases(node, { file: undefined, offset }));
 }
 
 const SOURCE = /\.(?:[cm]?[jt]sx?|py|php|lua|rs)$/i;
@@ -162,12 +174,10 @@ export function classPart(
 ): string | undefined {
   if (classname === undefined || file === undefined) return classname;
   const name = comparable(classname);
-  const path = comparable(file.replace(/\.[^./\\]+$/, ''));
   if (name === comparable(file)) return undefined;
-  const segments = path.split('.');
-  for (let start = 0; start < segments.length; start += 1) {
-    const suffix = segments.slice(start).join('.');
-    if (suffix === '') continue;
+  const segments = comparable(file.replace(/\.[^./\\]+$/, '')).split('.');
+  const suffixes = segments.map((_, start) => segments.slice(start).join('.'));
+  for (const suffix of suffixes.filter((candidate) => candidate !== '')) {
     if (name === suffix) return undefined;
     if (name.startsWith(`${suffix}.`) && name.length === classname.length) {
       return classname.slice(suffix.length + 1);

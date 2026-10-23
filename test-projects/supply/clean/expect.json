@@ -1,0 +1,1 @@
+{ "checks": ["supply/release-age", "supply/exotic", "supply/provenance", "supply/settings", "supply/expired"], "clean": true }

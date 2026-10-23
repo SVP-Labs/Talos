@@ -15,8 +15,8 @@ import { type CheckContext, EngineError, type Lang } from '../core/check.js';
 /** A suite's run, with the one rerun of its failures already judged. */
 export type SuiteRun = {
   readonly verdicts: readonly TestVerdict[];
-  /** Both runs' coverage together, when coverage was asked for. */
-  readonly coverage?: LineCoverage;
+  /** Both runs' coverage together; empty when coverage wasn't asked for. */
+  readonly coverage: LineCoverage;
 };
 
 /** Every test, with coverage: the head tier's run. */
@@ -49,8 +49,8 @@ async function coverageOf(
   request: TestRequest,
   run: RawTestRun,
   tests: number,
-): Promise<LineCoverage | undefined> {
-  if (!request.coverage) return undefined;
+): Promise<LineCoverage> {
+  if (!request.coverage) return new Map();
   if (run.coverage !== undefined) return readCoverage(ctx, run.coverage);
   if (tests === 0) return new Map();
   throw new EngineError(`the tests ran ${tests} test cases but wrote no coverage report`);
@@ -70,15 +70,16 @@ export async function runSuite(
   const failing = failingTests(firstTests);
   explain(first, failing, 'their run');
   const coverage = await coverageOf(ctx, request, first, firstTests.length);
-  if (failing.length === 0) return { verdicts: [], ...(coverage ? { coverage } : {}) };
+  if (failing.length === 0) return { verdicts: [], coverage };
   const files = rerunFiles(failing);
   const second = await runner.run(ctx, { ...request, ...(files === undefined ? {} : { files }) });
   const secondTests = await readTests(ctx, second.junit);
   explain(second, failingTests(secondTests), 'their rerun');
   const again = await coverageOf(ctx, request, second, secondTests.length);
-  const verdicts = judgeTests(firstTests, secondTests);
-  if (coverage === undefined || again === undefined) return { verdicts };
-  return { verdicts, coverage: mergeCoverage(coverage, again) };
+  return {
+    verdicts: judgeTests(firstTests, secondTests),
+    coverage: mergeCoverage(coverage, again),
+  };
 }
 
 /** One run per language, component and request, however many checks of a run ask for it. */

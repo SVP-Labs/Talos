@@ -1,0 +1,1 @@
+{ "checks": ["docs/claude-md"], "rules": ["claude/stale-block", "claude/too-long"] }

@@ -1,0 +1,4 @@
+{
+  "checks": ["infra/shell", "infra/powershell", "infra/dockerfile", "infra/workflows"],
+  "clean": true
+}

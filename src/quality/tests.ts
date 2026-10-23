@@ -1,37 +1,37 @@
-import type { FileLines } from './coverage.js';
+import type { LineCoverage } from './coverage.js';
 import { changedLinesFinding, uncoveredFindings } from './lines.js';
 import type { TestRunner } from './protocol.js';
 import { FULL_SUITE, sharedSuite, type SuiteRun, testsRequest } from './suite.js';
-import { testFindings } from './verdicts.js';
+import { testFindings, type TestVerdict } from './verdicts.js';
 import { APPLIES, type Check, type CheckContext, type Lang } from '../core/check.js';
 import type { Finding } from '../core/finding.js';
 
-function identity(finding: Finding): string {
-  return `${finding.rule}\0${finding.key ?? ''}`;
+/** A test's verdict as `<lang>/tests` would report it. */
+function identity(verdict: TestVerdict): string {
+  return `${verdict.kind}\0${verdict.test.id}`;
 }
 
 /**
- * The coverage run's test findings that `<lang>/tests` doesn't report in the same run: tests
- * only the full suite runs (`tests.full`), and different verdicts on the same test. Without the
- * commit tier in the run, all of them. If the per-commit run fails, its check reports why, and
- * this one reports its own findings.
+ * The coverage run's verdicts that `<lang>/tests` doesn't report in the same run: tests only the
+ * full suite runs (`tests.full`), and different verdicts on the same test. Without the commit tier
+ * in the run, all of them. If the per-commit run fails, its check reports why, and this one
+ * reports its own verdicts.
  */
 async function unreported(
   ctx: CheckContext,
-  own: readonly Finding[],
+  own: readonly TestVerdict[],
   perCommit: () => Promise<SuiteRun>,
-): Promise<readonly Finding[]> {
+): Promise<readonly TestVerdict[]> {
   if (own.length === 0 || !ctx.tiers.includes('commit')) return own;
   try {
-    const theirs = new Set(testFindings((await perCommit()).verdicts).map(identity));
-    return own.filter((finding) => !theirs.has(identity(finding)));
+    const theirs = new Set((await perCommit()).verdicts.map(identity));
+    return own.filter((verdict) => !theirs.has(identity(verdict)));
   } catch {
     return own;
   }
 }
 
-function coverageFindings(ctx: CheckContext, run: SuiteRun): Finding[] {
-  const coverage = run.coverage ?? new Map<string, FileLines>();
+function coverageFindings(ctx: CheckContext, coverage: LineCoverage): Finding[] {
   const changed =
     ctx.side === 'head' && ctx.changes !== undefined
       ? changedLinesFinding(coverage, ctx.changes)
@@ -65,8 +65,8 @@ export function testChecks(lang: Lang, runner: TestRunner): Check[] {
     run: async (ctx) => {
       const run = await sharedSuite(lang, runner, ctx, FULL_SUITE);
       const perCommit = () => sharedSuite(lang, runner, ctx, testsRequest(ctx));
-      const failures = await unreported(ctx, testFindings(run.verdicts), perCommit);
-      return [...failures, ...coverageFindings(ctx, run)];
+      const failures = testFindings(await unreported(ctx, run.verdicts, perCommit));
+      return [...failures, ...coverageFindings(ctx, run.coverage)];
     },
   };
   return [tests, coverage];

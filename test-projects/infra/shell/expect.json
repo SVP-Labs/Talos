@@ -1,0 +1,4 @@
+{
+  "checks": ["infra/shell"],
+  "rules": ["shellcheck/SC2045", "shellcheck/SC2086", "shellcheck/SC2164"]
+}

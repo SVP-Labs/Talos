@@ -1,0 +1,8 @@
+{
+  "checks": ["infra/powershell"],
+  "rules": [
+    "psscriptanalyzer/PSAvoidUsingWriteHost",
+    "psscriptanalyzer/PSUseConsistentIndentation",
+    "psscriptanalyzer/PSAvoidUsingCmdletAliases"
+  ]
+}

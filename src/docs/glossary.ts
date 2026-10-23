@@ -71,3 +71,32 @@ export function glossaryWords(entries: readonly GlossaryEntry[]): string[] {
     .filter((w) => w.length > 1);
   return [...new Set(words)].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * A line of code read as words: `fileName`, `file_name` and `FILE_NAME` all read as
+ * `file name`. `offsets[i]` is where the view's character `i` came from.
+ */
+export function codeWords(line: string): { text: string; offsets: number[] } {
+  let text = '';
+  const offsets: number[] = [];
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line.charAt(index);
+    const previous = line.charAt(index - 1);
+    if (/\p{Lu}/u.test(char) && /[\p{Ll}\p{N}]/u.test(previous)) {
+      text += ' ';
+      offsets.push(index);
+    }
+    text += char === '_' ? ' ' : char;
+    offsets.push(index);
+  }
+  return { text, offsets };
+}
+
+/** Avoided words in a line of code, its identifiers split into words; `index` is the line's. */
+export function avoidedInCode(entries: readonly GlossaryEntry[], line: string): AvoidHit[] {
+  const view = codeWords(line);
+  return avoidedWords(entries, view.text).map((hit) => ({
+    ...hit,
+    index: view.offsets[hit.index] ?? hit.index,
+  }));
+}

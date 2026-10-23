@@ -124,9 +124,10 @@ const WHEN_NOT_HIT = [
   '::[A-Za-z0-9_]+::',
 ];
 
+/** Lua's `.` matches any byte, a line break included. */
 function exclusions(patterns: readonly string[]): RegExp {
   const alternatives = patterns.map((pattern) => `(?:${pattern})`).join('|');
-  return new RegExp(`^ *(?:${alternatives}) *$`);
+  return new RegExp(`^ *(?:${alternatives}) *$`, 's');
 }
 
 const ALWAYS_EXCLUDED = exclusions(ALWAYS);
@@ -256,24 +257,28 @@ export class LineScanner {
     }
   }
 
-  private skipPattern(pattern: RegExp): void {
-    this.index += this.at(pattern)?.[0].length ?? 0;
+  /** Skips the characters matching `char`, a one-character pattern, and returns them. */
+  private skipWhile(char: RegExp): string {
+    const start = this.index;
+    while (this.index < this.line.length && char.test(this.line.charAt(this.index))) {
+      this.index += 1;
+    }
+    return this.line.slice(start, this.index);
   }
 
   private skipNumber(): void {
     if (this.at(/0[xX]/y)) this.index += 2;
-    this.skipPattern(/[0-9A-Fa-f.]*/y);
+    this.skipWhile(/[0-9A-Fa-f.]/);
     if (this.at(/[eEpP][+-]/y)) {
       this.index += 2;
-      this.skipPattern(/[0-9A-Fa-f.]*/y);
+      this.skipWhile(/[0-9A-Fa-f.]/);
     }
-    this.skipPattern(/[iul]*/y);
+    this.skipWhile(/[iul]/);
     this.buffer.push('0');
   }
 
   private skipName(): void {
-    const name = this.at(/\w*/y)?.[0] ?? '';
-    this.index += name.length;
+    const name = this.skipWhile(/\w/);
     const token = KEYWORDS.get(name) ?? 'x';
     this.buffer.push(token);
     if (token === 'function') this.afterFunction = true;
@@ -284,10 +289,10 @@ export class LineScanner {
       this.comment = true;
       this.index += 2;
     }
-    const bracket = this.at(/\[(=*)\[/y);
+    const bracket = this.at(/\[=*\[/y);
     if (bracket !== null) {
       this.index += bracket[0].length;
-      this.equals = bracket[1] ?? '';
+      this.equals = '='.repeat(bracket[0].length - 2);
       if (!this.comment) this.buffer.push("'");
       return true;
     }
@@ -302,9 +307,7 @@ export class LineScanner {
 
   private symbol(char: string): void {
     if (char === '.') {
-      const dots = this.at(/\.*/y)?.[0] ?? '.';
-      this.index += dots.length;
-      this.buffer.push(dots);
+      this.buffer.push(this.skipWhile(/\./));
       return;
     }
     this.index += 1;
@@ -326,8 +329,8 @@ export class LineScanner {
 }
 
 /**
- * The lines luacov's reporter counts, with their hits (0 for a missed line): a line is counted
- * unless the scanner always excludes it, or excludes it when unhit and no test hit it.
+ * The lines luacov's reporter counts, with their hits (0 for a missed line): every line but those
+ * the scanner always excludes, and those it excludes when no test ran them that no test ran.
  */
 export function luacovLines(
   source: string,

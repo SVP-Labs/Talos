@@ -1,0 +1,8 @@
+name: setup
+description: Prints the runner's operating system.
+runs:
+  using: composite
+  steps:
+    - name: show
+      run: echo "${RUNNER_OS}"
+      shell: bash

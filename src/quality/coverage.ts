@@ -1,6 +1,5 @@
-import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
-import { firstLine } from './text.js';
+import { parseXml } from './xml.js';
 import { EngineError } from '../core/check.js';
 
 /** One file of a coverage report: hits per executable line, 0 for a line no test ran. */
@@ -51,57 +50,50 @@ export function parseLcov(text: string): RawCoverage {
   return { files, sources: [] };
 }
 
-const xml = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_',
-  parseTagValue: false,
-  parseAttributeValue: false,
-  htmlEntities: true,
-  isArray: (name) => ['source', 'package', 'class', 'line', 'file'].includes(name),
-});
-
-function parseXml(text: string, format: string): unknown {
-  try {
-    return xml.parse(text);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new EngineError(`a ${format} report is not XML: ${firstLine(reason)}`);
-  }
-}
+const LISTS = ['source', 'package', 'class', 'line', 'file'];
 
 /** An element that may be empty (`<lines/>`), which the parser reads as ''. */
-function optional<T extends z.ZodType>(schema: T) {
-  return z.union([z.literal(''), schema]).optional();
+function element<T extends z.ZodType>(schema: T) {
+  return z.union([z.literal(''), schema]);
+}
+
+function present<T extends object>(value: T | '' | undefined): T | undefined {
+  return value === '' ? undefined : value;
+}
+
+/** A list's elements that aren't empty. */
+function items<T extends object>(list: readonly (T | '')[] | undefined): T[] {
+  return (list ?? []).filter((item): item is T => item !== '');
 }
 
 const coberturaLine = z.looseObject({ '@_number': z.string(), '@_hits': z.string() });
 const coberturaClass = z.looseObject({
   '@_filename': z.string(),
-  lines: optional(z.looseObject({ line: z.array(coberturaLine).optional() })),
+  lines: element(z.looseObject({ line: z.array(coberturaLine).optional() })).optional(),
 });
 const coberturaPackage = z.looseObject({
-  classes: optional(z.looseObject({ class: z.array(coberturaClass).optional() })),
+  classes: element(z.looseObject({ class: z.array(coberturaClass).optional() })).optional(),
 });
 const cobertura = z.looseObject({
-  coverage: z.looseObject({
-    sources: optional(z.looseObject({ source: z.array(z.string()).optional() })),
-    packages: optional(z.looseObject({ package: z.array(coberturaPackage).optional() })),
-  }),
+  coverage: element(
+    z.looseObject({
+      sources: element(z.looseObject({ source: z.array(z.string()).optional() })).optional(),
+      packages: element(
+        z.looseObject({ package: z.array(element(coberturaPackage)).optional() }),
+      ).optional(),
+    }),
+  ),
 });
-
-function present<T extends object>(value: T | '' | undefined): T | undefined {
-  return value === '' ? undefined : value;
-}
 
 /**
  * Cobertura XML: each class's own `<lines>` (its methods' lines repeat them), merged per file.
  * Relative file names are relative to one of the `<source>` directories.
  */
 export function parseCobertura(text: string): RawCoverage {
-  const parsed = cobertura.safeParse(parseXml(text, 'Cobertura'));
+  const parsed = cobertura.safeParse(parseXml(text, 'Cobertura', LISTS));
   if (!parsed.success) throw new EngineError('a Cobertura report has an unexpected shape');
-  const report = parsed.data.coverage;
-  const packages = present(report.packages)?.package ?? [];
+  const report = present(parsed.data.coverage);
+  const packages = items(present(report?.packages)?.package);
   const files = packages.flatMap((pack) =>
     (present(pack.classes)?.class ?? []).map((entry): RawFile => {
       const hits = new Map<number, number>();
@@ -111,7 +103,7 @@ export function parseCobertura(text: string): RawCoverage {
       return { path: entry['@_filename'], hits };
     }),
   );
-  const sources = (present(report.sources)?.source ?? []).map((source) => source.trim());
+  const sources = (present(report?.sources)?.source ?? []).map((source) => source.trim());
   return { files, sources };
 }
 
@@ -127,21 +119,21 @@ const cloverFile = z.looseObject({
 });
 const cloverProject = z.looseObject({
   file: z.array(cloverFile).optional(),
-  package: z.array(z.looseObject({ file: z.array(cloverFile).optional() })).optional(),
+  package: z.array(element(z.looseObject({ file: z.array(cloverFile).optional() }))).optional(),
 });
-const clover = z.looseObject({ coverage: z.looseObject({ project: cloverProject }) });
+const clover = z.looseObject({ coverage: z.looseObject({ project: element(cloverProject) }) });
 
 /**
  * Clover XML (Istanbul's and PHPUnit's): statement and condition lines. A `method` line is a
  * declaration, whose body's statements are counted on their own lines.
  */
 export function parseClover(text: string): RawCoverage {
-  const parsed = clover.safeParse(parseXml(text, 'Clover'));
+  const parsed = clover.safeParse(parseXml(text, 'Clover', LISTS));
   if (!parsed.success) throw new EngineError('a Clover report has an unexpected shape');
-  const project = parsed.data.coverage.project;
+  const project = present(parsed.data.coverage.project);
   const entries = [
-    ...(project.file ?? []),
-    ...(project.package ?? []).flatMap((p) => p.file ?? []),
+    ...(project?.file ?? []),
+    ...items(project?.package).flatMap((pack) => pack.file ?? []),
   ];
   const files = entries.map((entry): RawFile => {
     const hits = new Map<number, number>();

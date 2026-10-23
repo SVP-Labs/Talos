@@ -1,0 +1,4 @@
+{
+  "checks": ["py/tests", "py/coverage"],
+  "rules": ["tests/failed"]
+}

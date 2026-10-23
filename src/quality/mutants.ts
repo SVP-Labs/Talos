@@ -6,7 +6,7 @@ import type { Finding } from '../core/finding.js';
 import { normalise } from '../core/fingerprint.js';
 import { parseMutmutReport } from '../langs/py/mutmut-report.js';
 
-export type MutantStatus = 'survived' | 'no-coverage' | 'other';
+type MutantStatus = 'survived' | 'no-coverage' | 'other';
 
 /** A mutant as a mutation tool reports it, in the shared shape. */
 export type Mutant = {
@@ -238,12 +238,13 @@ function describe(mutant: Mutant): string {
 
 /** `mutation/survived` for a mutant no test killed, at its repository-relative file. */
 export function mutantFinding(mutant: Mutant, file: string): Finding {
+  const line = Math.max(1, mutant.line);
   const endLine =
-    mutant.endLine !== undefined && mutant.endLine > mutant.line ? { endLine: mutant.endLine } : {};
+    mutant.endLine !== undefined && mutant.endLine > line ? { endLine: mutant.endLine } : {};
   return {
     rule: 'mutation/survived',
     message: describe(mutant),
-    location: { file, line: Math.max(1, mutant.line), ...endLine },
+    location: { file, line, ...endLine },
     key: mutantKey(mutant),
   };
 }
