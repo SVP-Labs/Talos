@@ -116,6 +116,10 @@ export function compactVerdict(
       check: f.check,
       reason: clip(f.reason ?? '', 300),
     })),
+    flaky: verdict.findings
+      .filter((f) => f.rule === 'tests/flaky')
+      .slice(0, MAX_LISTED)
+      .map((f) => ({ id: f.key ?? f.message, file: f.location?.file ?? null })),
     truncated: verdict.blocking.length > MAX_LISTED || verdict.faults.length > 5,
   };
 }
