@@ -2,7 +2,7 @@ import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { git, inWorktree, revParse } from './git.js';
+import { git, inWorktree, revParse, worktreeDir } from './git.js';
 import { exec } from '../exec/exec.js';
 
 async function scratch() {
@@ -57,5 +57,13 @@ describe('inWorktree', () => {
       }),
     ).rejects.toThrow('the run failed');
     expect(await gone(directory)).toBe(true);
+  });
+});
+
+describe('worktreeDir', () => {
+  it("keeps two processes' checkouts of one commit apart", async () => {
+    const { repo, sha } = await scratch();
+    expect(worktreeDir(repo, sha, 1)).not.toBe(worktreeDir(repo, sha, 2));
+    expect(worktreeDir(repo, sha, 7)).toBe(join(repo.root, '.talos', 'worktrees', `${sha}-7`));
   });
 });

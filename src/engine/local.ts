@@ -9,7 +9,7 @@ import type { Os, Tier } from '../core/check.js';
 import { engineErrors, parseRunResult, type RunResult } from '../core/result.js';
 import { type ChangeSet, parseDiff } from '../repo/changes.js';
 import { repoFacts } from '../repo/facts.js';
-import { type Git, git, inWorktree, showFile, trackedFiles } from '../repo/git.js';
+import { type Git, git, inWorktree, showFile, trackedFiles, worktreeDir } from '../repo/git.js';
 
 export type At = {
   readonly root: string;
@@ -82,7 +82,7 @@ export async function cachedRun(
   try {
     return parseRunResult(await readFile(file, 'utf8'));
   } catch {
-    const directory = join(repo.root, '.talos', 'worktrees', at.sha);
+    const directory = worktreeDir(repo, at.sha);
     const result = await inWorktree(repo, { sha: at.sha, directory }, () =>
       runAt(engine, { ...at, root: directory }),
     );

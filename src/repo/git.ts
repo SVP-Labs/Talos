@@ -1,5 +1,5 @@
 import { mkdir, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type Exec, execOk } from '../exec/exec.js';
 
 /** Thin helpers over the git CLI; every path is repository-relative with forward slashes. */
@@ -51,6 +51,14 @@ async function removeWorktree(repo: Git, directory: string): Promise<void> {
   await repo.run(['worktree', 'remove', '--force', directory]).catch(() => undefined);
   await rm(directory, { recursive: true, force: true });
   await repo.run(['worktree', 'prune']).catch(() => undefined);
+}
+
+/**
+ * Where this process checks `name` out, under `.talos/worktrees`: its process id keeps two runs
+ * in one clone, such as a pre-push hook beside a `talos check`, out of each other's checkout.
+ */
+export function worktreeDir(repo: Git, name: string, pid: number = process.pid): string {
+  return join(repo.root, '.talos', 'worktrees', `${name}-${pid}`);
 }
 
 /**

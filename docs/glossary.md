@@ -326,8 +326,10 @@ What Thea's hub hears from GitHub and hands her, carrying the repository, the PR
 findings summarised, so one event leads to one decision (C32).
 
 **Handoff**
-What Thea leaves her next session. For in-flight work it says "in-flight work: check
-`talos_status`" instead of listing it (C34).
+What Thea leaves her next session. For in-flight work in governed repositories it says
+"in-flight work: check `talos_status`" instead of listing it; in-flight work anywhere else
+(background jobs, pod or render runs, scratch-folder tasks, the owner's threads) it still names,
+since `talos_status` can't see it (C34).
 
 ## Documents
 

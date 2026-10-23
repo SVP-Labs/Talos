@@ -1080,10 +1080,16 @@ _Added 2026-10-23._
 **Decision:** lasting things (the owner's decisions and preferences, what each project is for)
 stay Thea's core memory entries. Anything Talos can answer at any time (which PRs are open, what
 is red, who holds a claim) never becomes memory, and her handoff says "in-flight work: check
-`talos_status`" instead of listing it. Her prompt (`persona.ts`) carries one stanza per Talos event
-type, and `changes.ts` tells her about each new tool once (her repository's rule for tools).
+`talos_status`" instead of listing it. _Amended 2026-10-23:_ that line covers only what Talos
+can answer (claims, PRs, red checks, the queue, debt); the handoff still names in-flight work
+outside governed repositories, which `talos_status` can't see: background jobs on the owner's
+machines, pod and render runs, tasks in scratch folders, threads in the owner's life. Her prompt
+(`persona.ts`) carries one stanza per Talos event type, and `changes.ts` tells her about each
+new tool once (her repository's rule for tools).
 
-**Rejected:** a Talos manual in her prompt; snapshots of in-flight work in memory.
+**Rejected:** a Talos manual in her prompt; snapshots of in-flight work in memory; pointing
+the whole handoff at `talos_status` (it sees only governed repositories, so work anywhere else
+would be lost between sessions).
 
 ## Open
 

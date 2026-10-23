@@ -232,11 +232,16 @@ Anything Talos can answer at any time never becomes memory: which PRs are open, 
 holds a claim, what the queue holds, which release a repository runs, its debt and security
 counts (C34). Such snapshots go stale within hours.
 
-A handoff names no in-flight work. It says:
+A handoff lists none of the in-flight work Talos can answer (claims, PRs, red checks, the
+queue, debt). For that part it says:
 
 ```text
 in-flight work: check talos_status
 ```
+
+It still names in-flight work outside governed repositories, which `talos_status` can't see:
+background jobs on the owner's machines, pod and render runs, tasks in scratch folders, threads
+in the owner's life.
 
 ## 12. Thea's instructions move with the tools
 
