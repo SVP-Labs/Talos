@@ -130,6 +130,7 @@ async function runTask(shared: Shared, task: Task): Promise<Outcome> {
     facts: plan.facts,
     config: plan.config,
     side: plan.side,
+    tiers: plan.tiers,
     ...(task.component ? { component: task.component } : {}),
     ...(plan.changes ? { changes: plan.changes } : {}),
   };

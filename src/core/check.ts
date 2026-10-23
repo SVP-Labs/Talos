@@ -40,6 +40,8 @@ export type ApplyContext = {
   readonly changes?: ChangeSet;
   /** Which end of a comparison this run is, or `alone` when nothing is compared (`talos debt`). */
   readonly side: 'head' | 'base' | 'alone';
+  /** The tiers this run executes, so a commit-tier check can share a head-tier check's work. */
+  readonly tiers: readonly Tier[];
 };
 
 export type CheckContext = ApplyContext & {

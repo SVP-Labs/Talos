@@ -1,0 +1,9 @@
+name: Talos
+prefix: TL
+components:
+  - { lang: ts, root: ., os: [linux, windows] }
+exclude: [test-projects]
+mutation: [src/core/compare.ts, src/core/fingerprint.ts, src/review/conditions.ts, src/version/provenance.ts]
+docs: { glossary: docs/glossary.md, briefs: docs/requirements }
+protected: [src/review/**, src/version/**, bootstrap/**, assets/workflows/**, .github/**]
+agents: { max_claims: 2 }

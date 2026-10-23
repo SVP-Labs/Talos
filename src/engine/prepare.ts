@@ -37,7 +37,7 @@ export function targetPath(target: Target): string {
 
 /** The gate never trusts the repository's copy of a base config: it writes its own. */
 async function writeGenerated(engine: Engine, plan: RunPlan): Promise<void> {
-  const ctx = { facts: plan.facts, config: plan.config, side: plan.side };
+  const ctx = { facts: plan.facts, config: plan.config, side: plan.side, tiers: plan.tiers };
   for (const target of generatedTargets(engine.packs, ctx)) {
     const path = join(plan.root, targetPath(target));
     const content = target.file.render({
