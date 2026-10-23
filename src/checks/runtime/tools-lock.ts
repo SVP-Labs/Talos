@@ -7,53 +7,41 @@ import { EngineError } from '../../core/check.js';
 /** Talos's own lockfile of outside tools, at the repository root. */
 export const TOOLS_LOCK = 'tools.lock';
 
-const lockSchema = z.object({ tools: z.record(z.string(), z.unknown()) });
-
-/**
- * A runtime entry: `runtime` names the runtime the entry installs (`"python"`), or is `true`
- * when the entry's own name is the runtime.
- */
-const entrySchema = z.object({
-  version: z.string().min(1),
-  runtime: z.union([z.string().min(1), z.literal(true)]),
-});
+/** `runtimes` maps each interpreter Talos installs tools into to its version. */
+const lockSchema = z.object({ runtimes: z.record(z.string(), z.string().min(1)) });
 
 function escaped(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
+/** The line of `name`'s key after the `runtimes` key, so a tool of the same name can't match. */
 function entryLine(text: string, name: string): number {
+  const lines = text.split(/\r?\n/);
+  const section = lines.findIndex((line) => /^\s*["']?runtimes["']?\s*:/.test(line));
   const key = new RegExp(String.raw`^\s*["']?${escaped(name)}["']?\s*:`);
-  const index = text.split(/\r?\n/).findIndex((line) => key.test(line));
+  const index = lines.findIndex((line, at) => at > section && key.test(line));
   return index < 0 ? 1 : index + 1;
 }
 
-function readLock(text: string): Record<string, unknown> {
+function readLock(text: string): Record<string, string> {
   try {
-    return lockSchema.safeParse(parseYaml(text)).data?.tools ?? {};
+    return lockSchema.safeParse(parseYaml(text)).data?.runtimes ?? {};
   } catch {
     return {};
   }
 }
 
 /**
- * The runtimes `tools.lock` pins: entries under `tools` that carry a `runtime` field. A file of
- * another shape declares nothing; a runtime Talos doesn't know is an engine error, since only
- * Talos writes this file.
+ * The runtimes `tools.lock` pins under `runtimes`. A file of another shape declares nothing; a
+ * runtime Talos doesn't know is an engine error, since only Talos writes this file.
  */
 export function toolsLockDeclarations(file: string, text: string): Declaration[] {
-  return Object.entries(readLock(text)).flatMap(([name, value]) => {
-    const entry = entrySchema.safeParse(value).data;
-    if (entry === undefined) return [];
-    const runtimeName = entry.runtime === true ? name : entry.runtime;
-    const runtime = runtimeNamed(runtimeName);
+  return Object.entries(readLock(text)).map(([name, written]) => {
+    const runtime = runtimeNamed(name);
     if (runtime === undefined) {
-      throw new EngineError(
-        `${file} marks ${name} as the runtime "${runtimeName}", which Talos doesn't know`,
-      );
+      throw new EngineError(`${file} pins the runtime "${name}", which Talos doesn't know`);
     }
-    const version = entry.version.replace(/^v(?=\d)/, '');
-    const written = name === runtime ? version : `${name} ${version}`;
-    return [pinned(runtime, { file, line: entryLine(text, name) }, written, version)];
+    const version = written.replace(/^v(?=\d)/, '');
+    return pinned(runtime, { file, line: entryLine(text, name) }, written, version);
   });
 }

@@ -69,13 +69,9 @@ proxy, Node's `fetch` needs `NODE_USE_ENV_PROXY=1` to use `HTTPS_PROXY`.
 ## Recorded feeds
 
 `TALOS_RUNTIME_FEEDS=<dir>` makes the check read `<dir>/<name>.json` instead of the network:
-`endoflife-<product>.json`, `php-releases-<cycle>.json` and `node-index.json`. The self-test
-needs it, so that its expectations don't move when a vendor ships a release:
-
-```bash
-TALOS_RUNTIME_FEEDS=$PWD/test-projects/runtime/feeds \
-  node dist/bin/talos.js self-test test-projects --only runtime
-```
+`endoflife-<product>.json`, `php-releases-<cycle>.json` and `node-index.json`. `talos self-test`
+sets it to `<test projects>/runtime/feeds` when that exists and the variable isn't set, so the
+runtime cases' expectations don't move when a vendor ships a release.
 
 The recordings in `test-projects/runtime/feeds/` were taken on 2026-10-23, the day after
 php2shell's fix shipped in PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35. php.net's answers keep only
@@ -86,13 +82,12 @@ and update the cases' expectations.
 
 ## `tools.lock` runtimes
 
-An entry under `tools` with a `runtime` field is a runtime: `true` when the entry's name is the
-runtime, or the runtime's name (`"python"`, `"node"`, `"lua"`). Its `version` is read like any
-other declaration. A runtime Talos doesn't know is an engine error, since only Talos writes the
-file.
+`runtimes` maps each interpreter Talos installs its tools into to the version it pins, read like
+any other declaration. A runtime Talos doesn't know is an engine error, since only Talos writes
+the file.
 
 ```json
-{ "tools": { "python": { "version": "3.13.9", "runtime": true } } }
+{ "runtimes": { "python": "3.13.17" }, "tools": {} }
 ```
 
 ## Using it without a checkout

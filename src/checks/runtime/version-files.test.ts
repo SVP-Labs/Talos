@@ -163,23 +163,22 @@ describe('composer.json', () => {
 describe('tools.lock', () => {
   const lock = JSON.stringify(
     {
+      runtimes: { python: '3.13.1', lua: 'v5.4.7' },
       tools: {
+        python: { version: '1.0.0' },
         gitleaks: { version: '8.21.2' },
-        python: { version: '3.13.1', runtime: true },
-        stylua: { version: '0.25.1', runtime: false },
-        lua54: { version: 'v5.4.7', runtime: 'lua' },
       },
     },
     undefined,
     2,
   );
 
-  it('reads the entries marked as runtimes, on their own lines', () => {
+  it('reads the runtimes it pins, each on its own line', () => {
     expect(toolsLockDeclarations('tools.lock', lock)).toEqual([
       {
         runtime: 'python',
         file: 'tools.lock',
-        line: 6,
+        line: 3,
         written: '3.13.1',
         version: '3.13.1',
         exactness: 'exact',
@@ -187,8 +186,8 @@ describe('tools.lock', () => {
       {
         runtime: 'lua',
         file: 'tools.lock',
-        line: 14,
-        written: 'lua54 5.4.7',
+        line: 4,
+        written: 'v5.4.7',
         version: '5.4.7',
         exactness: 'exact',
       },
@@ -198,9 +197,12 @@ describe('tools.lock', () => {
   it('declares nothing for a file of another shape, and refuses an unknown runtime', () => {
     expect(toolsLockDeclarations('tools.lock', 'just text')).toEqual([]);
     expect(toolsLockDeclarations('tools.lock', ': [')).toEqual([]);
-    expect(() =>
-      toolsLockDeclarations('tools.lock', 'tools:\n  erlang: { version: 27.1.2, runtime: true }\n'),
-    ).toThrow(EngineError);
+    expect(toolsLockDeclarations('tools.lock', 'tools:\n  python: { version: 3.13.1 }\n')).toEqual(
+      [],
+    );
+    expect(() => toolsLockDeclarations('tools.lock', 'runtimes:\n  erlang: 27.1.2\n')).toThrow(
+      EngineError,
+    );
   });
 });
 

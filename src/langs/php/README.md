@@ -35,6 +35,13 @@ code (its tests) anyway, so a root container gets what an ordinary runner gets. 
 `composer.json` must allow those plugins (`config.allow-plugins`: `pestphp/pest-plugin`,
 `infection/extension-installer`), or Composer refuses them.
 
+Before Composer runs anything, `install()` asks the PHP on `PATH` for its release and refuses,
+as an engine error, any PHP that isn't the newest release of its cycle, or whose cycle is past its
+end of life, judged by the runtime pack's feeds (endoflife.date and php.net's security tags, or
+the recordings `TALOS_RUNTIME_FEEDS` names). The project's tests and every tool run on that PHP,
+so no check runs on a release with a known hole. Which PHP a project ships is the runtime pack's
+`runtime/runtimes` check.
+
 The pinned tools need PHP 8.4 or later (Pest 5, and the Pest plugin for PHPStan).
 
 ## Configs

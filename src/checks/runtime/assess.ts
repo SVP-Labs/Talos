@@ -30,7 +30,8 @@ function docsOf(declaration: Declaration): string {
   return `https://endoflife.date/${RUNTIMES[declaration.runtime].product}`;
 }
 
-function isPast(cycle: Cycle, today: string): boolean {
+/** Whether the cycle is past its end of life on `today` (`YYYY-MM-DD`). */
+export function isPast(cycle: Cycle, today: string): boolean {
   return cycle.isEol || (cycle.eol !== undefined && cycle.eol <= today);
 }
 

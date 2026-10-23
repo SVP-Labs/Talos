@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { componentDir, fileExists, inRepo } from './paths.js';
+import { requireNewestPhp } from './runtime.js';
 import { EngineError } from '../../core/check.js';
 import type { InstallContext } from '../../core/pack.js';
 import { ExecError, type ExecResult } from '../../exec/exec.js';
@@ -31,7 +32,8 @@ function detail(result: ExecResult): string {
 
 /**
  * Installs a component's dependencies into `vendor/` with Composer, only ever from composer.lock,
- * dev dependencies included, since the checks run the dev tools.
+ * dev dependencies included, since the checks run the dev tools; never on a PHP that isn't the
+ * newest release of its cycle.
  */
 export async function install(ctx: InstallContext): Promise<void> {
   const dir = componentDir(ctx);
@@ -41,6 +43,7 @@ export async function install(ctx: InstallContext): Promise<void> {
       `${where} has no composer.lock: Talos installs PHP dependencies only from a lockfile`,
     );
   }
+  await requireNewestPhp(ctx.exec, dir);
   let result: ExecResult;
   try {
     result = await ctx.exec('composer', COMPOSER_INSTALL, { cwd: dir, env: ENV, timeoutMs: HOUR });
