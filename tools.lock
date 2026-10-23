@@ -212,12 +212,12 @@
       }
     },
     "hererocks": {
-      "version": "0.25.1",
+      "version": "0.25.1-5d77b0b",
       "kind": "binary",
       "platforms": {
         "any": {
-          "url": "https://raw.githubusercontent.com/luarocks/hererocks/0.25.1/hererocks.py",
-          "sha256": "b823cb54b8f4c9a90ee5edf9f9124230d50fe304995ca4ca1a5024126f663caf",
+          "url": "https://raw.githubusercontent.com/luarocks/hererocks/5d77b0bafc8b96f82355ca2ce5637c00d78a065c/hererocks.py",
+          "sha256": "17629cd7716a1adaea3b78a3d8f85f4de0f58f127e99aa13e8f8fe82128b154b",
           "path": "hererocks.py"
         }
       }
