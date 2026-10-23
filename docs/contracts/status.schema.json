@@ -1,0 +1,460 @@
+{
+  "$id": "https://github.com/SVP-Labs/Talos/blob/main/docs/contracts/status.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "talos.status/1"
+        },
+        "repo": {
+          "type": "string",
+          "description": "owner/name"
+        },
+        "channel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["evaluate", "canary", "stable"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agents": {
+          "type": "boolean",
+          "description": "whether the talos-agents property lets agents work here"
+        },
+        "pin": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "sha": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "version": {
+                  "type": ["string", "null"]
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": ["sha", "version", "source"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "the enforced Talos release; null when no single pin was found"
+        },
+        "main": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "branch": {
+                  "type": "string"
+                },
+                "sha": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "gate": {
+                  "type": "string",
+                  "enum": ["green", "red", "pending", "unknown"],
+                  "description": "red when any run failed, pending while any runs, unknown when none ran"
+                },
+                "review": {
+                  "type": "string",
+                  "enum": ["green", "red", "pending", "unknown"],
+                  "description": "red when any run failed, pending while any runs, unknown when none ran"
+                }
+              },
+              "required": ["branch", "sha", "gate", "review"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claims": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "items": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "branch": {
+                    "type": "string",
+                    "description": "the ticket branch <P>-<N>: the claim itself"
+                  },
+                  "issue": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "by": {
+                    "description": "the agent or person named by the claim comment",
+                    "type": ["string", "null"]
+                  },
+                  "since": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "ISO 8601 date and time"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pr": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "the open PR from the branch"
+                  }
+                },
+                "required": ["branch", "issue", "by", "since", "pr"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["total", "items"],
+          "additionalProperties": false
+        },
+        "prs": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "items": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "branch": {
+                    "type": "string"
+                  },
+                  "issue": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "the ticket the branch names"
+                  },
+                  "author": {
+                    "type": ["string", "null"]
+                  },
+                  "stage": {
+                    "type": "string",
+                    "enum": ["draft", "ready", "queued"]
+                  },
+                  "gate": {
+                    "type": "string",
+                    "enum": ["green", "red", "pending", "unknown"],
+                    "description": "the Talos gate's latest run on the PR's head"
+                  },
+                  "review": {
+                    "type": "string",
+                    "enum": ["green", "red", "pending", "unknown"],
+                    "description": "the talos/review check on the head"
+                  },
+                  "reviewer": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "verdict": {
+                            "type": "string",
+                            "enum": ["APPROVE", "REQUEST_CHANGES", "COMMENT"]
+                          },
+                          "round": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "findings": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["verdict", "round", "findings"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "talos-reviewer's latest review (talos-review/1 line)"
+                  },
+                  "automerge": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "number",
+                  "title",
+                  "branch",
+                  "issue",
+                  "author",
+                  "stage",
+                  "gate",
+                  "review",
+                  "reviewer",
+                  "automerge"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["total", "items"],
+          "additionalProperties": false
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "open": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "top": {
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": ["p0", "p1", "p2", "p3"]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["number", "title", "priority"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["open", "top"],
+          "additionalProperties": false
+        },
+        "debt": {
+          "type": "object",
+          "properties": {
+            "open": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "description": "open debt/dead-code and debt/other issues"
+            }
+          },
+          "required": ["open"],
+          "additionalProperties": false
+        },
+        "drift": {
+          "type": "object",
+          "properties": {
+            "open": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "last": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "number": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "date": {
+                      "type": "string",
+                      "description": "ISO 8601 date and time"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": ["open", "closed"]
+                    }
+                  },
+                  "required": ["number", "date", "state"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["open", "last"],
+          "additionalProperties": false
+        },
+        "problems": {
+          "maxItems": 5,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": "what could not be read; the rest of the object still holds"
+        },
+        "cards": {
+          "description": "added by Thea's hub: approval cards waiting on the owner; Talos never sets it",
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "items": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "pr": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "since": {
+                    "type": "string",
+                    "description": "ISO 8601 date and time"
+                  }
+                },
+                "required": ["id", "pr", "title", "since"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["total", "items"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "repo",
+        "channel",
+        "agents",
+        "pin",
+        "main",
+        "claims",
+        "prs",
+        "security",
+        "debt",
+        "drift",
+        "problems"
+      ],
+      "additionalProperties": false,
+      "description": "one governed repository's state"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "talos.status/1"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": ["schema", "repo", "error"],
+      "additionalProperties": false,
+      "description": "a repository whose state could not be read"
+    }
+  ],
+  "title": "talos.status/1",
+  "description": "A governed repository's current state"
+}

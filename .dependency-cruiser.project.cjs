@@ -9,7 +9,9 @@ module.exports = {
       comment: 'The core is the vocabulary every pack speaks; only its registry lists the packs.',
       severity: 'error',
       from: { path: '^src/core/', pathNot: '^src/core/registry\\.ts$' },
-      to: { path: '^src/(cli|engine|langs|checks|jobs|review|ticket|status|adopt|govern|central)/' },
+      to: {
+        path: '^src/(cli|engine|langs|checks|jobs|review|ticket|status|adopt|govern|central)/',
+      },
     },
     {
       name: 'packs-stay-apart',

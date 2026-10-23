@@ -1,0 +1,4 @@
+{
+  "extends": "./pyrightconfig.talos.json",
+  "reportAny": "warning",
+}

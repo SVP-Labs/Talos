@@ -1,0 +1,2 @@
+# Every issue starts from a form, so issue readiness finds the sections it checks.
+blank_issues_enabled: false

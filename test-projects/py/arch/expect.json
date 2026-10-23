@@ -1,0 +1,4 @@
+{
+  "checks": ["py/arch"],
+  "rules": ["import-linter/forbidden", "import-linter/acyclic_siblings", "import-linter/layers"]
+}

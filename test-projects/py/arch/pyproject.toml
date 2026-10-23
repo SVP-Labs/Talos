@@ -1,0 +1,23 @@
+[project]
+name = "layered"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "import-linter==2.15",
+  "pytest==9.1.1",
+]
+
+[tool.importlinter]
+root_packages = ["layered"]
+
+[[tool.importlinter.contracts]]
+name = "High sits above low"
+type = "layers"
+layers = ["layered.high", "layered.low"]

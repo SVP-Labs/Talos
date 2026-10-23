@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "py/format",
+    "py/lint",
+    "py/types",
+    "py/deadcode",
+    "py/arch",
+    "py/config-strength",
+    "py/toolchain"
+  ],
+  "clean": true
+}

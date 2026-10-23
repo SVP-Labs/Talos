@@ -1,0 +1,34 @@
+name: Epic
+description: 'Work split into tickets, from its brief'
+labels: ['epic']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: 'What the whole body of work delivers.'
+    validations: { required: true }
+  - type: input
+    id: brief
+    attributes:
+      label: Brief
+      description: >-
+        The brief's path, such as docs/requirements/20261023-billing.md, under the folder
+        talos.yml names in docs.briefs. Readiness checks it is on the default branch.
+    validations: { required: true }
+  - type: textarea
+    id: tickets
+    attributes:
+      label: Tickets
+      description: >-
+        The tickets this epic is split into, as a task list (- [ ] #12). An epic is never
+        claimed itself; its tickets are.
+      value: |
+        - [ ]
+    validations: { required: false }
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: 'What the epic leaves for later.'
+    validations: { required: true }

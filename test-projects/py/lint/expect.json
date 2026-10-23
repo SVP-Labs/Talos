@@ -1,0 +1,10 @@
+{
+  "checks": ["py/lint"],
+  "rules": [
+    "ruff/C901",
+    "ruff/PLR1702",
+    "complexipy/CC001",
+    "talos/max-lines-per-function",
+    "talos/max-lines"
+  ]
+}

@@ -1,0 +1,7 @@
+extend = "ruff.talos.toml"
+
+[lint]
+extend-ignore = ["C901"]
+
+[lint.mccabe]
+max-complexity = 20

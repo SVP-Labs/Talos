@@ -1,0 +1,4 @@
+// This project's additions to pyrightconfig.talos.json, which may only tighten them.
+{
+  "extends": "./pyrightconfig.talos.json"
+}

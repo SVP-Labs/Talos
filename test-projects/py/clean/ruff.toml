@@ -1,0 +1,2 @@
+# This project's additions to ruff.talos.toml, which may only tighten it.
+extend = "ruff.talos.toml"

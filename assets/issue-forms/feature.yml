@@ -1,0 +1,40 @@
+name: Feature
+description: 'A new capability'
+labels: ['feature']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: 'What this delivers, and why.'
+    validations: { required: true }
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: 'One to five testable checkboxes; more means the issue should be split.'
+      value: |
+        - [ ]
+    validations: { required: true }
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: 'What this ticket leaves alone, so the work stays one PR.'
+    validations: { required: true }
+  - type: textarea
+    id: affected-areas
+    attributes:
+      label: Affected areas
+      description: >-
+        What this ticket may touch, one item per line. Name a file exactly as - `path/to/file`;
+        for chores and debt, Talos's review holds the PR to the files named here.
+    validations: { required: true }
+  - type: input
+    id: brief
+    attributes:
+      label: Brief
+      description: >-
+        When this sets or changes a decision (label it decision): the brief's path, such as
+        docs/requirements/20261023-billing.md. It must be on the default branch already.
+    validations: { required: false }
