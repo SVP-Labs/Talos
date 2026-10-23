@@ -1,0 +1,2 @@
+# Talos
+Talos CI Template
