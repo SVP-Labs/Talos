@@ -6,7 +6,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'bootstrap/**/*.test.ts'],
     testTimeout: 30_000,
     coverage: {
-      include: ['src/**'],
+      include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/testing/**', 'src/bin/talos.ts'],
       reporter: ['text-summary', 'lcov'],
     },
