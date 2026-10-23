@@ -15,6 +15,7 @@ ignoreRegExpList:
   - '/sha256:[0-9a-f]{64}/g'
   - '/\b[0-9a-f]{40}\b/g'
   - '/\[[A-Za-z0-9#^-]{8,}\]/g'
+  - '/xǁ[\wǁ]*/gu'
 ignorePaths:
   - '**/node_modules/**'
   - '.cspell/**'
