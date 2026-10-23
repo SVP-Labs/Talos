@@ -125,7 +125,8 @@ const WHEN_NOT_HIT = [
 ];
 
 function exclusions(patterns: readonly string[]): RegExp {
-  return new RegExp(`^ *(?:${patterns.map((pattern) => `(?:${pattern})`).join('|')}) *$`);
+  const alternatives = patterns.map((pattern) => `(?:${pattern})`).join('|');
+  return new RegExp(`^ *(?:${alternatives}) *$`);
 }
 
 const ALWAYS_EXCLUDED = exclusions(ALWAYS);

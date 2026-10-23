@@ -76,17 +76,15 @@ export function parseStryker(text: string): Mutant[] {
   const parsed = strykerReport.safeParse(json(text, 'Stryker'));
   if (!parsed.success) throw new EngineError('the Stryker report is not a mutation-testing report');
   return Object.entries(parsed.data.files).flatMap(([file, result]) =>
-    result.mutants.map(
-      (mutant): Mutant => ({
-        file,
-        line: mutant.location.start.line,
-        endLine: mutant.location.end.line,
-        mutator: mutant.mutatorName,
-        original: sliceSpan(result.source, mutant.location.start, mutant.location.end),
-        replacement: mutant.replacement ?? '',
-        status: STRYKER_STATUS[mutant.status] ?? 'other',
-      }),
-    ),
+    result.mutants.map((mutant): Mutant => ({
+      file,
+      line: mutant.location.start.line,
+      endLine: mutant.location.end.line,
+      mutator: mutant.mutatorName,
+      original: sliceSpan(result.source, mutant.location.start, mutant.location.end),
+      replacement: mutant.replacement ?? '',
+      status: STRYKER_STATUS[mutant.status] ?? 'other',
+    })),
   );
 }
 
@@ -122,7 +120,8 @@ export function diffSides(diff: string): { original: string; replacement: string
 export function parseInfection(text: string): Mutant[] {
   const parsed = infectionLog.safeParse(json(text, 'Infection'));
   if (!parsed.success) throw new EngineError('the Infection report is not an Infection JSON log');
-  const read = (status: MutantStatus) =>
+  const read =
+    (status: MutantStatus) =>
     (entry: z.infer<typeof infectionEntry>): Mutant => ({
       file: entry.mutator.originalFilePath,
       line: entry.mutator.originalStartLine,

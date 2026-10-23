@@ -1,0 +1,1 @@
+{ "checks": ["rust/tests"], "rules": ["tests/failed"], "os": ["linux", "windows"] }

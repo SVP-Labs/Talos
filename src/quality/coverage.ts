@@ -139,7 +139,10 @@ export function parseClover(text: string): RawCoverage {
   const parsed = clover.safeParse(parseXml(text, 'Clover'));
   if (!parsed.success) throw new EngineError('a Clover report has an unexpected shape');
   const project = parsed.data.coverage.project;
-  const entries = [...(project.file ?? []), ...(project.package ?? []).flatMap((p) => p.file ?? [])];
+  const entries = [
+    ...(project.file ?? []),
+    ...(project.package ?? []).flatMap((p) => p.file ?? []),
+  ];
   const files = entries.map((entry): RawFile => {
     const hits = new Map<number, number>();
     for (const line of entry.line ?? []) {

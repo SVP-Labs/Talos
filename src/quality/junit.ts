@@ -51,7 +51,9 @@ const suite = z.looseObject({
 });
 
 const document = z.looseObject({
-  testsuites: z.union([z.literal(''), z.looseObject({ testsuite: z.array(z.unknown()).optional() })]).optional(),
+  testsuites: z
+    .union([z.literal(''), z.looseObject({ testsuite: z.array(z.unknown()).optional() })])
+    .optional(),
   testsuite: z.array(z.unknown()).optional(),
 });
 
@@ -154,7 +156,10 @@ function comparable(text: string): string {
  * `tests.test_a` for `tests/test_a.py`, `Tests.Unit.ATest` for `tests/Unit/ATest.php`), the class
  * when it names one inside the file's module (`TestA` of `tests.test_a.TestA`), otherwise itself.
  */
-export function classPart(classname: string | undefined, file: string | undefined): string | undefined {
+export function classPart(
+  classname: string | undefined,
+  file: string | undefined,
+): string | undefined {
   if (classname === undefined || file === undefined) return classname;
   const name = comparable(classname);
   const path = comparable(file.replace(/\.[^./\\]+$/, ''));

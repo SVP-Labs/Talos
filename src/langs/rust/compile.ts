@@ -39,12 +39,6 @@ async function clippyEnv(ctx: Bound): Promise<Record<string, string>> {
   await mkdir(conf, { recursive: true });
   await writeFile(join(conf, 'clippy.toml'), renderClippy(''));
   const rustflags = gateRustflags(await readRustflags(ctx));
-  if (rustflags !== undefined) {
-    ctx.log.warn(
-      `${ctx.component.root}: .cargo/config.toml passes lint levels to rustc; ` +
-        'the gate checks with build.rustflags alone, without them',
-    );
-  }
   return {
     CLIPPY_CONF_DIR: conf,
     ...(rustflags === undefined ? {} : { CARGO_ENCODED_RUSTFLAGS: rustflags }),

@@ -3,7 +3,13 @@ import { overlaps } from './paths.js';
 import type { RawTestRun, TestRequest, TestRunner } from './protocol.js';
 import { readCoverage, readTests } from './reports.js';
 import { lastLines } from './text.js';
-import { failingTests, judgeTests, rerunFiles, type TestResult, type TestVerdict } from './verdicts.js';
+import {
+  failingTests,
+  judgeTests,
+  rerunFiles,
+  type TestResult,
+  type TestVerdict,
+} from './verdicts.js';
 import { type CheckContext, EngineError, type Lang } from '../core/check.js';
 
 /** A suite's run, with the one rerun of its failures already judged. */
@@ -31,9 +37,10 @@ export function testsRequest(ctx: CheckContext): TestRequest {
 
 function explain(run: RawTestRun, failing: readonly TestResult[], which: string): void {
   if (run.exitCode === 0 || failing.length > 0) return;
+  const tail = lastLines(run.output);
   throw new EngineError(
-    `the tests exited ${run.exitCode} on ${which} with no failing test in their JUnit report:\n` +
-      lastLines(run.output),
+    `the tests exited ${run.exitCode} on ${which} with no failing test in their JUnit report:
+${tail}`,
   );
 }
 

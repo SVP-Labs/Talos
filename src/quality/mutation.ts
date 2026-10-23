@@ -31,15 +31,29 @@ const SOURCE: Readonly<Record<Lang, RegExp>> = {
   rust: /\.rs$/,
 };
 
-/** Test code, which mutation never targets: test directories and each language's test names. */
-const TEST =
-  /(?:^|\/)(?:tests?|__tests__|specs?|e2e)\/|\.(?:test|spec)\.[^/]+$|(?:^|\/)(?:test_[^/]*|[^/]*_test|conftest)\.py$|Test\.php$|_spec\.lua$/;
+const TEST_DIRECTORIES = new Set(['test', 'tests', '__tests__', 'spec', 'specs', 'e2e']);
 
-/** Whether a repository-relative path is shipped source of the language under the mutation paths. */
+const TEST_NAMES = [
+  /\.(?:test|spec)\.[^.]+$/,
+  /^test_.*\.py$/,
+  /_test\.py$/,
+  /^conftest\.py$/,
+  /Test\.php$/,
+  /_spec\.lua$/,
+];
+
+/** Test code, which mutation never targets: test directories and each language's test names. */
+function isTest(file: string): boolean {
+  const parts = file.split('/');
+  const name = parts.pop() ?? '';
+  return parts.some((part) => TEST_DIRECTORIES.has(part)) || TEST_NAMES.some((re) => re.test(name));
+}
+
+/** Whether a repository-relative path is shipped source of the language under mutation paths. */
 function mutable(lang: Lang, ctx: ApplyContext): (file: string) => boolean {
   const declared = excludeMatcher(ctx.config.mutation);
   return (file) =>
-    declared(file) && inComponent(ctx.component, file) && SOURCE[lang].test(file) && !TEST.test(file);
+    declared(file) && inComponent(ctx.component, file) && SOURCE[lang].test(file) && !isTest(file);
 }
 
 function applicability(lang: Lang, ctx: ApplyContext): Applicability {

@@ -3,7 +3,7 @@ import type { Policy } from '../core/finding.js';
 /** Each package's shipped code stays at least this share typed, in percent. */
 export const TYPE_COVERAGE_FLOOR = 99.5;
 
-/** Whether `typed` of `total` identifiers reach the floor, in exact integers; none counts as all. */
+/** Whether `typed` of `total` identifiers reach the floor, in exact integers; none count as all. */
 export function reachesTypeFloor(typed: number, total: number): boolean {
   return typed * 1000 >= total * TYPE_COVERAGE_FLOOR * 10;
 }

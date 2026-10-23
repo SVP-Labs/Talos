@@ -102,7 +102,9 @@ export function judgeTests(
 }
 
 function locationOf(test: TestResult): Location | undefined {
-  return test.file === undefined ? undefined : { file: test.file, line: Math.max(1, test.line ?? 1) };
+  return test.file === undefined
+    ? undefined
+    : { file: test.file, line: Math.max(1, test.line ?? 1) };
 }
 
 function describe(verdict: TestVerdict): string {

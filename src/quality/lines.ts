@@ -19,14 +19,12 @@ export function uncoveredFindings(coverage: LineCoverage): Finding[] {
     [...lines.executable]
       .filter((line) => !lines.covered.has(line))
       .sort((a, b) => a - b)
-      .map(
-        (line): Finding => ({
-          rule: 'coverage/uncovered',
-          message: `No test runs line ${line}.`,
-          location: { file, line },
-          policy: 'lost',
-        }),
-      ),
+      .map((line): Finding => ({
+        rule: 'coverage/uncovered',
+        message: `No test runs line ${line}.`,
+        location: { file, line },
+        policy: 'lost',
+      })),
   );
 }
 
