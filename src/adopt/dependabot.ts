@@ -92,6 +92,14 @@ function isManifest(name: string): boolean {
 
 const FIXTURE = /^(?:test-projects|test-fixtures|fixtures|__fixtures__|testdata)$/;
 
+/** Whether a file sits in a folder of test fixtures, which adoption leaves as they are. */
+export function isFixture(file: string): boolean {
+  return file
+    .split('/')
+    .slice(0, -1)
+    .some((part) => FIXTURE.test(part));
+}
+
 /**
  * Folders of test fixtures that hold manifests, as `<folder>/**`: their dependencies are there to
  * be scanned or failed on, sometimes vulnerable on purpose, and never to be updated.

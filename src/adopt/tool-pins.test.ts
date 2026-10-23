@@ -31,7 +31,10 @@ describe('toolPins', () => {
       [component('py', 'api'), component('py', 'tools'), component('rust', 'desk')],
       [PY, rust],
     );
-    expect(out.write.map((f) => f.path)).toEqual(['api/pyproject.toml', 'tools/requirements-dev.in']);
+    expect(out.write.map((f) => f.path)).toEqual([
+      'api/pyproject.toml',
+      'tools/requirements-dev.in',
+    ]);
     expect(out.next).toEqual([
       'in api: uv lock',
       'in tools: uv pip compile --generate-hashes requirements-dev.in -o requirements-dev.txt',
@@ -108,20 +111,24 @@ describe('composer.json', () => {
       config: { 'allow-plugins': { 'phpstan/extension-installer': true, 'x/y': false } },
     });
     const out = pinned({ 'composer.json': text }, [component('php', '.')], [php]);
-    const manifest = JSON.parse(out.read('composer.json') ?? '');
-    expect(manifest.require).toEqual({ php: '^8.4', 'laravel/framework': '^12' });
-    expect(manifest['require-dev']).toHaveProperty('larastan/larastan');
-    expect(manifest['require-dev']).not.toHaveProperty('phpstan/extension-installer');
-    expect(manifest.config['allow-plugins']).toEqual({
-      'x/y': false,
-      'pestphp/pest-plugin': true,
-      'infection/extension-installer': true,
+    const manifest: unknown = JSON.parse(out.read('composer.json') ?? '');
+    expect(manifest).toMatchObject({
+      require: { php: '^8.4', 'laravel/framework': '^12' },
+      'require-dev': { 'larastan/larastan': PHP_DEV_TOOLS.packages['larastan/larastan'] },
+      config: {
+        'allow-plugins': {
+          'x/y': false,
+          'pestphp/pest-plugin': true,
+          'infection/extension-installer': true,
+        },
+      },
     });
+    expect(manifest).not.toHaveProperty(['require-dev', 'phpstan/extension-installer']);
+    expect(manifest).not.toHaveProperty(['config', 'allow-plugins', 'phpstan/extension-installer']);
     expect(out.next).toEqual(['in .: composer update --lock']);
     const plain = pinned({ 'composer.json': '{}' }, [component('php', '.')], [php]);
-    expect(JSON.parse(plain.read('composer.json') ?? '')['require-dev']).not.toHaveProperty(
-      'larastan/larastan',
-    );
+    const plainManifest: unknown = JSON.parse(plain.read('composer.json') ?? '');
+    expect(plainManifest).not.toHaveProperty(['require-dev', 'larastan/larastan']);
   });
 
   it('keeps settings that already hold', () => {

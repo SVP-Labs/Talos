@@ -26,7 +26,7 @@ export type KitAssets = {
   readonly claudeKit: string;
 };
 
-export const PR_TEMPLATE_PATH = '.github/pull_request_template.md';
+const PR_TEMPLATE_PATH = '.github/pull_request_template.md';
 const PR_TEMPLATES = [
   PR_TEMPLATE_PATH,
   'pull_request_template.md',

@@ -120,6 +120,7 @@ memoizer
 metapath
 mhit
 mikefarah
+miri
 MSVC
 mypy
 Ncss
@@ -184,6 +185,7 @@ runreport
 rustc
 rustflag
 rustflags
+RUSTSEC
 rustup
 SCRIPTDIR
 sdist
@@ -197,6 +199,7 @@ shopt
 shortlink
 sigstore
 skipif
+sonarsource
 splitlines
 SRCROOT
 staticlib
@@ -208,6 +211,7 @@ Subresource
 Syft
 Symfony
 talosyml
+testdata
 tomasvotruba
 toolpins
 topo

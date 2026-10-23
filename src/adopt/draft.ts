@@ -1,7 +1,7 @@
 import type { Reader } from './scaffold.js';
 
 /** Why adoption writes a file: the first reason any of its steps touched it. */
-export type Why =
+type Why =
   | 'talos.yml'
   | 'generated'
   | 'extension'
@@ -23,7 +23,7 @@ export type Why =
 export type PlannedFile = { readonly path: string; readonly content: string; readonly why: Why };
 
 /** Why adoption deletes a file. */
-export type Gone = 'scaffold' | 'pr-template' | 'shadowed' | 'migrated';
+type Gone = 'scaffold' | 'pr-template' | 'shadowed' | 'migrated';
 
 export type Deletion = { readonly path: string; readonly why: Gone };
 

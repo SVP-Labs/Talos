@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { dependabotYml, ecosystems, parseDefaults } from './dependabot.js';
+import { dependabotYml, ecosystems, fixturePaths, parseDefaults } from './dependabot.js';
 import { assetsDir } from '../version/self.js';
 
 const DEFAULTS = parseDefaults('schedule: { interval: weekly }\ncooldown: { default-days: 1 }\n');
@@ -113,6 +113,61 @@ describe('dependabotYml', () => {
     expect(parse(dependabotYml('version: 2\n', present, DEFAULTS) ?? '')).toMatchObject({
       version: 2,
     });
+  });
+});
+
+describe('holding and fixtures', () => {
+  const present = [{ ecosystem: 'npm', directories: ['/'] }];
+
+  it('holds every day count at least a day, and exempts no dependency', () => {
+    const existing =
+      'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n' +
+      '    cooldown:\n      default-days: 0\n      semver-major-days: 0\n' +
+      '      semver-minor-days: 3\n      exclude: ["react"]\n';
+    const out = dependabotYml(existing, present, DEFAULTS) ?? '';
+    expect(parse(out)).toMatchObject({
+      updates: [
+        {
+          cooldown: { 'default-days': 1, 'semver-major-days': 1, 'semver-minor-days': 3 },
+        },
+      ],
+    });
+    expect(out).not.toContain('exclude');
+    expect(dependabotYml(out, present, DEFAULTS)).toBeUndefined();
+  });
+
+  it('leaves the test fixtures out of every entry, new or existing', () => {
+    const made = dependabotYml(undefined, present, DEFAULTS, ['test-projects/**']) ?? '';
+    expect(parse(made)).toMatchObject({ updates: [{ 'exclude-paths': ['test-projects/**'] }] });
+    const existing =
+      'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n' +
+      '    cooldown: { default-days: 1 }\n    exclude-paths: [docs/**]\n' +
+      '  - package-ecosystem: pip\n    cooldown: { default-days: 1 }\n    exclude-paths: x\n';
+    const out = dependabotYml(existing, present, DEFAULTS, ['test-projects/**', 'docs/**']) ?? '';
+    expect(parse(out)).toMatchObject({
+      updates: [{ 'exclude-paths': ['docs/**', 'test-projects/**'] }, { 'exclude-paths': 'x' }],
+    });
+    expect(dependabotYml(out, present, DEFAULTS, ['test-projects/**'])).toBeUndefined();
+  });
+
+  it('finds the fixture folders that hold manifests', () => {
+    expect(
+      fixturePaths([
+        'test-projects/ts/clean/package.json',
+        'test-projects/py/clean/uv.lock',
+        'src/version/fixtures/pkg/package.json',
+        'src/fixtures/readme.md',
+        'tests/testdata/Dockerfile.dev',
+        'tests/testdata/x/requirements-dev.txt',
+        'lua/__fixtures__/a.rockspec',
+        'package.json',
+      ]),
+    ).toEqual([
+      'lua/__fixtures__/**',
+      'src/version/fixtures/**',
+      'test-projects/**',
+      'tests/testdata/**',
+    ]);
   });
 });
 

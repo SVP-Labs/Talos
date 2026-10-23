@@ -239,6 +239,58 @@ describe('talos adopt', () => {
     expect(parsed(pr.stdout)).toMatchObject({ step: 'pr', issue: 1, pr: 9, opened: true });
   });
 
+  it('refuses a prefix another repository of the organisation uses, before filing anything', async () => {
+    const { root, origin } = await clone({ 'README.md': '# demo\n' });
+    const state = remote();
+    const api = github(origin, state);
+    const content = (text: string) =>
+      json({
+        type: 'file',
+        encoding: 'base64',
+        content: Buffer.from(text).toString('base64'),
+        sha: 'x',
+      });
+    api.routes.unshift(
+      route(
+        'GET',
+        /^orgs\/SVP-Labs\/repos$/,
+        json([
+          { id: 1, full_name: 'SVP-Labs/demo', default_branch: 'main' },
+          { id: 2, full_name: 'SVP-Labs/other', default_branch: 'main' },
+        ]),
+      ),
+      route(
+        'GET',
+        /^repos\/SVP-Labs\/demo\/contents\/talos\.yml$/,
+        content('name: demo\nprefix: D\n'),
+      ),
+      route('GET', /^repos\/SVP-Labs\/other\/contents\/project\.yml$/, content('prefix: O\n')),
+    );
+    const deps = { fetch: api.fetch, exec: quietExec, packs: [], now: () => NOW };
+    const taken = io(root);
+    expect(await adoptWith(deps)(['start', ...REPO, '--prefix', 'O', '--json'], taken)).toBe(1);
+    expect(taken.stderr).toBe(
+      'talos adopt: prefix O is in use by SVP-Labs/other; each repository needs its own\n',
+    );
+    expect(api.writes()).toEqual([]);
+    const free = io(root);
+    expect(await adoptWith(deps)(['start', ...REPO, '--prefix', 'D', '--json'], free)).toBe(0);
+    expect(parsed(free.stdout)).toMatchObject({ step: 'start', prefixChecked: true });
+  });
+
+  it('goes on unchecked when the token cannot read the organisation', async () => {
+    const { root, origin } = await clone({ 'README.md': '# demo\n' });
+    const deps = {
+      fetch: github(origin, remote()).fetch,
+      exec: quietExec,
+      packs: [],
+      now: () => NOW,
+    };
+    const term = io(root);
+    expect(await adoptWith(deps)(['start', ...REPO, '--prefix', 'D', '--json'], term)).toBe(0);
+    expect(parsed(term.stdout)).toMatchObject({ prefixChecked: false });
+  });
+
   it('refuses a dirty tree and a talos.yml it would contradict', async () => {
     const { root, origin } = await clone({
       'talos.yml': 'name: demo\nprefix: D\ncomponents: []\n',

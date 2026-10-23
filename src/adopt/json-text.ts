@@ -25,7 +25,10 @@ function list(items: readonly unknown[], indent: string, used: number): string {
 function render(value: unknown, indent: string, used: number): string {
   if (Array.isArray(value)) return list(value, indent, used);
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  const entries = Object.entries(value);
+  const entries = Object.keys(value).map((key): [string, unknown] => [
+    key,
+    Reflect.get(value, key),
+  ]);
   if (entries.length === 0) return '{}';
   const inner = `${indent}  `;
   const lines = entries.map(([key, item], index) => {

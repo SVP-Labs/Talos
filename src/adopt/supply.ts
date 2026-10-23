@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import { Document, isMap, isScalar, parseDocument } from 'yaml';
+import { isFixture } from './dependabot.js';
 import { parseManifest } from './dev-deps.js';
 import type { Draft } from './draft.js';
 import { npmLock, npmLockStep } from './tool-pins.js';
@@ -99,6 +100,7 @@ export function pnpmWorkspace(text: string | undefined, wanted: Wanted): string 
   const empty =
     parsed.contents === null || (isScalar(parsed.contents) && parsed.contents.value === null);
   const doc: Document = empty ? new Document({}) : parsed;
+  if (empty) doc.commentBefore = parsed.commentBefore ?? parsed.comment;
   if (!isMap(doc.contents)) return undefined;
   const guarded = guard(doc);
   const patched = wanted.patch && patch(doc);
@@ -126,7 +128,7 @@ function pinsRunner(draft: Draft, component: Component): boolean {
 
 /** Where each TypeScript component's pnpm settings live: beside its pnpm lockfile, or will. */
 function pnpmDirs(draft: Draft, components: readonly Component[], exclude: readonly string[]) {
-  const files = repoFacts(draft.files(), exclude).files;
+  const files = repoFacts(draft.files(), exclude).files.filter((file) => !isFixture(file));
   const dirs = new Map<string, Component[]>();
   for (const file of files.filter((f) => posix.basename(f) === 'pnpm-lock.yaml')) {
     dirs.set(posix.dirname(file), []);
@@ -140,6 +142,28 @@ function pnpmDirs(draft: Draft, components: readonly Component[], exclude: reado
   return dirs;
 }
 
+/** One workspace file's guards and patch entry, and the patch itself when it points at it. */
+function guardDir(draft: Draft, dir: string, needsPatch: boolean, runnerPatch: string): void {
+  const path = posix.join(dir, 'pnpm-workspace.yaml');
+  const text = draft.read(path);
+  const next = pnpmWorkspace(text, { patch: needsPatch });
+  if (next === undefined) {
+    if (text !== undefined && parseDocument(text).errors.length > 0) {
+      draft.next(
+        `in ${dir}: pnpm-workspace.yaml is not YAML Talos can read; set its guards by hand`,
+      );
+    }
+  } else {
+    draft.write(path, next, 'supply-chain');
+    // pnpm records its patches in the lockfile, so a frozen install fails until it is refreshed.
+    if (pointsAtPatch(next) && !pointsAtPatch(text)) draft.next(npmLockStep(dir, draft.files()));
+  }
+  const patchPath = posix.join(dir, 'patches', RUNNER_PATCH);
+  if (pointsAtPatch(draft.read(path)) && !draft.has(patchPath)) {
+    draft.write(patchPath, runnerPatch, 'patch');
+  }
+}
+
 /** pnpm's guards, and the Stryker runner's patch where a component pins that runner. */
 export function supplyChain(
   draft: Draft,
@@ -148,23 +172,7 @@ export function supplyChain(
   runnerPatch: string | undefined,
 ): void {
   for (const [dir, governed] of pnpmDirs(draft, components, exclude)) {
-    const path = posix.join(dir, 'pnpm-workspace.yaml');
     const needsPatch = runnerPatch !== undefined && governed.some((c) => pinsRunner(draft, c));
-    const text = draft.read(path);
-    const next = pnpmWorkspace(text, { patch: needsPatch });
-    if (text !== undefined && next === undefined && parseDocument(text).errors.length > 0) {
-      draft.next(
-        `in ${dir}: pnpm-workspace.yaml is not YAML Talos can read; set its guards by hand`,
-      );
-    }
-    if (next !== undefined) draft.write(path, next, 'supply-chain');
-    // pnpm records its patches in the lockfile, so a frozen install fails until it is refreshed.
-    if (next !== undefined && pointsAtPatch(next) && !pointsAtPatch(text)) {
-      draft.next(npmLockStep(dir, draft.files()));
-    }
-    const patchPath = posix.join(dir, 'patches', RUNNER_PATCH);
-    if (runnerPatch !== undefined && pointsAtPatch(draft.read(path)) && !draft.has(patchPath)) {
-      draft.write(patchPath, runnerPatch, 'patch');
-    }
+    guardDir(draft, dir, needsPatch, runnerPatch ?? '');
   }
 }

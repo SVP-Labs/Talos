@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import picomatch from 'picomatch';
+import { z } from 'zod';
 import type { Draft } from './draft.js';
 import {
   bodyEnd,
@@ -56,12 +57,16 @@ function entryValue(lint: BaseLint): string | Table {
   return lint.priority === undefined ? lint.level : { level: lint.level, priority: lint.priority };
 }
 
+/** Each base lint's line as the lint table Talos writes has it, by the lint's name. */
+const LINES: ReadonlyMap<string, string> = new Map(
+  lintsBlock('lints')
+    .split('\n')
+    .filter((line) => line.includes(' = '))
+    .map((line) => [line.slice(0, line.indexOf(' = ')), line]),
+);
+
 function entryLine(lint: BaseLint): string {
-  const value =
-    lint.priority === undefined
-      ? JSON.stringify(lint.level)
-      : `{ level = ${JSON.stringify(lint.level)}, priority = ${String(lint.priority)} }`;
-  return `${lint.name} = ${value}`;
+  return LINES.get(lint.name) ?? `${lint.name} = ${JSON.stringify(lint.level)}`;
 }
 
 function appended(sections: readonly TomlSection[], lines: readonly string[]): TomlSection[] {
@@ -169,7 +174,11 @@ function withWorkspaceLints(text: string): Edit {
 }
 
 const strings = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  z
+    .array(z.unknown())
+    .catch([])
+    .parse(value)
+    .filter((item): item is string => typeof item === 'string');
 
 /** The manifests of a workspace's members, from its `members` and `exclude` globs. */
 function members(root: string, workspace: Table, files: readonly string[]): string[] {

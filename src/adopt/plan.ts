@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import { checkPrefix, type ConfigInput, parsed, resolveConfig } from './config.js';
+import { isFixture } from './dependabot.js';
 import { type Deletion, type Draft, type PlannedFile, startDraft } from './draft.js';
 import { type KitAssets, kitFiles } from './kit.js';
 import { type LanguageAssets, languageSteps } from './languages.js';
@@ -15,8 +16,6 @@ import type { ApplyContext } from '../core/check.js';
 import type { Pack } from '../core/pack.js';
 import type { PrefixUse } from '../govern/create.js';
 import { repoFacts } from '../repo/facts.js';
-
-export type { Deletion, PlannedFile } from './draft.js';
 
 /** What adoption copies into every repository from Talos's assets. */
 export type AdoptAssets = KitAssets & LanguageAssets;
@@ -49,11 +48,13 @@ type Settled = { readonly config: TalosConfig; readonly status: AdoptPlan['talos
 
 /**
  * `talos.yml`, with what the repository's own scanner settings held. The security settings are
- * read from the tree as it was, before any generated file takes their place.
+ * read from the tree as it was, before any generated file takes their place, and never from
+ * excluded code or test fixtures.
  */
 function settle(draft: Draft, input: AdoptInput, seeds: Map<string, Seed>): Settled {
   const resolved = resolveConfig({ ...input, files: draft.files(), read: draft.read });
-  const security = securityMigration(input.files, input.read);
+  const own = repoFacts(input.files, resolved.config.exclude).files.filter((f) => !isFixture(f));
+  const security = securityMigration(own, input.read);
   const current = resolved.text ?? draft.read('talos.yml') ?? '';
   const text = withAdditions(current, security.additions);
   if (resolved.text !== undefined || text !== current) draft.write('talos.yml', text, 'talos.yml');

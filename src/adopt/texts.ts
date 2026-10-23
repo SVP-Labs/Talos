@@ -71,8 +71,10 @@ function bullets(items: readonly string[]): string {
 export function bootstrapIssueBody(text: BootstrapText): string {
   const criteria = [
     '[ ] `talos.yml` names every component, and `talos check` runs on each',
-    '[ ] The generated tool configs and their extension files are committed',
-    '[ ] `CLAUDE.md`, the issue forms, the PR template and `.github/dependabot.yml` are in place',
+    "[ ] The generated tool configs are committed, with the project's own settings moved into " +
+      'their extension files and `talos.yml`',
+    '[ ] `CLAUDE.md`, the issue forms, the PR template, `.github/dependabot.yml` and the package ' +
+      "managers' supply-chain settings are in place",
     ...(text.brief === undefined ? [] : [`[ ] The brief is at \`${text.brief}\``]),
     ...(text.scaffold ? ["[ ] Scaffold's scripts, justfile and language folders are gone"] : []),
   ];
@@ -81,6 +83,7 @@ export function bootstrapIssueBody(text: BootstrapText): string {
     '`CLAUDE.md`',
     '`.github/`',
     'the tool configs and dependency manifests of each component',
+    "the repository's git, package-manager and scanner settings",
     ...(text.brief === undefined ? [] : [`\`${text.brief}\``]),
   ];
   return [
@@ -130,8 +133,10 @@ export function bootstrapPullBody(text: PullText): string {
     '## Solution',
     '',
     `Changes ${text.changed} file(s): \`talos.yml\` from the manifests, the generated tool ` +
-      'configs, `CLAUDE.md`, the issue forms, the PR template and Dependabot settings with a ' +
-      `one-day cooldown${text.scaffold ? "; Scaffold's scripts, justfile and language folders go" : ''}.`,
+      'configs, `CLAUDE.md`, the issue forms, the PR template, Dependabot settings with a ' +
+      "one-day cooldown and the package managers' supply-chain settings; the project's own " +
+      'tool and scanner settings move into the extension files and `talos.yml`' +
+      `${text.scaffold ? "; Scaffold's scripts, justfile and language folders go" : ''}.`,
     '',
   ].join('\n');
 }

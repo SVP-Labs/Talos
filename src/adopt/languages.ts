@@ -9,7 +9,7 @@ import type { Component } from '../core/check.js';
 import { inComponent, inRepo } from '../core/component.js';
 import type { Pack } from '../core/pack.js';
 import { shadowing } from '../langs/ts/shadows.js';
-import { underRoot } from '../repo/facts.js';
+import { repoFacts, underRoot } from '../repo/facts.js';
 
 /**
  * What each language needs in the repository beyond its generated configs: the Python tables
@@ -48,16 +48,23 @@ export function withIgnored(text: string | undefined, entry: string): string | u
   return `${text}${text.endsWith('\n') ? '' : '\n'}${entry}/\n`;
 }
 
-function hasPython(draft: Draft, root: string): boolean {
-  return underRoot(draft.files(), root).some((file) => file.endsWith('.py'));
+/** Whether the component has Python its generated bases apply to: tracked, not excluded. */
+function hasPython(draft: Draft, root: string, exclude: readonly string[]): boolean {
+  const files = repoFacts(draft.files(), exclude).files;
+  return underRoot(files, root).some((file) => file.endsWith('.py'));
 }
 
 /** Moves the tables `ruff.toml` and `pyrightconfig.json` would shadow, as their first text. */
-function migratePython(draft: Draft, component: Component, seeds: Map<string, Seed>): void {
+function migratePython(
+  draft: Draft,
+  component: Component,
+  exclude: readonly string[],
+  seeds: Map<string, Seed>,
+): void {
   const root = component.root;
   const path = posix.join(root, 'pyproject.toml');
   const text = draft.read(path);
-  if (text === undefined || !hasPython(draft, root)) return;
+  if (text === undefined || !hasPython(draft, root, exclude)) return;
   const at = (name: string): string => posix.join(root, name);
   const migration = migratePyproject(text, {
     ruff: draft.has(at('ruff.toml')) || draft.has(at('.ruff.toml')),
@@ -134,7 +141,7 @@ export function languageSteps(
   const seeds = new Map<string, Seed>();
   const components = config.components;
   for (const component of components.filter((c) => c.lang === 'py')) {
-    migratePython(draft, component, seeds);
+    migratePython(draft, component, config.exclude, seeds);
   }
   toolPins(draft, components, packs);
   for (const component of components) AFTER_PINS[component.lang](draft, component);

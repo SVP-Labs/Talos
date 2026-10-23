@@ -31,7 +31,7 @@ const NPM_LOCKS: readonly [string, string][] = [
   ['yarn.lock', 'yarn install --mode update-lockfile'],
 ];
 
-export function ancestors(dir: string): string[] {
+function ancestors(dir: string): string[] {
   const out = [dir];
   for (let at = dir; at !== '.';) {
     at = posix.dirname(at);

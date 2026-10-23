@@ -82,13 +82,18 @@ export function isSeed(text: string): boolean {
   }
 }
 
-/** Makes the map at `path` a block, created when missing; `false` when it isn't a map. */
+/**
+ * Makes the map at `path`, and each map holding it, a block, created when missing: a map inside
+ * a flow map is written as flow too. `false` when one of them isn't a map.
+ */
 function asBlock(doc: Document, path: readonly string[]): boolean {
   if (!doc.hasIn(path)) doc.setIn(path, doc.createNode({}));
-  const node = doc.getIn(path, true);
-  if (!isMap(node)) return false;
-  node.flow = false;
-  return true;
+  return path.every((_, index) => {
+    const node = doc.getIn(path.slice(0, index + 1), true);
+    if (!isMap(node)) return false;
+    node.flow = false;
+    return true;
+  });
 }
 
 function addMissing(

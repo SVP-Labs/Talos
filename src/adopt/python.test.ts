@@ -9,8 +9,8 @@ const PYRIGHT_INITIAL = '// Additions.\n{\n  "extends": "./pyrightconfig.talos.j
 const NONE = { ruff: false, pyright: false };
 
 /** A pyproject.toml shaped like LoreLock's. */
-const LORELOCK = `[project]
-name = "lorelock"
+const LORE_LOCK = `[project]
+name = "game"
 
 [tool.black]
 line-length = 88
@@ -49,10 +49,10 @@ root_packages = ["ai"]
 
 describe('migratePyproject', () => {
   it("moves [tool.ruff] into ruff.toml, keeping the base's lists, and drops mypy", () => {
-    const migration = migratePyproject(LORELOCK, NONE);
+    const migration = migratePyproject(LORE_LOCK, NONE);
     expect(migration.manual).toBeUndefined();
     expect(migration.text).toBe(
-      '[project]\nname = "lorelock"\n\n[tool.black]\nline-length = 88\n\n' +
+      '[project]\nname = "game"\n\n[tool.black]\nline-length = 88\n\n' +
         '# --- Architecture boundaries --------\n[tool.importlinter]\nroot_packages = ["ai"]\n',
     );
     const ruff = migration.seeds.get('ruff.toml')?.(RUFF_INITIAL) ?? '';
@@ -101,7 +101,7 @@ describe('migratePyproject', () => {
   });
 
   it('leaves tables the existing files already shadow, and a file with nothing to move', () => {
-    const migration = migratePyproject(LORELOCK, { ruff: true, pyright: true });
+    const migration = migratePyproject(LORE_LOCK, { ruff: true, pyright: true });
     expect(migration.seeds.size).toBe(0);
     expect(migration.text).toContain('[tool.ruff]');
     expect(migration.text).not.toContain('[tool.mypy]');

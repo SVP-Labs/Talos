@@ -36,7 +36,7 @@ export type SecurityMigration = {
 };
 
 const OSV = 'osv-scanner.toml';
-export const GITLEAKS = '.gitleaks.toml';
+const GITLEAKS = '.gitleaks.toml';
 
 const osvSchema = z.looseObject({
   IgnoredVulns: z

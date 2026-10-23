@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { startDraft } from './draft.js';
 import { pnpmWorkspace, RUNNER_PATCH, supplyChain } from './supply.js';
-import type { Component } from '../core/check.js';
 import { pnpmSettings, PNPM_GUARDS } from '../checks/supply/pnpm-settings.js';
+import type { Component } from '../core/check.js';
 
 const holds = (text: string | undefined): boolean =>
   PNPM_GUARDS.every((guard) => guard.holds(pnpmSettings(text, undefined)));
@@ -57,6 +57,10 @@ describe('pnpmWorkspace', () => {
     expect(pnpmWorkspace(own, { patch: false })).toBeUndefined();
   });
 
+  it('keeps the comments of a file with nothing else in it', () => {
+    expect(pnpmWorkspace('# Ours.\n', { patch: false })).toMatch(/^# Ours\.\n\n# Supply-chain/);
+  });
+
   it("can't merge into a file that isn't a YAML mapping", () => {
     expect(pnpmWorkspace('- a\n', { patch: false })).toBeUndefined();
     expect(pnpmWorkspace('a: [\n', { patch: false })).toBeUndefined();
@@ -97,9 +101,9 @@ describe('supplyChain', () => {
     expect(run({ 'web/package.json': '{}' }, [web]).write.map((f) => f.path)).toEqual([
       'web/pnpm-workspace.yaml',
     ]);
-    expect(run({ 'web/package-lock.json': '', 'web/package.json': pinsRunner }, [web]).write).toEqual(
-      [],
-    );
+    expect(
+      run({ 'web/package-lock.json': '', 'web/package.json': pinsRunner }, [web]).write,
+    ).toEqual([]);
   });
 
   it('says so when the workspace file is not YAML it can read', () => {

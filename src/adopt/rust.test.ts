@@ -136,7 +136,8 @@ describe('the toolchain', () => {
       `[toolchain]\ncomponents = ["clippy", "rustfmt", "llvm-tools"]\nchannel = "${RUST_CHANNEL}"\n` +
         'profile = "minimal"\n',
     );
-    const done = '[toolchain]\nchannel = "1.97.0"\ncomponents = ["llvm-tools", "rustfmt", "clippy"]\n';
+    const done =
+      '[toolchain]\nchannel = "1.97.0"\ncomponents = ["llvm-tools", "rustfmt", "clippy"]\n';
     expect(pinToolchain(done)).toEqual({});
     expect(pinToolchain('channel = "1.97.0"\n').manual).toMatch(/no \[toolchain\]/);
     expect(pinToolchain('[toolchain]\ncomponents = [\n"x"]\n').manual).toMatch(/safely/);

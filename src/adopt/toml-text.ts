@@ -190,12 +190,14 @@ export function parsedToml(text: string): Record<string, unknown> | undefined {
   }
 }
 
+const isList = (value: unknown): value is readonly unknown[] => Array.isArray(value);
+
 /** Values as plain data: smol-toml's tables have no prototype, and its dates are objects. */
 function plain(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(plain);
+  if (isList(value)) return value.map(plain);
   if (typeof value !== 'object' || value === null) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, plain(inner)]));
+  return Object.fromEntries(Object.keys(value).map((key) => [key, plain(Reflect.get(value, key))]));
 }
 
 /** Whether two parsed documents hold the same values. */
