@@ -1,0 +1,19 @@
+# Version updates wait a day after a release, as the supply-chain rule installs only releases at
+# least a day old; Dependabot never holds a security update. The test projects lock vulnerable
+# versions on purpose and are left alone.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1
+    exclude-paths:
+      - test-projects/**
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1

@@ -3,7 +3,17 @@ prefix: TL
 components:
   - { lang: ts, root: ., os: [linux, windows] }
 exclude: [test-projects]
-mutation: [src/core/compare.ts, src/core/fingerprint.ts, src/review/conditions.ts, src/version/provenance.ts]
+mutation:
+  - src/core/compare.ts
+  - src/core/fingerprint.ts
+  - src/review/conditions.ts
+  - src/version/provenance.ts
+  - src/quality/verdicts.ts
+  - src/quality/lines.ts
 docs: { glossary: docs/glossary.md, briefs: docs/requirements }
 protected: [src/review/**, src/version/**, bootstrap/**, assets/workflows/**, .github/**]
 agents: { max_claims: 2 }
+licences:
+  LGPL-3.0-only: eslint-plugin-sonarjs and its analyzer-commons-configurations, a lint plugin that runs here and in CI, never shipped
+  CC-BY-SA-4.0: '@cspell/dict-en-common-misspellings, a spelling dictionary cspell reads, never shipped'
+  MPL-2.0: lightningcss, a build dependency of vite (vitest), never shipped
