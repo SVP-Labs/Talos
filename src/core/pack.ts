@@ -42,6 +42,15 @@ export type InstallContext = {
   readonly os: Os;
 };
 
+/**
+ * The language tools a project's editor also uses, pinned by `talos adopt` in the project's dev
+ * dependencies at these exact versions; the pack's `<lang>/toolchain` check keeps them matching.
+ */
+export type DevTools = {
+  readonly manager: 'npm' | 'pypi' | 'composer' | 'cargo' | 'luarocks';
+  readonly packages: Readonly<Record<string, string>>;
+};
+
 export type Pack = {
   readonly name: string;
   readonly checks: readonly Check[];
@@ -49,4 +58,5 @@ export type Pack = {
   /** Installs a component's dependencies before any check runs (language packs). */
   install?(ctx: InstallContext): Promise<void>;
   readonly lang?: Lang;
+  readonly devTools?: DevTools;
 };
