@@ -7,6 +7,7 @@ import {
   quoted,
   type State,
 } from './scan.js';
+import { matchNaming } from '../../core/literal.js';
 
 const BEFORE_REGEX = new Set('(,=:[!&|?{};+-*%<>~^');
 const REGEX_KEYWORDS = new Set([
@@ -156,16 +157,18 @@ function phpLineEnd(state: State, from: number): number {
   return close !== -1 && close < end ? close : end;
 }
 
+/** A line that may close a heredoc: a label first on it, perhaps indented. */
+const HEREDOC_CLOSE = /^[ \t]*([A-Za-z_]\w*)/gm;
+
 const heredoc: Matcher = (state) => {
   if (!state.text.startsWith('<<<', state.at)) return false;
   const match = /^<<<[ \t]*(["']?)([A-Za-z_]\w*)\1\r?\n/.exec(
     state.text.slice(state.at, state.at + 80),
   );
   if (match === null) return false;
-  const closing = new RegExp(String.raw`^[ \t]*${match[2] ?? ''}\b`, 'm');
   const bodyStart = state.at + match[0].length;
-  const found = closing.exec(state.text.slice(bodyStart));
-  state.at = found === null ? state.text.length : bodyStart + found.index + found[0].length;
+  const found = matchNaming(HEREDOC_CLOSE, state.text, bodyStart, match[2] ?? '');
+  state.at = found === undefined ? state.text.length : found.index + found[0].length;
   return true;
 };
 

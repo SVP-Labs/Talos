@@ -8,6 +8,7 @@ import {
   type State,
   stringEnd,
 } from './scan.js';
+import { matchNaming } from '../../core/literal.js';
 
 /**
  * A Python string. A triple-quoted one that starts a statement is a docstring, an API
@@ -103,14 +104,16 @@ const heredocOpen: Matcher = (state) => {
   return true;
 };
 
+/** A line that may close a here-document: its delimiter alone, after tabs. */
+const HEREDOC_CLOSE = /^\t*([A-Za-z_]\w*)[ \t]*$/gm;
+
 /** At a line's end with here-documents open, skips their bodies. */
 const heredocBodies: Matcher = (state) => {
   if (state.text[state.at] !== '\n' || state.heredocDelimiters.length === 0) return false;
   let at = state.at + 1;
   for (const delimiter of state.heredocDelimiters.splice(0)) {
-    const closing = new RegExp(String.raw`^\t*${delimiter}[ \t]*$`, 'm');
-    const found = closing.exec(state.text.slice(at));
-    at = found === null ? state.text.length : at + found.index + found[0].length;
+    const found = matchNaming(HEREDOC_CLOSE, state.text, at, delimiter);
+    at = found === undefined ? state.text.length : found.index + found[0].length;
   }
   state.at = at;
   return true;

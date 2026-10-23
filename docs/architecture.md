@@ -15,7 +15,7 @@ src/
   core/pool.ts        running work a few at a time, results kept in order
   config/             talos.yml: schema and loader
   repo/               git helpers, diff parsing (ChangeSet), repository facts
-  exec/               running programs, no shell, Windows .cmd shims resolved
+  exec/               running programs with no shell; a Windows batch program through cmd.exe, every argument quoted
   engine/             prepare, run, plan, verdict, reports, local runs
   sarif/              SARIF 2.1.0 output
   quality/            the shared test, flaky, coverage, type-coverage and mutation logic
@@ -280,7 +280,7 @@ talos.doctor/1    talos doctor --json
 talos.debt/1      talos debt --json (capped) or --out (complete); analyze's debt.json
 talos.mutation/1  analyze's mutation.json
 talos.job/1       talos job <event>
-talos.central/1   talos central <channels|sweep|drift|privacy>
+talos.central/1   talos central <channels|sweep|drift|privacy|pick>
 talos.adopt/1     talos adopt --json; also talos.govern/1, talos.new/1, talos.org/1
 ```
 

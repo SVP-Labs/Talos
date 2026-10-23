@@ -5,6 +5,7 @@ import {
   dependabotFiles,
   dockerfiles,
   firstLine,
+  isDockerfile,
   powershellFiles,
   shebangCandidates,
   shellOf,
@@ -32,6 +33,41 @@ describe('shellOf', () => {
       expect(shellOf(line)).toBeUndefined();
     },
   );
+});
+
+describe('isDockerfile', () => {
+  it.each([
+    'Dockerfile',
+    'dockerfile',
+    'Containerfile',
+    'docker/Dockerfile.prod',
+    'Containerfile.dev',
+    'images/api.Dockerfile',
+    'images/api.dockerfile',
+    'api.Containerfile',
+    'api.containerfile',
+  ])('takes %s, named as Docker or Podman names a container file', (path) => {
+    expect(isDockerfile(path)).toBe(true);
+  });
+
+  it.each([
+    'src/checks/infra/dockerfile.ts',
+    'src/checks/runtime/dockerfile.test.ts',
+    'containerfile.go',
+    'docker/dockerfile.prod',
+    'containerfile',
+    'DOCKERFILE',
+    'my-Dockerfile',
+    'Dockerfiles',
+    '.Dockerfile',
+    'docs/dockerfile.md',
+    'Dockerfile/README.md',
+    'Dockerfile.dockerignore',
+    'images/api.Dockerfile.dockerignore',
+    '.dockerignore',
+  ])('leaves %s alone', (path) => {
+    expect(isDockerfile(path)).toBe(false);
+  });
 });
 
 describe('finding files', () => {
@@ -72,6 +108,10 @@ describe('finding files', () => {
       'images/api.dockerfile',
       'Containerfile',
     ]);
+  });
+
+  it('leaves out TypeScript sources named after Dockerfiles', () => {
+    expect(dockerfiles(['src/infra/dockerfile.ts', 'src/infra/dockerfile.test.ts'])).toEqual([]);
   });
 
   it("finds PowerShell files but Talos's own settings", () => {

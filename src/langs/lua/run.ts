@@ -61,20 +61,21 @@ export function parseJson(text: string, what: string): unknown {
 
 /**
  * Splits arguments into runs that each stay under `limit` characters, since Windows starts the
- * rocks' `.bat` commands through cmd.exe, whose command line holds 8191 characters.
+ * rocks' `.bat` commands through cmd.exe, whose command line holds 8191 characters; each
+ * argument costs its length, its two quotes and a space there.
  */
 export function chunks(items: readonly string[], limit = 6000): string[][] {
   const out: string[][] = [];
   let current: string[] = [];
   let length = 0;
   for (const item of items) {
-    if (current.length > 0 && length + item.length + 1 > limit) {
+    if (current.length > 0 && length + item.length + 3 > limit) {
       out.push(current);
       current = [];
       length = 0;
     }
     current.push(item);
-    length += item.length + 1;
+    length += item.length + 3;
   }
   if (current.length > 0) out.push(current);
   return out;

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { literalMatches } from '../core/literal.js';
 import { type GitHub, GitHubError } from '../github/api.js';
 import type { Download } from '../github/artifacts.js';
 import { listInstallationRepositories, listPropertyValues } from '../github/repos.js';
@@ -44,9 +45,8 @@ export function maskCommands(watched: readonly WatchedRepo[]): string {
   return names.map((name) => `::add-mask::${name}\n`).join('');
 }
 
-function escaped(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\/-]/g, String.raw`\$&`);
-}
+/** A bare name on its own: no word character, `.` or `-` against it, but a full stop after it. */
+const BARE_NAME = { start: /(?<![\w.-])/y, end: /(?![\w-]|\.[\w-])/y };
 
 /**
  * How many watched repositories a log names: by full name anywhere, or by bare name as a whole
@@ -57,8 +57,7 @@ export function leaksIn(log: string, watched: readonly WatchedRepo[]): number {
   const named = (repo: WatchedRepo): boolean => {
     if (text.includes(repo.fullName.toLowerCase())) return true;
     if (repo.name === undefined) return false;
-    const word = escaped(repo.name.toLowerCase());
-    return new RegExp(`(?<![\\w.-])${word}(?![\\w-]|\\.[\\w-])`).test(text);
+    return literalMatches(text, repo.name.toLowerCase(), BARE_NAME).length > 0;
   };
   return watched.filter(named).length;
 }

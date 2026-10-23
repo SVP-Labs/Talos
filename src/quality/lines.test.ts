@@ -50,6 +50,11 @@ describe('uncoveredFindings', () => {
     });
   });
 
+  it('orders lines by number, whatever order the report gave them in', () => {
+    const findings = uncoveredFindings(coverage({ 'a.ts': [[12, 3, 7, 1], [7]] }));
+    expect(findings.map((f) => f.location?.line)).toEqual([1, 3, 12]);
+  });
+
   it('reports nothing when every line ran', () => {
     expect(
       uncoveredFindings(
@@ -85,7 +90,11 @@ describe('changedLinesFinding', () => {
     const lines = coverage({ 'a.ts': [[2, 4], [2]], 'b.ts': [[1], []] });
     const edit = changes(
       change('a.ts', { added: [{ start: 1, end: 3 }] }),
-      change('b.ts', { status: 'deleted', removed: [{ start: 1, end: 1 }] }),
+      change('b.ts', {
+        status: 'deleted',
+        added: [{ start: 1, end: 1 }],
+        removed: [{ start: 1, end: 1 }],
+      }),
       change('README.md', { added: [{ start: 1, end: 5 }] }),
     );
     expect(changedLinesFinding(lines, edit)).toBeUndefined();
@@ -107,5 +116,33 @@ describe('changedLinesFinding', () => {
         'b.ts:2 and 3 more.',
     );
     expect(finding?.key).toBe('a.ts:1-8 b.ts:1-5');
+  });
+
+  it('lists exactly ten uncovered lines with nothing more to count', () => {
+    const lines = coverage({ 'a.ts': [range(1, 10), []] });
+    const edit = changes(change('a.ts', { added: [{ start: 1, end: 10 }] }));
+    expect(changedLinesFinding(lines, edit)?.message).toBe(
+      'Tests cover 0 of the 10 executable lines this change adds or edits (0%, 90% needed); ' +
+        'uncovered: a.ts:1, a.ts:2, a.ts:3, a.ts:4, a.ts:5, a.ts:6, a.ts:7, a.ts:8, a.ts:9, ' +
+        'a.ts:10.',
+    );
+  });
+
+  it('names uncovered lines in line order, and only the files that have some', () => {
+    const lines = coverage({ 'a.ts': [[1, 2, 5, 9], [9]], 'b.ts': [[1], [1]] });
+    const edit = changes(
+      change('a.ts', {
+        added: [
+          { start: 9, end: 9 },
+          { start: 5, end: 5 },
+          { start: 1, end: 2 },
+        ],
+      }),
+      change('b.ts', { added: [{ start: 1, end: 1 }] }),
+    );
+    expect(changedLinesFinding(lines, edit)).toMatchObject({
+      message: expect.stringContaining('uncovered: a.ts:1, a.ts:2, a.ts:5.') as unknown,
+      key: 'a.ts:1-2,5',
+    });
   });
 });

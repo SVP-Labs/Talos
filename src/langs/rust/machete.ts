@@ -1,3 +1,5 @@
+import { setsKey } from '../../core/literal.js';
+
 /** One dependency cargo-machete found no use of. */
 export type Unused = {
   readonly crate: string;
@@ -26,21 +28,31 @@ export function parseMachete(stdout: string): Unused[] {
   return found;
 }
 
-function escape(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+/** A table header's name: what stands between its first `[` and the `]` after it. */
+const HEADER = /^\s*\[([^\]]*)\]/;
+
+function withoutQuoteAtEnd(text: string): string {
+  return text.endsWith('"') || text.endsWith("'") ? text.slice(0, -1) : text;
+}
+
+/** Whether a line heads the dependency's own table, as `[dependencies.serde]` does. */
+function headsTableOf(line: string, dependency: string): boolean {
+  const name = HEADER.exec(line)?.[1];
+  if (name === undefined) return false;
+  const named = withoutQuoteAtEnd(name.trimEnd());
+  if (!named.endsWith(dependency)) return false;
+  const before = named.slice(0, named.length - dependency.length);
+  return withoutQuoteAtEnd(before).endsWith('dependencies.');
 }
 
 /** The 1-based line a manifest declares a dependency on, or 1 when it can't be found. */
 export function dependencyLine(manifest: string, dependency: string): number {
-  const name = escape(dependency);
-  const entry = new RegExp(String.raw`^\s*["']?${name}["']?\s*=`);
-  const table = new RegExp(String.raw`^\s*\[[^\]]*dependencies\.["']?${name}["']?\s*\]`);
   let inDependencies = false;
   const lines = manifest.split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
-    if (table.test(line)) return index + 1;
+    if (headsTableOf(line, dependency)) return index + 1;
     if (/^\s*\[/.test(line)) inDependencies = /dependencies\s*\]\s*$/.test(line);
-    else if (inDependencies && entry.test(line)) return index + 1;
+    else if (inDependencies && setsKey(line, dependency, '=')) return index + 1;
   }
   return 1;
 }

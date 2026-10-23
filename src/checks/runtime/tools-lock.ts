@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type Declaration, pinned } from './declaration.js';
 import { runtimeNamed } from './runtimes.js';
 import { EngineError } from '../../core/check.js';
+import { setsKey } from '../../core/literal.js';
 
 /** Talos's own lockfile of outside tools, at the repository root. */
 export const TOOLS_LOCK = 'tools.lock';
@@ -10,16 +11,11 @@ export const TOOLS_LOCK = 'tools.lock';
 /** `runtimes` maps each interpreter Talos installs tools into to its version. */
 const lockSchema = z.object({ runtimes: z.record(z.string(), z.string().min(1)) });
 
-function escaped(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
 /** The line of `name`'s key after the `runtimes` key, so a tool of the same name can't match. */
 function entryLine(text: string, name: string): number {
   const lines = text.split(/\r?\n/);
-  const section = lines.findIndex((line) => /^\s*["']?runtimes["']?\s*:/.test(line));
-  const key = new RegExp(String.raw`^\s*["']?${escaped(name)}["']?\s*:`);
-  const index = lines.findIndex((line, at) => at > section && key.test(line));
+  const section = lines.findIndex((line) => setsKey(line, 'runtimes', ':'));
+  const index = lines.findIndex((line, at) => at > section && setsKey(line, name, ':'));
   return index < 0 ? 1 : index + 1;
 }
 

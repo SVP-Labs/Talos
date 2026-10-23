@@ -115,4 +115,10 @@ describe('lineOf', () => {
     expect(lineOf(text, 'y', '[b]')).toBe(3);
     expect(lineOf(text, 'y')).toBe(1);
   });
+
+  it('reads a quoted key as written, and no longer key that starts with it', () => {
+    const text = '[lints]\nmax_width_x = 1\n"max.width" = 2\n';
+    expect(lineOf(text, 'max.width', '[lints]')).toBe(3);
+    expect(lineOf(text, 'max_width', '[lints]')).toBe(1);
+  });
 });

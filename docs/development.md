@@ -89,7 +89,7 @@ Talos's PRs are gated twice, so a broken engine never judges itself (C5):
 
 The central jobs in this repository (the runtime sweep, the drift report, promotion and
 rollback) run where anyone can read their logs, so they keep C30: matrices carry indices only,
-each job looks its repository up inside a script and masks the name before printing anything,
+each job has Talos look its repository up (`talos central pick`) and mask it before printing,
 errors from git and the API are replaced by a generic line, and only counts are printed. The
 privacy self-test fails CI when the canary repository's name shows in any run's log.
 

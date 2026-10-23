@@ -61,4 +61,21 @@ describe('dependencyLine', () => {
     expect(dependencyLine(manifest, 'windows-sys')).toBe(12);
     expect(dependencyLine(manifest, 'absent')).toBe(1);
   });
+
+  it('reads quoted table names, and no name another merely ends with or starts', () => {
+    const text = [
+      '[dependencies]',
+      'serde_json = "1"',
+      '[dependencies.not-serde]',
+      '[dependencies.serde-derive]',
+      '[package]',
+      'serde = "not a dependency"',
+      '[target.\'cfg(unix)\'.dependencies."serde" ]',
+      '[build-dependencies]',
+      '\'itoa\' = "1"',
+    ].join('\n');
+    expect(dependencyLine(text, 'serde')).toBe(7);
+    expect(dependencyLine(text, 'itoa')).toBe(9);
+    expect(dependencyLine(text, 'derive')).toBe(1);
+  });
 });

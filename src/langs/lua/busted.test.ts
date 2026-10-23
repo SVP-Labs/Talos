@@ -83,6 +83,14 @@ describe('JUnit files', () => {
     expect(xml).toContain("classname='spec2.esc_spec_lua:2'/>");
     expect(withFiles(xml, SPECS)).toBe(xml);
   });
+
+  it('reads a class name busted escaped, and escapes the file it writes', () => {
+    const tag = "<testcase classname='spec.it&apos;s &amp; co_spec_lua:3' name='x'/>";
+    expect(withFiles(tag, ["spec/it's & co_spec.lua"])).toBe(
+      "<testcase classname='spec.it&apos;s &amp; co_spec_lua:3' name='x' " +
+        "file='spec/it&apos;s &amp; co_spec.lua'/>",
+    );
+  });
 });
 
 describe('luacovConfig', () => {

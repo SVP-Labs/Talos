@@ -41,29 +41,28 @@ type World = {
 };
 
 function api(world: World): FakeApi {
-  const at = (suffix: string): RegExp => new RegExp(`^repos/SVP-Labs/demo${suffix}$`);
   return fakeApi([
-    route('GET', at('/labels'), json([])),
-    route('POST', at('/labels'), json({}, 201)),
-    route('GET', at(''), json({ id: 1, default_branch: 'main' })),
+    route('GET', /^repos\/SVP-Labs\/demo\/labels$/, json([])),
+    route('POST', /^repos\/SVP-Labs\/demo\/labels$/, json({}, 201)),
+    route('GET', /^repos\/SVP-Labs\/demo$/, json({ id: 1, default_branch: 'main' })),
     route(
       'GET',
-      at('/git/ref/heads/main'),
+      /^repos\/SVP-Labs\/demo\/git\/ref\/heads\/main$/,
       json({ ref: 'refs/heads/main', object: { sha: 'm'.repeat(40) } }),
     ),
-    route('GET', at('/issues'), () => json(world.issues.map(issueJson))),
-    route('POST', at('/issues'), (call) => {
+    route('GET', /^repos\/SVP-Labs\/demo\/issues$/, () => json(world.issues.map(issueJson))),
+    route('POST', /^repos\/SVP-Labs\/demo\/issues$/, (call) => {
       const body = call.body as { body: string; labels: string[] };
       const issue = { number: 20, body: body.body, labels: body.labels, user: 'thea-svp[bot]' };
       world.issues.push(issue);
       return json(issueJson(issue), 201);
     }),
-    route('POST', at('/issues/(\\d+)/labels'), (call, m) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/labels$/, (call, m) => {
       const issue = world.issues.find((i) => i.number === Number(m[1]));
       issue?.labels.push(...(call.body as { labels: string[] }).labels);
       return json([]);
     }),
-    route('GET', at('/issues/(\\d+)/comments'), (_c, m) =>
+    route('GET', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/comments$/, (_c, m) =>
       json(
         (world.comments.get(Number(m[1])) ?? []).map((body, id) => ({
           id,
@@ -73,13 +72,13 @@ function api(world: World): FakeApi {
         })),
       ),
     ),
-    route('POST', at('/issues/(\\d+)/comments'), (call, m) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/comments$/, (call, m) => {
       const list = world.comments.get(Number(m[1])) ?? [];
       list.push((call.body as { body: string }).body);
       world.comments.set(Number(m[1]), list);
       return json({ id: 1 }, 201);
     }),
-    route('GET', at('/branches/(.+)'), (_c, m) =>
+    route('GET', /^repos\/SVP-Labs\/demo\/branches\/(.+)$/, (_c, m) =>
       world.branches.has(m[1] ?? '')
         ? json({
             commit: {
@@ -89,11 +88,11 @@ function api(world: World): FakeApi {
           })
         : NOT_FOUND,
     ),
-    route('POST', at('/git/refs'), (call) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/git\/refs$/, (call) => {
       world.branches.add((call.body as { ref: string }).ref.replace('refs/heads/', ''));
       return json({}, 201);
     }),
-    route('GET', at('/pulls'), (call) =>
+    route('GET', /^repos\/SVP-Labs\/demo\/pulls$/, (call) =>
       json(
         world.pulls
           .filter((p) => call.query.get('head') === `SVP-Labs:${p.head}`)
@@ -105,16 +104,16 @@ function api(world: World): FakeApi {
           })),
       ),
     ),
-    route('GET', at('/compare/main\\.\\.\\.(.+)'), (_c, m) =>
+    route('GET', /^repos\/SVP-Labs\/demo\/compare\/main\.\.\.(.+)$/, (_c, m) =>
       world.branches.has(m[1] ?? '')
         ? json({ ahead_by: world.ahead, files: [{}, {}, {}] })
         : NOT_FOUND,
     ),
-    route('POST', at('/pulls'), (call) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/pulls$/, (call) => {
       world.pulls.push({ number: 21, head: (call.body as { head: string }).head });
       return json({ number: 21, html_url: 'https://github.com/SVP-Labs/demo/pull/21' }, 201);
     }),
-    route('DELETE', at('/x'), NO_CONTENT),
+    route('DELETE', /^repos\/SVP-Labs\/demo\/x$/, NO_CONTENT),
   ]);
 }
 

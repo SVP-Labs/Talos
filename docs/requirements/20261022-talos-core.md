@@ -1002,12 +1002,12 @@ run in the public Talos repository, whose runs anyone can read. So:
   `${{ }}` already filled in, and prints its `env:` block too, so a repository name may never
   pass through an expression: `echo "::add-mask::${{ matrix.repo }}"` would leak the name in the
   very line meant to hide it;
-- each job's first step looks its repository up by index inside the script (listing the
-  governed repositories, those whose `talos` property names a channel, through the
-  organisation's custom properties, with a token that holds that organisation permission alone
-  and reaches no repository: `talos-reviewer`'s for the sweep, `talos-release`'s for drift and
-  promotion) and masks the name
-  (`::add-mask::`) before printing anything. Later steps then show it masked, including
+- each job has Talos look its repository up by index (`talos central pick`, at the release the
+  job runs; listing the governed repositories, those whose `talos` property names a channel,
+  through the organisation's custom properties, with a token that holds that organisation
+  permission alone and reaches no repository: `talos-reviewer`'s for the sweep,
+  `talos-release`'s for drift and promotion) and mask the name (`::add-mask::`) before printing
+  anything, so no workflow writes a workflow command of its own. Later steps then show it masked, including
   `create-github-app-token`'s `repositories` input, which reads it from that step's output;
 - a self-test keeps it that way: a scratch repository with a unique canary name is always in
   the matrix, and Talos's own CI fails if that name appears anywhere in a run's logs, and each

@@ -48,7 +48,7 @@ describe('talos central', () => {
     const central = centralWith({});
     await expect(central(['deploy'], io({}))).rejects.toThrow(UsageError);
     await expect(central([], io({}))).rejects.toThrow(
-      'talos central <channels|sweep|drift|privacy>',
+      'talos central <channels|sweep|drift|privacy|pick>',
     );
     await expect(central(['sweep'], io({}))).rejects.toThrow('TALOS_REVIEWER_TOKEN is not set');
     await expect(central(['privacy'], io({ GITHUB_TOKEN: 'w' }))).rejects.toThrow(
@@ -57,6 +57,12 @@ describe('talos central', () => {
     await expect(
       central(['privacy', '--mask'], io({ TALOS_PROPERTIES_TOKEN: 'p' })),
     ).rejects.toThrow('GITHUB_OUTPUT is not set');
+    await expect(central(['pick'], io({ TALOS_PROPERTIES_TOKEN: 'p' }))).rejects.toThrow(
+      'GITHUB_OUTPUT is not set',
+    );
+    await expect(central(['pick'], io({ GITHUB_OUTPUT: '/nowhere' }))).rejects.toThrow(
+      'TALOS_PROPERTIES_TOKEN is not set',
+    );
   });
 
   it('prints one line of counts for a sweep', async () => {
@@ -229,6 +235,51 @@ describe('talos central', () => {
     const unset = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: '' });
     expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], unset)).toBe(1);
     expect(lastJson(unset.lines)).toMatchObject({ ok: false, leaks: 0, canary: null });
+  });
+
+  it("masks the repository a matrix index names, then hands its bare name to the job's steps", async () => {
+    const fake = fakeGitHub({
+      [propertiesPath('SVP-Labs')]: propertyValues([
+        { id: 30, name: 'SVP-Labs/Zeta', talos: 'stable' },
+        { id: 10, name: 'SVP-Labs/Secret', talos: 'canary' },
+        { id: 15, name: 'SVP-Labs/Ungoverned' },
+      ]),
+    });
+    const output = join(mkdtempSync(join(tmpdir(), 'talos-central-')), 'output');
+    writeFileSync(output, '');
+    const central = centralWith({ baseUrl: BASE, fetch: fake.fetch });
+    const env = { TALOS_PROPERTIES_TOKEN: 'p', GITHUB_OUTPUT: output };
+    const json = (repositories: number) =>
+      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'pick', ok: true, repositories })}\n`;
+    const indexed = io({ ...env, TALOS_INDEX: '1' });
+    expect(await central(['pick', '--json'], indexed)).toBe(0);
+    expect(indexed.lines).toEqual(['::add-mask::SVP-Labs/Zeta\n::add-mask::Zeta\n', json(1)]);
+    const canaries = io(env);
+    expect(await central(['pick', '--channel', 'canary', '--json'], canaries)).toBe(0);
+    expect(canaries.lines).toEqual(['::add-mask::SVP-Labs/Secret\n::add-mask::Secret\n', json(1)]);
+    const past = io({ ...env, TALOS_INDEX: '2' });
+    expect(await central(['pick', '--json'], past)).toBe(0);
+    expect(past.lines).toEqual([json(0)]);
+    expect(readFileSync(output, 'utf8')).toBe('names=Zeta\nnames=Secret\nnames=\n');
+  });
+
+  it('refuses a lost index or an unknown channel with the generic line, before any API call', async () => {
+    const fake = fakeGitHub();
+    const output = join(mkdtempSync(join(tmpdir(), 'talos-central-')), 'output');
+    const central = centralWith({ baseUrl: BASE, fetch: fake.fetch });
+    const env = { TALOS_PROPERTIES_TOKEN: 'p', GITHUB_OUTPUT: output };
+    for (const [argv, extra] of [
+      [['pick'], {}],
+      [['pick'], { TALOS_INDEX: '' }],
+      [['pick', '--channel', 'beta'], {}],
+    ] as const) {
+      const terminal = io({ ...env, ...extra });
+      expect(await central([...argv, '--json'], terminal)).toBe(1);
+      expect(terminal.lines).toEqual([
+        `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'pick', ok: false, error: 'the repository lookup could not finish' })}\n`,
+      ]);
+    }
+    expect(fake.calls).toEqual([]);
   });
 
   it('runs the channels-file drift check on request', async () => {

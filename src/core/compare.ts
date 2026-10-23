@@ -53,7 +53,7 @@ export function judge(
   // Base occurrences are matched to untouched lines first, so those on changed lines are new.
   const ordered = head
     .map((finding, index) => ({ finding, index, touched: touches(changes, finding.location) }))
-    .sort((a, b) => Number(a.touched) - Number(b.touched) || a.index - b.index);
+    .sort((a, b) => Number(a.touched) - Number(b.touched));
   const judged = ordered.map(({ finding, index, touched }) => {
     const left = remaining.get(finding.fingerprint) ?? 0;
     const isNew = left === 0;

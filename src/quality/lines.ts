@@ -58,7 +58,7 @@ export function changedLinesFinding(
   const { total, uncovered } = changedLines(coverage, changes);
   const missed = uncovered.flatMap(([file, lines]) => lines.map((line) => `${file}:${line}`));
   const covered = total - missed.length;
-  if (total === 0 || covered * 100 >= total * CHANGED_LINES_FLOOR) return undefined;
+  if (covered * 100 >= total * CHANGED_LINES_FLOOR) return undefined;
   const percent = Math.floor((covered * 100) / total);
   const more = missed.length > LISTED ? ` and ${missed.length - LISTED} more` : '';
   return {

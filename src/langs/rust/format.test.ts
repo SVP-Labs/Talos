@@ -1,5 +1,14 @@
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseRustfmtCheck, unformattedMessage, unparsable } from './format.js';
+import { format, parseRustfmtCheck, unformattedMessage, unparsable } from './format.js';
+import type { Bound } from './run.js';
+import { parseConfig } from '../../config/load.js';
+import { silentLogger } from '../../core/log.js';
+import type { ExecResult } from '../../exec/exec.js';
+import { repoFacts } from '../../repo/facts.js';
+import { MINIMAL_CONFIG, tempRepo } from '../../testing/engine.js';
 
 /** Recorded from `cargo fmt --all --check -- --color never` (rustfmt 1.9.0, Rust 1.97). */
 const CHECK = `Diff in /ws/app/src/main.rs:1:
@@ -59,5 +68,75 @@ describe('unformattedMessage', () => {
 describe('unparsable', () => {
   it('names the files rustfmt could not parse', () => {
     expect(unparsable(STDERR)).toEqual(['/ws/core/src/broken.rs']);
+  });
+});
+
+describe('format', () => {
+  const files = {
+    'rs/Cargo.toml': '[package]\nname = "app"\n',
+    'rs/src/main.rs': 'fn main() {}\n',
+  };
+
+  async function run(
+    answer: ExecResult,
+  ): Promise<{ found: Awaited<ReturnType<typeof format>>; args: string[] }> {
+    const root = await tempRepo(files);
+    const config = parseConfig(MINIMAL_CONFIG);
+    const args: string[] = [];
+    const ctx: Bound = {
+      root,
+      sha: '0'.repeat(40),
+      exec: (_command, given) => {
+        args.push(...given);
+        return Promise.resolve({ ...answer, stdout: answer.stdout.replaceAll('{root}', root) });
+      },
+      tools: { path: (name) => Promise.resolve(`/tools/${name}`), version: () => '1.0.0' },
+      scratch: await mkdtemp(join(tmpdir(), 'talos-rustfmt-')),
+      log: silentLogger,
+      os: 'linux',
+      facts: repoFacts(Object.keys(files), config.exclude),
+      config,
+      side: 'alone',
+      tiers: ['commit', 'head'],
+      memo: (_key, compute) => compute(),
+      component: { lang: 'rust', root: 'rs', os: ['linux'] },
+    };
+    return { found: await format(ctx), args };
+  }
+
+  it("reports the component's own files rustfmt would change, under Talos's settings", async () => {
+    const stdout = [
+      'Diff in {root}/rs/src/main.rs:1:',
+      '-fn main() {}',
+      '+fn main() {',
+      '+}',
+      'Diff in {root}/vendor/dep.rs:3:',
+      '-x',
+      '+y',
+      'Diff in {root}/rs/target/gen.rs:1:',
+      '-x',
+      '',
+    ].join('\n');
+    const { found, args } = await run({ code: 1, stdout, stderr: '' });
+    expect(found).toEqual([
+      {
+        rule: 'rustfmt/format',
+        message: "Line 1 isn't formatted the way rustfmt writes it.",
+        location: { file: 'rs/src/main.rs', line: 1, endLine: 1 },
+      },
+    ]);
+    const config = args[args.indexOf('--config-path') + 1] ?? '';
+    expect(await readFile(config, 'utf8')).toContain('max_width = 100');
+  });
+
+  it("leaves files it couldn't parse to rust/types", async () => {
+    const stderr = 'error: expected item\n --> rs/src/main.rs:1:1\n';
+    expect((await run({ code: 1, stdout: '', stderr })).found).toEqual([]);
+  });
+
+  it('is an engine error when cargo fmt fails for another reason', async () => {
+    await expect(
+      run({ code: 1, stdout: '', stderr: 'error: no such command: `fmt`' }),
+    ).rejects.toThrow('cargo fmt exited 1');
   });
 });

@@ -71,11 +71,9 @@ function commit(world: World, body: unknown): Reply {
 
 export function worldApi(world: World, login = 'SvenPGH'): FakeApi {
   let nextRuleset = 100;
-  const repo = /^repos\/SVP-Labs\/demo/;
-  const at = (suffix: string): RegExp => new RegExp(`${repo.source}${suffix}$`);
   return fakeApi([
     route('GET', /^user$/, json({ login })),
-    route('GET', at(''), () =>
+    route('GET', /^repos\/SVP-Labs\/demo$/, () =>
       world.exists ? json({ id: 42, default_branch: 'main', ...world.settings }) : NOT_FOUND,
     ),
     route('POST', /^orgs\/SVP-Labs\/repos$/, () => {
@@ -85,14 +83,18 @@ export function worldApi(world: World, login = 'SvenPGH'): FakeApi {
     route('GET', /^orgs\/SVP-Labs\/repos$/, () =>
       json(world.exists ? [{ id: 42, full_name: 'SVP-Labs/demo', default_branch: 'main' }] : []),
     ),
-    route('PATCH', at(''), (call) => {
+    route('PATCH', /^repos\/SVP-Labs\/demo$/, (call) => {
       Object.assign(world.settings, record.parse(call.body));
       return json({ id: 42 });
     }),
-    route('GET', at('/git/ref/heads/main'), () => json({ object: { sha: world.head } })),
-    route('GET', at('/contents/(.+)'), (_c, m) => contentReply(world, m[1] ?? '')),
+    route('GET', /^repos\/SVP-Labs\/demo\/git\/ref\/heads\/main$/, () =>
+      json({ object: { sha: world.head } }),
+    ),
+    route('GET', /^repos\/SVP-Labs\/demo\/contents\/(.+)$/, (_c, m) =>
+      contentReply(world, m[1] ?? ''),
+    ),
     route('POST', /^graphql$/, (call) => commit(world, call.body)),
-    route('GET', at('/rulesets'), () =>
+    route('GET', /^repos\/SVP-Labs\/demo\/rulesets$/, () =>
       json(
         [...world.rulesets.values()].map((r) => ({
           id: r.id,
@@ -101,30 +103,34 @@ export function worldApi(world: World, login = 'SvenPGH'): FakeApi {
         })),
       ),
     ),
-    route('GET', at('/rulesets/(\\d+)'), (_c, m) => json(world.rulesets.get(Number(m[1])))),
-    route('POST', at('/rulesets'), (call) => {
+    route('GET', /^repos\/SVP-Labs\/demo\/rulesets\/(\d+)$/, (_c, m) =>
+      json(world.rulesets.get(Number(m[1]))),
+    ),
+    route('POST', /^repos\/SVP-Labs\/demo\/rulesets$/, (call) => {
       const id = nextRuleset;
       nextRuleset += 1;
       world.rulesets.set(id, { ...record.parse(call.body), id });
       return json({ id });
     }),
-    route('PUT', at('/rulesets/(\\d+)'), (call, m) => {
+    route('PUT', /^repos\/SVP-Labs\/demo\/rulesets\/(\d+)$/, (call, m) => {
       world.rulesets.set(Number(m[1]), { ...record.parse(call.body), id: Number(m[1]) });
       return json({ id: Number(m[1]) });
     }),
-    route('DELETE', at('/rulesets/(\\d+)'), (_c, m) => {
+    route('DELETE', /^repos\/SVP-Labs\/demo\/rulesets\/(\d+)$/, (_c, m) => {
       world.rulesets.delete(Number(m[1]));
       return NO_CONTENT;
     }),
-    route('GET', at('/vulnerability-alerts'), () => (world.alerts ? NO_CONTENT : NOT_FOUND)),
-    route('PUT', at('/vulnerability-alerts'), () => {
+    route('GET', /^repos\/SVP-Labs\/demo\/vulnerability-alerts$/, () =>
+      world.alerts ? NO_CONTENT : NOT_FOUND,
+    ),
+    route('PUT', /^repos\/SVP-Labs\/demo\/vulnerability-alerts$/, () => {
       world.alerts = true;
       return NO_CONTENT;
     }),
-    route('GET', at('/properties/values'), () =>
+    route('GET', /^repos\/SVP-Labs\/demo\/properties\/values$/, () =>
       json([...world.properties].map(([name, value]) => ({ property_name: name, value }))),
     ),
-    route('PATCH', at('/properties/values'), (call) => {
+    route('PATCH', /^repos\/SVP-Labs\/demo\/properties\/values$/, (call) => {
       for (const v of propertiesSchema.parse(call.body).properties) {
         world.properties.set(v.property_name, v.value);
       }

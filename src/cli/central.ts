@@ -3,6 +3,7 @@ import { type Command, type Io, parse, UsageError } from './io.js';
 import { runChannels } from '../central/channels-job.js';
 import { dispatchAllowed } from '../central/channels.js';
 import { expectedFromAssets, runChannelsFileDrift, runDrift } from '../central/drift-job.js';
+import { pickRepositories } from '../central/pick.js';
 import { maskNames, type PrivacyNames, runPrivacy } from '../central/privacy.js';
 import { runtimeAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
 import { runSweep } from '../central/sweep-job.js';
@@ -14,7 +15,7 @@ import { lookupMode } from '../version/pin.js';
 /** The version of the one JSON line `talos central` prints. */
 export const CENTRAL_SCHEMA = 'talos.central/1';
 
-const JOBS = ['channels', 'sweep', 'drift', 'privacy'] as const;
+const JOBS = ['channels', 'sweep', 'drift', 'privacy', 'pick'] as const;
 type Job = (typeof JOBS)[number];
 
 /**
@@ -26,6 +27,7 @@ const GENERIC: Readonly<Record<Job, string>> = {
   sweep: 'the runtime sweep could not finish',
   drift: 'the drift report could not finish',
   privacy: 'the privacy self-test could not finish',
+  pick: 'the repository lookup could not finish',
 };
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -37,7 +39,11 @@ export type CentralOptions = GitHubOptions & {
 
 type Outcome = { readonly ok: boolean; readonly report: Readonly<Record<string, unknown>> };
 
-type Flags = { readonly channelsFile: boolean; readonly mask: boolean };
+type Flags = {
+  readonly channelsFile: boolean;
+  readonly mask: boolean;
+  readonly channel: string | undefined;
+};
 
 function jobOf(name: string | undefined): Job {
   const job = JOBS.find((j) => j === name);
@@ -148,6 +154,26 @@ async function privacy(io: Io, options: CentralOptions): Promise<Outcome> {
   return { ok: report.leaks === 0 && report.canary === true, report };
 }
 
+/**
+ * `pick`: masks the repositories a matrix job reads, the one its index names (`TALOS_INDEX`) or
+ * every one on `--channel`, then hands their bare names to the job's later steps.
+ */
+async function pick(io: Io, options: CentralOptions, flags: Flags): Promise<Outcome> {
+  const { env } = io;
+  const target = token(env, 'GITHUB_OUTPUT');
+  const report = await pickRepositories({
+    properties: github(token(env, 'TALOS_PROPERTIES_TOKEN'), options),
+    org: identities(env).org,
+    index: env.TALOS_INDEX,
+    channel: flags.channel,
+    out: (text: string) => {
+      io.out(text);
+    },
+    output: (key, value) => appendFile(target, `${key}=${value}\n`),
+  });
+  return { ok: true, report };
+}
+
 function run(job: Job, io: Io, options: CentralOptions, flags: Flags): Promise<Outcome> {
   switch (job) {
     case 'channels':
@@ -158,6 +184,8 @@ function run(job: Job, io: Io, options: CentralOptions, flags: Flags): Promise<O
       return drift(io.env, options, flags);
     case 'privacy':
       return flags.mask ? privacyMask(io, options) : privacy(io, options);
+    case 'pick':
+      return pick(io, options, flags);
   }
 }
 
@@ -170,6 +198,7 @@ export function centralWith(options: CentralOptions): Command {
         json: { type: 'boolean', default: false },
         'channels-file': { type: 'boolean', default: false },
         mask: { type: 'boolean', default: false },
+        channel: { type: 'string' },
       },
       true,
     );
@@ -178,7 +207,11 @@ export function centralWith(options: CentralOptions): Command {
       io.out(`${JSON.stringify({ schema: CENTRAL_SCHEMA, job, ...line })}\n`);
     };
     try {
-      const flags = { channelsFile: values['channels-file'], mask: values.mask };
+      const flags = {
+        channelsFile: values['channels-file'],
+        mask: values.mask,
+        channel: values.channel,
+      };
       const outcome = await run(job, io, options, flags);
       print({ ok: outcome.ok, ...outcome.report });
       return outcome.ok ? 0 : 1;
@@ -191,9 +224,10 @@ export function centralWith(options: CentralOptions): Command {
 }
 
 /**
- * `talos central <channels|sweep|drift|privacy>`: the central jobs Talos's own workflows run.
- * Each prints one JSON line (`talos.central/1`) of counts, Talos's own release tags at most, and
- * never a repository's name, a path or a finding: these runs are public. `privacy --mask` is the
- * privacy job's first step, which masks every name before the canary's tokens are minted.
+ * `talos central <channels|sweep|drift|privacy|pick>`: the central jobs Talos's own workflows
+ * run. Each prints one JSON line (`talos.central/1`) of counts, Talos's own release tags at most,
+ * and never a repository's name, a path or a finding: these runs are public. `privacy --mask` is
+ * the privacy job's first step, which masks every name before the canary's tokens are minted;
+ * `pick` is how every other job learns the repositories it reads, masked before its tokens are.
  */
 export const central: Command = centralWith({});

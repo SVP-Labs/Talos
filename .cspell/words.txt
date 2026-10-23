@@ -10,11 +10,13 @@ deptrac
 hadolint
 infection
 jscpd
+katex
 knip
 larastan
 luacheck
 luacov
 markdownlint
+micromark
 mutmut
 osv
 pcov

@@ -14,10 +14,15 @@ function isDependabot(commit: CommitFacts): boolean {
   return DEPENDABOT.test(commit.authorEmail);
 }
 
+/** The number `rest` reads where `text` goes on after starting with `lead`. */
+function numberAfter(text: string, lead: string, rest: RegExp): number | undefined {
+  const digits = text.startsWith(lead) ? rest.exec(text.slice(lead.length))?.[1] : undefined;
+  return digits === undefined ? undefined : Number(digits);
+}
+
 /** The ticket a branch names, when it is a ticket branch `<P>-<N>`. */
 export function ticketOf(branch: string | undefined, prefix: string): number | undefined {
-  const match = branch === undefined ? null : new RegExp(`^${prefix}-(\\d+)$`).exec(branch);
-  return match?.[1] === undefined ? undefined : Number(match[1]);
+  return branch === undefined ? undefined : numberAfter(branch, `${prefix}-`, /^(\d+)$/);
 }
 
 /**
@@ -34,16 +39,15 @@ export function subjectFindings(
   const findings: Finding[] = [];
   const key = `${commit.sha}:${commit.subject}`;
   if (!isDependabot(commit)) {
-    const pattern = new RegExp(`^\\[${prefix}-(\\d+)\\]: \\S`);
-    const match = pattern.exec(commit.subject);
-    if (match === null) {
+    const number = numberAfter(commit.subject, `[${prefix}-`, /^(\d+)\]: \S/);
+    if (number === undefined) {
       findings.push({
         rule: 'commit/subject',
         key,
         policy: 'always',
         message: `${commit.sha.slice(0, 12)}: the subject must read "[${prefix}-<issue>]: what changed", not "${commit.subject}"`,
       });
-    } else if (ticket !== undefined && Number(match[1]) !== ticket) {
+    } else if (ticket !== undefined && number !== ticket) {
       findings.push({
         rule: 'commit/ticket',
         key,

@@ -50,13 +50,30 @@ describe('judge', () => {
     expect(judged.map((j) => j.isNew)).toEqual([false, true]);
   });
 
+  it('counts the occurrence on a changed line as the new one, whichever comes first', () => {
+    const judged = judge([finding('f', 9)], [finding('f', 3), finding('f', 9)], changedLine3);
+    expect(judged.map((j) => [j.isNew, j.why])).toEqual([
+      [true, 'new'],
+      [false, 'existing'],
+    ]);
+  });
+
+  it('calls every occurrence new when the base had none', () => {
+    const judged = judge([], [finding('f', 20), finding('f', 30)], changedLine3);
+    expect(judged.map((j) => j.isNew)).toEqual([true, true]);
+  });
+
   it('always blocks security findings and never blocks informational ones', () => {
     const judged = judge(
       [finding('s', 1, 'always'), finding('i', 1, 'info')],
-      [finding('s', 1, 'always'), finding('i', 2, 'info')],
+      [finding('s', 1, 'always'), finding('i', 2, 'info'), finding('n', 20, 'info')],
       changedLine3,
     );
-    expect(judged.map((j) => j.blocking)).toEqual([true, false]);
+    expect(judged.map((j) => [j.isNew, j.blocking, j.why])).toEqual([
+      [false, true, 'security'],
+      [false, false, 'info'],
+      [true, false, 'info'],
+    ]);
   });
 
   it('blocks lost coverage only off the changed lines', () => {

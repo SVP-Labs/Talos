@@ -84,6 +84,12 @@ describe('leaksIn', () => {
     expect(leaksIn('thea, talos-scratch-canary.', WATCHED)).toBe(2);
   });
 
+  it('reads a bare name as written, dots and all', () => {
+    const dotted = watchedNames([repo('o/ba.d', true)], 'o/other');
+    expect(leaksIn('deployed ba.d.', dotted)).toBe(1);
+    expect(leaksIn('deployed a band, ba.ds and ba.d.io', dotted)).toBe(0);
+  });
+
   it('ignores a bare name inside a longer word, and the public repository itself', () => {
     expect(leaksIn('theatre theatres thea-svp[bot] thea.example _thea', WATCHED)).toBe(0);
     expect(leaksIn('SVP-Labs/Talos at v1.2.0; Scaffold archived', WATCHED)).toBe(0);

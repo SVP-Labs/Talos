@@ -6,43 +6,57 @@ import { APPLIES, type Check, type CheckContext, EngineError, skip } from '../..
 import type { Finding } from '../../core/finding.js';
 import type { Generated } from '../../core/pack.js';
 import type { RepoFacts } from '../../repo/facts.js';
+import { isDockerfile } from '../infra/files.js';
 
 export const SEMGREPIGNORE = '.semgrepignore';
 
 /** The registry's security rule sets every repository runs, whatever its languages. */
 const ALWAYS = ['p/default', 'p/security-audit', 'p/owasp-top-ten', 'p/secrets'];
 
+/** Rule sets, and whether a repository has what they are for. */
+type RuleSets = {
+  readonly configs: readonly string[];
+  readonly present: (facts: RepoFacts) => boolean;
+};
+
+const having =
+  (...globs: string[]) =>
+  (facts: RepoFacts): boolean =>
+    facts.has(...globs);
+
 /** The rule sets for what a repository has. */
-const BY_FILES: readonly { readonly configs: readonly string[]; readonly globs: string[] }[] = [
+const BY_FILES: readonly RuleSets[] = [
   {
     configs: ['p/javascript', 'p/typescript', 'p/nodejs'],
-    globs: ['**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'],
+    present: having('**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}'),
   },
-  { configs: ['p/react'], globs: ['**/*.{jsx,tsx}'] },
-  { configs: ['p/python'], globs: ['**/*.py'] },
-  { configs: ['p/php', 'p/phpcs-security-audit'], globs: ['**/*.php'] },
-  { configs: ['p/rust'], globs: ['**/*.rs'] },
-  { configs: ['p/dockerfile'], globs: ['**/Dockerfile', '**/Dockerfile.*', '**/*.dockerfile'] },
+  { configs: ['p/react'], present: having('**/*.{jsx,tsx}') },
+  { configs: ['p/python'], present: having('**/*.py') },
+  { configs: ['p/php', 'p/phpcs-security-audit'], present: having('**/*.php') },
+  { configs: ['p/rust'], present: having('**/*.rs') },
+  { configs: ['p/dockerfile'], present: (facts) => facts.files.some((file) => isDockerfile(file)) },
   {
     configs: ['p/docker-compose'],
-    globs: ['**/compose.{yml,yaml}', '**/docker-compose*.{yml,yaml}'],
+    present: having('**/compose.{yml,yaml}', '**/docker-compose*.{yml,yaml}'),
   },
-  { configs: ['p/github-actions'], globs: ['.github/workflows/*.{yml,yaml}'] },
-  { configs: ['p/terraform'], globs: ['**/*.tf'] },
+  { configs: ['p/github-actions'], present: having('.github/workflows/*.{yml,yaml}') },
+  { configs: ['p/terraform'], present: having('**/*.tf') },
 ];
 
 /**
  * Registry rules that judge what a Talos check already decides, by another measure: Semgrep's
  * pnpm rule asks for a longer minimum release age than the one day every SVP-Labs repository
- * waits, which `supply/settings` checks.
+ * waits, and its Dependabot rule for a cooldown of seven days where each Dependabot entry waits
+ * that same day. `supply/settings` checks both, the cooldown on every entry included.
  */
 const EXCLUDED_RULES: readonly string[] = [
   'package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age',
+  'package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown',
 ];
 
 /** The rule sets a repository runs: the security sets, and each of its languages' and tools'. */
 export function semgrepConfigs(facts: RepoFacts): string[] {
-  const own = BY_FILES.filter((set) => facts.has(...set.globs)).flatMap((set) => set.configs);
+  const own = BY_FILES.filter((set) => set.present(facts)).flatMap((set) => set.configs);
   return [...ALWAYS, ...own];
 }
 

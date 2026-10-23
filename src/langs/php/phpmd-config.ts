@@ -1,3 +1,5 @@
+import { escapeXml } from '../../core/xml.js';
+
 export const PHPMD_BASE = 'phpmd.xml';
 export const PHPMD_PROJECT = 'phpmd.project.xml';
 
@@ -20,10 +22,6 @@ function limit(entry: (typeof LIMITS)[number]): string[] {
     '        </properties>',
     '    </rule>',
   ];
-}
-
-function escapeXml(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 }
 
 /**

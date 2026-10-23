@@ -218,3 +218,13 @@ describe('suppressionsIn', () => {
     expect(kinds('data.json', '{"//": "eslint-disable"}')).toEqual([]);
   });
 });
+
+describe('a source file named like a Dockerfile', () => {
+  it('is read for its own comments, not for # comments', () => {
+    const text = 'const a = 1; // eslint-disable-line no-console\n';
+    expect(suppressionsIn('src/dockerfile.ts', text).map((s) => s.kind)).toEqual([
+      'eslint-disable',
+    ]);
+    expect(suppressionsIn('Dockerfile', '# hadolint ignore=DL3008\nRUN true\n')).toHaveLength(1);
+  });
+});

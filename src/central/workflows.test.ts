@@ -6,13 +6,16 @@ import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { pickRepositories } from './pick.js';
+import { fakeGitHub, propertiesPath, propertyValues } from './test/fake-github.js';
 import { carriesGeneratedMarker } from '../configs/header.js';
 
 /**
  * The workflows Talos runs and ships, read as data: the rules every one keeps (pinned actions,
  * least privilege, no expression in a script), the gate's and the caller's shape, and the rules
- * that keep repository names out of the central jobs' public logs. The inline scripts that look a
- * repository up are run against a fake `gh`, and `bootstrap/php.sh` against a scratch repository.
+ * that keep repository names out of the central jobs' public logs. The inline scripts that count
+ * the repositories and find a pin are run against a fake `gh`, the count against Talos's own
+ * lookup by index, and `bootstrap/php.sh` against a scratch repository.
  */
 
 const ROOT = new URL('../../', import.meta.url);
@@ -418,20 +421,49 @@ describe('the central jobs in this public repository', () => {
     }
   });
 
-  it('look the repository up and mask it before minting a token limited to it', () => {
+  it('have Talos look the repository up by index and mask it before minting a token for it', () => {
     const matrixJobs = [FILES.sweep, FILES.drift].flatMap((path) =>
       jobsOf(path).filter(([, j]) => j.strategy !== undefined),
     );
     expect(matrixJobs).toHaveLength(2);
     for (const [id, job] of matrixJobs) {
       const pick = job.steps.findIndex((s) => s.id === 'pick');
-      expect(pick, id).toBeGreaterThan(-1);
+      expect(job.steps[pick]?.run, id).toBe(
+        'node talos-kit/bootstrap/launch.ts central pick --json',
+      );
+      expect(job.steps[pick]?.env?.TALOS_INDEX, id).toBe('${{ matrix.index }}');
       const scoped = [...job.steps.entries()].filter(([, s]) => s.with?.repositories !== undefined);
       expect(scoped.length, id).toBeGreaterThan(0);
       for (const [index, step] of scoped) {
         expect(index, id).toBeGreaterThan(pick);
-        expect(step.with?.repositories).toBe('${{ steps.pick.outputs.name }}');
+        expect(step.with?.repositories).toBe('${{ steps.pick.outputs.names }}');
       }
+      for (const step of job.steps.slice(pick + 1)) {
+        expect(step.if, `${id} ${step.name ?? ''}`).toBe("${{ steps.pick.outputs.names != '' }}");
+      }
+    }
+  });
+
+  it('mask names in Talos at the pin, never with a workflow command of their own', () => {
+    for (const path of [...Object.values(FILES), 'assets/workflows/talos.yml']) {
+      expect(text(path), path).not.toMatch(/::(?:add-mask|stop-commands)::/);
+    }
+    const maskers = CENTRAL.flatMap((path) =>
+      jobsOf(path).flatMap(([id, job]) =>
+        job.steps.flatMap((step, index) =>
+          /^node talos-kit\/bootstrap\/launch\.ts central (?:pick|privacy --mask)\b/.test(
+            step.run ?? '',
+          )
+            ? [{ where: `${path} ${id}`, job, index }]
+            : [],
+        ),
+      ),
+    );
+    expect(maskers).toHaveLength(6);
+    for (const { where, job, index } of maskers) {
+      const kit = job.steps.findIndex((s) => s.with?.path === 'talos-kit');
+      expect(kit, where).toBeGreaterThan(-1);
+      expect(kit, where).toBeLessThan(index);
     }
   });
 
@@ -468,6 +500,7 @@ describe('the central jobs in this public repository', () => {
       const producer = job.steps.findIndex((s) => s.id === from?.[1]);
       expect(producer, where).toBeGreaterThan(-1);
       expect(producer, where).toBeLessThan(index);
+      expect(job.steps[producer]?.run, where).toMatch(/ central (?:pick|privacy --mask)\b/);
       expect(step.if, where).toContain(`steps.${from?.[1] ?? ''}.outputs.`);
     }
   });
@@ -653,51 +686,18 @@ const listing = (repos: { id: number; full_name: string; talos?: string }[]) =>
   }));
 
 describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
-  const PICK = 'Look the repository up by index and mask its name';
   const PROPERTIES = 'orgs/SVP-Labs/properties/values?per_page=100';
   const ORG = { ORG: 'SVP-Labs' };
-  const pages = [
-    JSON.stringify(
-      listing([
-        { id: 30, full_name: 'SVP-Labs/Zeta', talos: 'stable' },
-        { id: 10, full_name: 'SVP-Labs/Secret', talos: 'canary' },
-        { id: 15, full_name: 'SVP-Labs/Ungoverned' },
-      ]),
-    ),
-    JSON.stringify(listing([{ id: 20, full_name: 'SVP-Labs/Other', talos: 'evaluate' }])),
-  ].join('\n');
-
-  it('picks the governed repository by index in id order and masks it before printing anything', async () => {
-    for (const path of [FILES.sweep, FILES.drift]) {
-      const result = await runStep(
-        scriptOf(path, PICK),
-        { [PROPERTIES]: pages },
-        { ...ORG, INDEX: '1' },
-      );
-      expect(result.code, path).toBe(0);
-      expect(result.stdout, path).toBe('::add-mask::SVP-Labs/Other\n::add-mask::Other\n');
-      expect(result.output, path).toBe('skip=false\nname=Other\n');
-    }
-  });
-
-  it('skips an index past the listing and prints no name', async () => {
-    const result = await runStep(
-      scriptOf(FILES.sweep, PICK),
-      { [PROPERTIES]: pages },
-      { ...ORG, INDEX: '3' },
-    );
-    expect(result).toMatchObject({ code: 0, output: 'skip=true\n' });
-    expect(result.stdout).not.toMatch(/Secret|Zeta|Other|Ungoverned/);
-  });
-
-  it('fails with one generic line when the API fails or the index is missing', async () => {
-    const failed = await runStep(scriptOf(FILES.sweep, PICK), {}, { ...ORG, INDEX: '0' });
-    expect(failed).toEqual({ code: 1, stdout: '', output: '' });
-    expect(
-      (await runStep(scriptOf(FILES.sweep, PICK), { [PROPERTIES]: pages }, { ...ORG, INDEX: 'x' }))
-        .code,
-    ).toBe(1);
-  });
+  const repos: { id: number; full_name: string; talos?: string }[] = [
+    { id: 30, full_name: 'SVP-Labs/Zeta', talos: 'stable' },
+    { id: 10, full_name: 'SVP-Labs/Secret', talos: 'canary' },
+    { id: 15, full_name: 'SVP-Labs/Ungoverned' },
+    { id: 25, full_name: 'SVP-Labs/Paused', talos: 'off' },
+    { id: 20, full_name: 'SVP-Labs/Other', talos: 'evaluate' },
+  ];
+  const pages = [listing(repos.slice(0, 4)), listing(repos.slice(4))]
+    .map((page) => JSON.stringify(page))
+    .join('\n');
 
   it('counts the governed repositories into a matrix of indices, printing only the count', async () => {
     const count = scriptOf(FILES.sweep, 'Count the repositories');
@@ -715,31 +715,33 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
     expect((await runStep(count, { [PROPERTIES]: many }, ORG)).code).toBe(1);
     expect((await runStep(count, {}, ORG)).code).toBe(1);
     expect(scriptOf(FILES.drift, 'Count the repositories')).toBe(count);
-    expect(scriptOf(FILES.drift, PICK)).toBe(scriptOf(FILES.sweep, PICK));
   });
 
-  it('masks the canary repositories and hands their bare names on, comma-separated', async () => {
-    const step = scriptOf(FILES.channels, 'Look the canary repositories up and mask their names');
-    const two = listing([
-      { id: 2, full_name: 'SVP-Labs/Beta', talos: 'canary' },
-      { id: 1, full_name: 'SVP-Labs/Alpha', talos: 'canary' },
-      { id: 3, full_name: 'SVP-Labs/Gamma', talos: 'stable' },
-    ]);
-    expect(await runStep(step, { [PROPERTIES]: two }, ORG)).toEqual({
-      code: 0,
-      stdout: [
-        '::add-mask::SVP-Labs/Alpha',
-        '::add-mask::Alpha',
-        '::add-mask::SVP-Labs/Beta',
-        '::add-mask::Beta',
-        'canary repositories: 2',
-        '',
-      ].join('\n'),
-      output: 'names=Alpha,Beta\n',
+  it('counts the indices Talos picks from, each naming one repository and none past the last', async () => {
+    const count = scriptOf(FILES.sweep, 'Count the repositories');
+    const counted = await runStep(count, { [PROPERTIES]: pages }, ORG);
+    const indices = z.array(z.number()).parse(JSON.parse(counted.output.slice('indices='.length)));
+    const fake = fakeGitHub({
+      [propertiesPath('SVP-Labs')]: propertyValues(
+        repos.map(({ id, full_name: name, talos }) =>
+          talos === undefined ? { id, name } : { id, name, talos },
+        ),
+      ),
     });
-    const none = await runStep(step, { [PROPERTIES]: listing([]) }, ORG);
-    expect(none).toEqual({ code: 0, stdout: 'canary repositories: 0\n', output: 'names=\n' });
-    expect(await runStep(step, {}, ORG)).toEqual({ code: 1, stdout: '', output: '' });
+    const picked: string[] = [];
+    for (const index of [...indices, indices.length]) {
+      await pickRepositories({
+        properties: fake.gh,
+        org: 'SVP-Labs',
+        index: String(index),
+        out: () => undefined,
+        output: (_, names) => {
+          picked.push(names);
+          return Promise.resolve();
+        },
+      });
+    }
+    expect(picked).toEqual(['Secret', 'Other', 'Zeta', '']);
   });
 
   it("finds stable's pin in the org rulesets or channels.json", async () => {

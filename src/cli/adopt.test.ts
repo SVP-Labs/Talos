@@ -42,23 +42,22 @@ function issueJson(issue: Remote['issues'][number]) {
 
 /** GitHub for `SVP-Labs/demo`, whose branches are the bare `origin`'s. */
 function github(origin: string, remote: Remote): FakeApi {
-  const at = (suffix: string): RegExp => new RegExp(`^repos/SVP-Labs/demo${suffix}$`);
   return fakeApi([
-    route('GET', at('/labels'), json([])),
-    route('POST', at('/labels'), json({}, 201)),
-    route('GET', at(''), json({ id: 1, default_branch: 'main' })),
-    route('GET', at('/git/ref/heads/main'), () =>
+    route('GET', /^repos\/SVP-Labs\/demo\/labels$/, json([])),
+    route('POST', /^repos\/SVP-Labs\/demo\/labels$/, json({}, 201)),
+    route('GET', /^repos\/SVP-Labs\/demo$/, json({ id: 1, default_branch: 'main' })),
+    route('GET', /^repos\/SVP-Labs\/demo\/git\/ref\/heads\/main$/, () =>
       json({ ref: 'x', object: { sha: git(origin, 'rev-parse', 'main') } }),
     ),
-    route('GET', at('/issues'), () => json(remote.issues.map(issueJson))),
-    route('POST', at('/issues'), (call) => {
+    route('GET', /^repos\/SVP-Labs\/demo\/issues$/, () => json(remote.issues.map(issueJson))),
+    route('POST', /^repos\/SVP-Labs\/demo\/issues$/, (call) => {
       const body = createIssue.parse(call.body);
       const issue = { number: remote.issues.length + 1, body: body.body, labels: body.labels };
       remote.issues.push(issue);
       return json(issueJson(issue), 201);
     }),
-    route('POST', at('/issues/(\\d+)/labels'), json([])),
-    route('GET', at('/issues/(\\d+)/comments'), (_c, m) =>
+    route('POST', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/labels$/, json([])),
+    route('GET', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/comments$/, (_c, m) =>
       json(
         (remote.comments.get(Number(m[1])) ?? []).map((body, id) => ({
           id,
@@ -68,22 +67,22 @@ function github(origin: string, remote: Remote): FakeApi {
         })),
       ),
     ),
-    route('POST', at('/issues/(\\d+)/comments'), (call, m) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/issues\/(\d+)\/comments$/, (call, m) => {
       remote.comments.set(Number(m[1]), [z.object({ body: z.string() }).parse(call.body).body]);
       return json({ id: 1 }, 201);
     }),
-    route('GET', at('/branches/(.+)'), (_c, m) => {
+    route('GET', /^repos\/SVP-Labs\/demo\/branches\/(.+)$/, (_c, m) => {
       const sha = git(origin, 'rev-parse', '--verify', '--quiet', `refs/heads/${m[1] ?? ''}`);
       return sha === undefined
         ? NOT_FOUND
         : json({ commit: { sha, commit: { committer: { date: 'x' } } } });
     }),
-    route('POST', at('/git/refs'), (call) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/git\/refs$/, (call) => {
       const body = createRef.parse(call.body);
       git(origin, 'branch', body.ref.replace('refs/heads/', ''), body.sha);
       return json({}, 201);
     }),
-    route('GET', at('/pulls'), (call) =>
+    route('GET', /^repos\/SVP-Labs\/demo\/pulls$/, (call) =>
       json(
         remote.pulls
           .filter((p) => call.query.get('head') === `SVP-Labs:${p.head}`)
@@ -95,12 +94,12 @@ function github(origin: string, remote: Remote): FakeApi {
           })),
       ),
     ),
-    route('GET', at('/compare/main\\.\\.\\.(.+)'), (_c, m) => {
+    route('GET', /^repos\/SVP-Labs\/demo\/compare\/main\.\.\.(.+)$/, (_c, m) => {
       const ahead = git(origin, 'rev-list', '--count', `main..${m[1] ?? ''}`);
       const files = git(origin, 'diff', '--name-only', `main...${m[1] ?? ''}`)?.split('\n') ?? [];
       return ahead === undefined ? NOT_FOUND : json({ ahead_by: Number(ahead), files });
     }),
-    route('POST', at('/pulls'), (call) => {
+    route('POST', /^repos\/SVP-Labs\/demo\/pulls$/, (call) => {
       remote.pulls.push({ number: 9, head: z.object({ head: z.string() }).parse(call.body).head });
       return json({ number: 9, html_url: 'https://github.com/SVP-Labs/demo/pull/9' }, 201);
     }),

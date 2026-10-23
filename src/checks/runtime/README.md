@@ -16,13 +16,15 @@ same pack about repositories it never checks out.
 | `composer.json`                              | PHP: `config.platform.php`, a minimum, never what the app ships |
 | `tools.lock` at the root                     | the entries Talos marks as runtimes (below)                     |
 
-`Containerfile` counts as a Dockerfile. A `FROM` names a runtime when its image is an official
-one, from any registry: `php`, `node`, `python`, `rust`, `golang`, `ruby`, `oven/bun` and
-`denoland/deno`. Other images, earlier stages and `scratch` are left alone. The release is the
-tag's first dash-separated part that starts with a digit (`8.4.26` in `8.4.26-fpm-alpine`,
-`2.1.4` in `alpine-2.1.4`); a digest beside the tag doesn't change it. Build arguments come from
-the `ARG` lines before the first `FROM`, the only ones a `FROM` may use, and a finding about a
-version an argument carries is placed on that `ARG` line.
+A Containerfile counts as a Dockerfile, and both go by the names Docker and Podman give them, in
+their case (`dockerfile`, `Containerfile.dev` and `api.Containerfile` too), so a source file such as
+`dockerfile.ts` is never read. A `FROM` names a runtime when its image is an official one, from any
+registry: `php`, `node`, `python`, `rust`, `golang`, `ruby`, `oven/bun` and `denoland/deno`. Other
+images, earlier stages and `scratch` are left alone. The release is the tag's first dash-separated
+part that starts with a digit (`8.4.26` in `8.4.26-fpm-alpine`, `2.1.4` in `alpine-2.1.4`); a digest
+beside the tag doesn't change it. Build arguments come from the `ARG` lines before the first `FROM`,
+the only ones a `FROM` may use, and a finding about a version an argument carries is placed on that
+`ARG` line.
 
 A declaration is exact when it names one release, major, minor and patch (`8.4.26`). Anything
 else floats: a cycle (`8.4`, `22`), a moving tag (`latest`, `lts/*`, `stable`), a pre-release, a

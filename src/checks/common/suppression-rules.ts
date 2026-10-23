@@ -254,37 +254,31 @@ export const COMMENT_DIRECTIVES: readonly Directive[] = [
   ...ANY,
 ];
 
-const ATTRIBUTE = String.raw`^\s*#!?\[\s*`;
-
-function rustAttribute(name: string): RegExp {
-  return new RegExp(`${ATTRIBUTE}(?:${name}|cfg_attr\\s*\\(.*\\b${name})`);
-}
-
 /** Rust's attributes, read from code lines. */
 export const RUST_ATTRIBUTES: readonly Directive[] = [
   {
     kind: 'allow',
-    pattern: rustAttribute(String.raw`allow\s*\(`),
+    pattern: /^\s*#!?\[\s*(?:allow\s*\(|cfg_attr\s*\(.*\ballow\s*\()/,
     message: silences('#[allow]', 'the compiler and Clippy'),
   },
   {
     kind: 'expect',
-    pattern: rustAttribute(String.raw`expect\s*\(`),
+    pattern: /^\s*#!?\[\s*(?:expect\s*\(|cfg_attr\s*\(.*\bexpect\s*\()/,
     message: silences('#[expect]', 'the compiler and Clippy'),
   },
   {
     kind: 'rustfmt-skip',
-    pattern: new RegExp(String.raw`${ATTRIBUTE}rustfmt::skip\b`),
+    pattern: /^\s*#!?\[\s*rustfmt::skip\b/,
     message: formatterSkips('#[rustfmt::skip]', 'rustfmt'),
   },
   {
     kind: 'coverage-off',
-    pattern: rustAttribute(String.raw`coverage\s*\(\s*off`),
+    pattern: /^\s*#!?\[\s*(?:coverage\s*\(\s*off|cfg_attr\s*\(.*\bcoverage\s*\(\s*off)/,
     message: uncovers('coverage(off)'),
   },
   {
     kind: 'mutants-skip',
-    pattern: new RegExp(String.raw`${ATTRIBUTE}mutants::skip\b`),
+    pattern: /^\s*#!?\[\s*mutants::skip\b/,
     message: mutationSkips('#[mutants::skip]', 'cargo-mutants'),
   },
 ];

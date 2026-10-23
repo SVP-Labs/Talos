@@ -112,10 +112,7 @@ export function packageUrl(name: string, version: string): string {
 
 /** The SHA-512 of a Subresource Integrity string (`sha512-<base64>`) as hex. */
 export function integrityHex(integrity: string): string | undefined {
-  const entry = integrity
-    .trim()
-    .split(/\s+/)
-    .find((part) => part.startsWith('sha512-'));
+  const entry = integrity.split(/\s/).find((part) => part.startsWith('sha512-'));
   if (entry === undefined) return undefined;
   const bytes = Buffer.from(entry.slice('sha512-'.length), 'base64');
   return bytes.length === 64 ? bytes.toString('hex') : undefined;

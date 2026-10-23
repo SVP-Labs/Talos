@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { parseConfig } from '../../config/load.js';
 import type { CheckContext, Component, Memo, Tier } from '../../core/check.js';
 import { silentLogger } from '../../core/log.js';
+import { escapeXml } from '../../core/xml.js';
 import { exec } from '../../exec/exec.js';
 import type { ChangeSet } from '../../repo/changes.js';
 import { repoFacts } from '../../repo/facts.js';
@@ -90,20 +91,16 @@ type CaseSpec = {
   readonly message?: string;
 };
 
-function escape(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
-}
-
 function caseXml(spec: CaseSpec): string {
-  const file = spec.file === undefined ? '' : ` file="${escape(spec.file)}"`;
-  const message = escape(spec.message ?? 'boom');
+  const file = spec.file === undefined ? '' : ` file="${escapeXml(spec.file)}"`;
+  const message = escapeXml(spec.message ?? 'boom');
   const inner: Record<NonNullable<CaseSpec['status']>, string> = {
     passed: '',
     failed: `<failure message="${message}">trace</failure>`,
     errored: `<error message="${message}">trace</error>`,
     skipped: '<skipped/>',
   };
-  return `<testcase name="${escape(spec.name)}"${file}>${inner[spec.status ?? 'passed']}</testcase>`;
+  return `<testcase name="${escapeXml(spec.name)}"${file}>${inner[spec.status ?? 'passed']}</testcase>`;
 }
 
 /** A JUnit report holding one suite of these cases. */

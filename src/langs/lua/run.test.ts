@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { chunks, parseJson } from './run.js';
 
 describe('chunks', () => {
-  it('keeps each run of arguments under the limit', () => {
-    expect(chunks(['aaaa', 'bbbb', 'cc', 'd'], 10)).toEqual([
+  it('keeps each run of arguments under the limit, counting each quoted with a space', () => {
+    expect(chunks(['aaaa', 'bbbb', 'cc', 'd'], 14)).toEqual([
       ['aaaa', 'bbbb'],
       ['cc', 'd'],
     ]);
+    expect(chunks(['aaaa', 'bbbb'], 13)).toEqual([['aaaa'], ['bbbb']]);
     expect(chunks([], 10)).toEqual([]);
     expect(chunks(['a-very-long-argument'], 5)).toEqual([['a-very-long-argument']]);
   });

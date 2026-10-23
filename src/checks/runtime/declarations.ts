@@ -8,6 +8,7 @@ import {
   pythonVersionFile,
   rustToolchainFile,
 } from './version-files.js';
+import { isDockerfile } from '../infra/files.js';
 
 type Reader = (file: string, text: string) => Declaration[];
 
@@ -21,16 +22,11 @@ const BY_NAME: ReadonlyMap<string, Reader> = new Map<string, Reader>([
   ['composer.json', composerFile],
 ]);
 
-const CONTAINER_FILE = /^(?:Dockerfile|Containerfile)(?:\.[\w.-]+)?$|\.(?:Dockerfile|dockerfile)$/;
-
 function readerFor(path: string): Reader | undefined {
   if (path === TOOLS_LOCK) return toolsLockDeclarations;
-  const name = path.split('/').at(-1) ?? '';
-  const known = BY_NAME.get(name);
+  const known = BY_NAME.get(path.split('/').at(-1) ?? '');
   if (known !== undefined) return known;
-  return CONTAINER_FILE.test(name) && !name.endsWith('.dockerignore')
-    ? dockerfileDeclarations
-    : undefined;
+  return isDockerfile(path) ? dockerfileDeclarations : undefined;
 }
 
 /**

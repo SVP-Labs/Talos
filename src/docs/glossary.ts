@@ -1,3 +1,5 @@
+import { literalMatches } from '../core/literal.js';
+
 /**
  * The glossary: one Markdown file of `**Term**` entries, each followed by its definition.
  * A line `Avoid: word, other phrase` inside an entry lists the words that term replaces; they
@@ -44,23 +46,21 @@ export function parseGlossary(text: string): GlossaryEntry[] {
   return entries;
 }
 
-function escape(word: string): string {
-  return word.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
+/** A whole word: no letter, digit, `_` or `-` right before or after it. */
+const WHOLE_WORD = { start: /(?<![\p{L}\p{N}_-])/uy, end: /(?![\p{L}\p{N}_-])/uy };
 
 export type AvoidHit = { readonly word: string; readonly instead: string; readonly index: number };
 
 /** Every avoided word in `text`, matched whole and case-insensitively. */
 export function avoidedWords(entries: readonly GlossaryEntry[], text: string): AvoidHit[] {
   return entries.flatMap((entry) =>
-    entry.avoid.flatMap((word) => {
-      const pattern = new RegExp(`(?<![\\p{L}\\p{N}_-])${escape(word)}(?![\\p{L}\\p{N}_-])`, 'giu');
-      return [...text.matchAll(pattern)].map((m) => ({
+    entry.avoid.flatMap((word) =>
+      literalMatches(text, word, WHOLE_WORD, true).map((index) => ({
         word,
         instead: entry.term,
-        index: m.index,
-      }));
-    }),
+        index,
+      })),
+    ),
   );
 }
 

@@ -1,29 +1,15 @@
 /** JUnit text helpers: the runners' reports gain a `file` attribute per test case. */
 
-const ENTITIES: Readonly<Record<string, string>> = {
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&apos;': "'",
-};
+import { escapeXml, unescapeXml } from '../../core/xml.js';
 
-function unescapeXml(text: string): string {
-  return text.replaceAll(/&(amp|lt|gt|quot|apos);/g, (entity) => ENTITIES[entity] ?? entity);
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-}
+/** An attribute in a start tag: its name, then its value in double or single quotes. */
+const ATTRIBUTE = /\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 function attribute(tag: string, name: string): string | undefined {
-  const match = new RegExp(String.raw`\s${name}="([^"]*)"`).exec(tag);
-  return match?.[1] === undefined ? undefined : unescapeXml(match[1]);
+  for (const match of tag.matchAll(ATTRIBUTE)) {
+    if (match[1] === name) return unescapeXml(match[2] ?? match[3] ?? '');
+  }
+  return undefined;
 }
 
 /**

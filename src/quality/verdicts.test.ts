@@ -35,6 +35,9 @@ describe('failingTests', () => {
     expect(failingTests([result('x', 'failed'), result('x', 'passed')])).toHaveLength(1);
     expect(failingTests([result('y', 'passed'), result('y', 'passed')])).toEqual([]);
     expect(failingTests([result('y', 'passed'), result('y', 'skipped')])).toEqual([]);
+    expect(failingTests([result('f', 'failed'), result('f', 'skipped')])).toEqual([
+      result('f', 'failed'),
+    ]);
   });
 });
 
@@ -75,9 +78,9 @@ describe('judgeTests', () => {
       [result('a', 'failed'), result('b', 'errored')],
       [result('a', 'skipped')],
     );
-    expect(verdicts.map((verdict) => [verdict.test.id, verdict.kind, verdict.rerun])).toEqual([
-      ['a', 'failed', 'missing'],
-      ['b', 'failed', 'missing'],
+    expect(verdicts).toEqual([
+      { kind: 'failed', test: result('a', 'failed'), first: 'failed', rerun: 'missing' },
+      { kind: 'failed', test: result('b', 'errored'), first: 'failed', rerun: 'missing' },
     ]);
   });
 
@@ -86,10 +89,32 @@ describe('judgeTests', () => {
       [result('a', 'failed'), result('z', 'passed')],
       [result('a', 'failed'), result('z', 'failed')],
     );
-    expect(verdicts.map((verdict) => [verdict.test.id, verdict.kind, verdict.first])).toEqual([
-      ['a', 'failed', 'failed'],
-      ['z', 'flaky', 'passed'],
+    expect(verdicts).toEqual([
+      { kind: 'failed', test: result('a', 'failed'), first: 'failed', rerun: 'failed' },
+      { kind: 'flaky', test: result('z', 'failed'), first: 'passed', rerun: 'failed' },
     ]);
+  });
+
+  it('counts a test as passed if any case passed, whatever its skipped cases', () => {
+    const rerun = [result('s', 'failed'), result('k', 'failed')];
+    const skippedFirst = [result('s', 'skipped'), result('s', 'passed')];
+    const skippedLast = [result('k', 'passed'), result('k', 'skipped')];
+    expect(judgeTests([...skippedFirst, ...skippedLast], rerun)).toEqual([
+      { kind: 'flaky', test: result('k', 'failed'), first: 'passed', rerun: 'failed' },
+      { kind: 'flaky', test: result('s', 'failed'), first: 'passed', rerun: 'failed' },
+    ]);
+  });
+
+  it('orders the verdicts by test id', () => {
+    const verdicts = judgeTests(
+      [result('m', 'failed'), result('c', 'passed'), result('b', 'failed')],
+      [result('m', 'failed'), result('c', 'failed'), result('b', 'failed')],
+    );
+    expect(verdicts.map((verdict) => verdict.test.id)).toEqual(['b', 'c', 'm']);
+  });
+
+  it('ignores a test the first run only skipped', () => {
+    expect(judgeTests([result('s', 'skipped')], [result('s', 'failed')])).toEqual([]);
   });
 
   it('ignores tests only the rerun ran', () => {
@@ -137,7 +162,7 @@ describe('testFindings', () => {
   it('reports a test with no file without a location, and one the rerun missed', () => {
     const bare = result('demo::adds', 'failed', { name: 'adds' });
     const missed: TestVerdict = { kind: 'failed', test: bare, first: 'failed', rerun: 'missing' };
-    expect(testFindings([missed])).toEqual([
+    expect(testFindings([missed])).toStrictEqual([
       {
         rule: 'tests/failed',
         message: 'Test "adds" failed, and its rerun did not run it: no message',

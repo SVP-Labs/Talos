@@ -213,6 +213,10 @@ describe('decodeProvenance', () => {
       expect(() => decodeProvenance(response)).toThrow(message);
     }
   });
+
+  it('names its errors as provenance errors', () => {
+    expect(new ProvenanceError('x').name).toBe('ProvenanceError');
+  });
 });
 
 describe('provenanceProblems', () => {
@@ -268,6 +272,9 @@ describe('provenanceProblems', () => {
       subjects: [{ name: packageUrl(PACKAGE, '1.2.0'), sha512: undefined }],
     };
     expect(provenanceProblems(noDigest, expected)).toHaveLength(1);
+    expect(provenanceProblems(noDigest, { ...expected, integrity: 'sha1-abc' })).toEqual([
+      'the digest it attests is not the installed tarball’s',
+    ]);
   });
 
   it('accepts an attested digest in upper case', () => {
@@ -292,6 +299,7 @@ describe('packageUrl and integrityHex', () => {
   it('spells a scoped package as npm attests it', () => {
     expect(packageUrl('@svp-labs/talos', '1.2.0')).toBe('pkg:npm/%40svp-labs/talos@1.2.0');
     expect(packageUrl('semver', '7.7.3')).toBe('pkg:npm/semver@7.7.3');
+    expect(packageUrl('not@scoped', '1.0.0')).toBe('pkg:npm/not@scoped@1.0.0');
   });
 
   it('turns an SRI sha512 into hex', () => {

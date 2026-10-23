@@ -77,61 +77,59 @@ export function parseLuacovStats(text: string): Map<string, Map<number, number>>
   return files;
 }
 
-/** luacov's exclusion patterns, translated from Lua patterns with its fixups applied. */
-const ALWAYS = [
-  '',
-  'end[,; )]*',
-  'else',
-  'repeat',
-  'do',
-  'if',
-  'then',
-  'while t do',
-  'if t then',
-  'local x',
-  'local x ?= ?',
-  'local x ?, ?x[x, ]*',
-  'local x ?, ?x[x, ]* ?= ?',
-  'local function x',
+/**
+ * luacov's exclusion patterns, translated from Lua patterns with its fixups applied: each matches
+ * a whole line's skeleton, spaces around it allowed. Lua's `.` matches any byte, a line break too.
+ */
+const ALWAYS_EXCLUDED: readonly RegExp[] = [
+  /^ *$/,
+  /^ *end[,; )]*$/,
+  /^ *else *$/,
+  /^ *repeat *$/,
+  /^ *do *$/,
+  /^ *if *$/,
+  /^ *then *$/,
+  /^ *while t do *$/,
+  /^ *if t then *$/,
+  /^ *local x *$/,
+  /^ *local x ?= ? *$/,
+  /^ *local x ?, ?x[x, ]*$/,
+  /^ *local x ?, ?x[x, ]* ?= ? *$/,
+  /^ *local function x *$/,
 ];
 
-const WHEN_NOT_HIT = [
-  "[ntfx0',= ]+,",
-  '\\{ ?\\} ?,',
-  "\\[? ?[ntfx0']+ ?\\]? ?= ?.+[,;]",
-  "\\[? ?[ntfx0']+ ?\\]? ?= ?function",
-  "\\[? ?[ntfx0']+ ?\\]? ?= ?[ (]*'",
-  'return function',
-  'function',
-  '[ntfx0]',
-  "''",
-  '\\{ ?\\}',
-  "x ?[\\[.]? ?[ntfx0']* ?\\]?",
-  'local x ?= ?function',
-  "local x ?= ?[ (]*'",
-  'local x ?= ? ?\\( ?[ (]*',
-  'local x ?, ?x[x, ]* ?= ? ?\\( ?[ (]*',
-  'local x ?= ?n',
-  "x ?[\\[.]? ?[ntfx0']* ?\\]? ?= ?[ (]*'",
-  "x ?[\\[.]? ?[ntfx0']* ?\\]? ?= ?function",
-  '\\} ?,',
-  '\\} ?, ?function',
-  'break',
-  '\\{',
-  '\\}?[ )]*',
-  "[ntf0']+ ?\\}[ )]*",
-  'goto [A-Za-z0-9_]+',
-  '::[A-Za-z0-9_]+::',
+const EXCLUDED_WHEN_NOT_HIT: readonly RegExp[] = [
+  /^[ntfx0',= ]+, *$/,
+  /^ *\{ ?\} ?, *$/,
+  /^ *\[? ?[ntfx0']+ ?\]? ?= ?.+[,;] *$/s,
+  /^ *\[? ?[ntfx0']+ ?\]? ?= ?function *$/,
+  /^ *\[? ?[ntfx0']+ ?\]? ?= ?[ (]*' *$/,
+  /^ *return function *$/,
+  /^ *function *$/,
+  /^ *[ntfx0] *$/,
+  /^ *'' *$/,
+  /^ *\{ ?\} *$/,
+  /^ *x ?[[.]? ?[ntfx0']* ?\]? *$/,
+  /^ *local x ?= ?function *$/,
+  /^ *local x ?= ?[ (]*' *$/,
+  /^ *local x ?= {0,2}\([ (]*$/,
+  /^ *local x ?, ?x[x, ]*= {0,2}\([ (]*$/,
+  /^ *local x ?= ?n *$/,
+  /^ *x ?[[.]? ?[ntfx0']* ?\]? ?= ?[ (]*' *$/,
+  /^ *x ?[[.]? ?[ntfx0']* ?\]? ?= ?function *$/,
+  /^ *\} ?, *$/,
+  /^ *\} ?, ?function *$/,
+  /^ *break *$/,
+  /^ *\{ *$/,
+  /^(?: *\})?[ )]*$/,
+  /^ *[ntf0']+ ?\}[ )]*$/,
+  /^ *goto \w+ *$/,
+  /^ *::\w+:: *$/,
 ];
 
-/** Lua's `.` matches any byte, a line break included. */
-function exclusions(patterns: readonly string[]): RegExp {
-  const alternatives = patterns.map((pattern) => `(?:${pattern})`).join('|');
-  return new RegExp(`^ *(?:${alternatives}) *$`, 's');
+function excluded(patterns: readonly RegExp[], skeleton: string): boolean {
+  return patterns.some((pattern) => pattern.test(skeleton));
 }
-
-const ALWAYS_EXCLUDED = exclusions(ALWAYS);
-const EXCLUDED_WHEN_NOT_HIT = exclusions(WHEN_NOT_HIT);
 
 const KEYWORDS = new Map<string, string>([
   ['nil', 'n'],
@@ -199,7 +197,7 @@ export class LineScanner {
     }
     if (!this.enabled) return [true, true];
     const skeleton = this.buffer.join('');
-    return [ALWAYS_EXCLUDED.test(skeleton), EXCLUDED_WHEN_NOT_HIT.test(skeleton)];
+    return [excluded(ALWAYS_EXCLUDED, skeleton), excluded(EXCLUDED_WHEN_NOT_HIT, skeleton)];
   }
 
   private at(pattern: RegExp): RegExpExecArray | null {

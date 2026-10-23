@@ -22,4 +22,7 @@ patchedDependencies:
 overrides:
   markdownlint-cli2>markdown-it: 15.0.3
   markdownlint-cli2>smol-toml: 1.9.1
+  # micromark-extension-math asks for katex 0.16, and no 0.16 release has the fix; markdownlint
+  # loads it for the math syntax only, never rendering with katex.
+  micromark-extension-math>katex: 0.18.2
   typed-rest-client>qs: 6.16.1

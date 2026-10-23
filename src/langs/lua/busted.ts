@@ -13,6 +13,7 @@ import {
 import { type Bound, bind, chunks, failed, runScript, runTree } from './run.js';
 import { LCOV_SCRIPT } from './scripts/lcov.js';
 import type { CheckContext } from '../../core/check.js';
+import { escapeXml, unescapeXml } from '../../core/xml.js';
 import type { RawTestRun, TestRequest, TestRunner } from '../../quality/protocol.js';
 
 const TWO_HOURS = 2 * 60 * 60 * 1000;
@@ -67,15 +68,6 @@ export function bustedArgs(plan: BustedPlan): string[] {
   ];
 }
 
-function escapeAttribute(text: string): string {
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll("'", '&#39;')
-    .replaceAll('"', '&quot;');
-}
-
 /**
  * busted names a test's class after its file, as `dir.file_spec_lua:line` (the file name's dots
  * made underscores), which can't be read back alone; matched against the files it ran, it can.
@@ -93,10 +85,10 @@ export function specOf(classname: string, specs: readonly string[]): string | un
 export function withFiles(xml: string, specs: readonly string[]): string {
   return xml.replaceAll(/<testcase\b[^>]*>/g, (tag) => {
     const classname = /\bclassname=(['"])(.*?)\1/.exec(tag)?.[2];
-    const spec = classname === undefined ? undefined : specOf(classname, specs);
+    const spec = classname === undefined ? undefined : specOf(unescapeXml(classname), specs);
     if (spec === undefined || /\bfile=/.test(tag)) return tag;
     const end = tag.endsWith('/>') ? tag.length - 2 : tag.length - 1;
-    return `${tag.slice(0, end)} file='${escapeAttribute(spec)}'${tag.slice(end)}`;
+    return `${tag.slice(0, end)} file='${escapeXml(spec)}'${tag.slice(end)}`;
   });
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { declaredRuntimes, isDeclaringFile } from './declarations.js';
 import {
   dockerfileDeclarations,
   globalArgs,
@@ -199,5 +200,24 @@ describe('dockerfileDeclarations', () => {
   it('spans a FROM written over several lines', () => {
     const [first] = dockerfileDeclarations('Dockerfile', 'FROM \\\n  denoland/deno:alpine-2.1.4\n');
     expect(first).toMatchObject({ runtime: 'deno', line: 1, endLine: 2, version: '2.1.4' });
+  });
+});
+
+describe('which files are Dockerfiles', () => {
+  it('reads the container files Docker and Podman name, in their case', () => {
+    const named = ['dockerfile', 'ops/Containerfile.dev', 'api.Containerfile', 'web.dockerfile'];
+    expect(named.filter((path) => !isDeclaringFile(path))).toEqual([]);
+  });
+
+  it('never reads a source file named after one', () => {
+    const files = new Map([
+      ['src/checks/runtime/dockerfile.ts', "const text = 'FROM php:5.6.0';\n"],
+      ['src/checks/runtime/dockerfile.test.ts', 'FROM node:0.10.0\n'],
+      ['Containerfile', 'FROM php:8.4.26-fpm\n'],
+    ]);
+    expect([...files.keys()].map((path) => isDeclaringFile(path))).toEqual([false, false, true]);
+    expect(declaredRuntimes(files).map((d) => `${d.file}:${d.runtime}`)).toEqual([
+      'Containerfile:php',
+    ]);
   });
 });

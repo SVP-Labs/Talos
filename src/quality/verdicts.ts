@@ -27,7 +27,7 @@ export type TestVerdict = {
   readonly rerun: 'passed' | 'failed' | 'missing';
 };
 
-type Summary = { readonly state: 'passed' | 'failed' | 'skipped'; readonly result: TestResult };
+type Summary = { readonly state: 'passed' | 'failed'; readonly result: TestResult };
 
 function isFailure(status: TestStatus): boolean {
   return status === 'failed' || status === 'errored';
@@ -40,12 +40,8 @@ function summarise(results: readonly TestResult[]): Map<string, Summary> {
     const known = summaries.get(result.id);
     if (isFailure(result.status)) {
       if (known?.state !== 'failed') summaries.set(result.id, { state: 'failed', result });
-    } else if (result.status === 'passed') {
-      if (known === undefined || known.state === 'skipped') {
-        summaries.set(result.id, { state: 'passed', result });
-      }
-    } else if (known === undefined) {
-      summaries.set(result.id, { state: 'skipped', result });
+    } else if (result.status === 'passed' && known === undefined) {
+      summaries.set(result.id, { state: 'passed', result });
     }
   }
   return summaries;

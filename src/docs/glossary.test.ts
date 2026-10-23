@@ -41,6 +41,13 @@ describe('avoided words', () => {
     ]);
   });
 
+  it('reads avoided words as written, pattern characters and all', () => {
+    const own = parseGlossary('**Term**\nAvoid: c++, a.b, (x)\n');
+    expect(avoidedWords(own, 'C++ and a.b, not axb or abc++; (X) too').map((h) => h.index)).toEqual(
+      [0, 8, 31],
+    );
+  });
+
   it('reads identifiers as words, and reports where in the line', () => {
     expect(codeWords('aLandingStrip_x')).toEqual({
       text: 'a Landing Strip x',

@@ -5,6 +5,7 @@ import {
   RUST_ATTRIBUTES,
 } from './suppression-rules.js';
 import { commentsIn, SOURCE_GLOBS } from '../../docs/comments/index.js';
+import { isDockerfile } from '../infra/files.js';
 
 /** One suppression: the directive's kind, its 1-based line, and what it does. */
 export type Suppression = {
@@ -17,8 +18,7 @@ type CommentText = { readonly line: number; readonly text: string };
 
 const PYTHON = /\.pyi?$/;
 const POWERSHELL = /\.ps[dm]?1$/i;
-const HASH_COMMENTED =
-  /(?:^|\/)(?:Dockerfile|Containerfile)(?:\.[^/]*)?$|\.(?:dockerfile|ya?ml|toml)$/i;
+const HASH_CONFIGS = /\.(?:ya?ml|toml)$/i;
 const MARKDOWN = /\.(?:md|markdown)$/i;
 
 /** Source code, container files, workflows and configs, and docs. */
@@ -73,7 +73,7 @@ function markdownComments(text: string): CommentText[] {
 }
 
 function commentsOf(file: string, text: string): CommentText[] {
-  if (HASH_COMMENTED.test(file)) return hashComments(text);
+  if (isDockerfile(file) || HASH_CONFIGS.test(file)) return hashComments(text);
   if (MARKDOWN.test(file)) return markdownComments(text);
   return sourceComments(file, text);
 }

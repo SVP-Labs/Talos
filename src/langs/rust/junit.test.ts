@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { describe, expect, it } from 'vitest';
 import { parseDoctests } from './doctests.js';
 import { junitXml, withFiles } from './junit.js';
+import { parseXml } from '../../quality/xml.js';
 
 /** Recorded from cargo-nextest 0.9.148's JUnit output, trimmed. */
 const NEXTEST = `<?xml version="1.0" encoding="UTF-8"?>
@@ -61,6 +62,23 @@ describe('withFiles', () => {
     expect(xml).toContain('<testcase name="adds" classname="demo-core::api"');
     expect(() => parser.parse(xml) as unknown).not.toThrow();
   });
+
+  it('reads attributes in either quote, escaped, by their whole name', () => {
+    const xml = [
+      '<testsuites><testsuite name="s">',
+      `<testcase rename="no" name='a &lt;b&gt; &amp; &quot;c&quot;' classname = "bin"/>`,
+      '<testcase name="placed" classname="bin" file="src/x.rs"/>',
+      '</testsuite></testsuites>',
+    ].join('\n');
+    const asked: { readonly binary: string; readonly name: string }[] = [];
+    const out = withFiles(xml, (test) => {
+      asked.push(test);
+      return "src/it's & co.rs";
+    });
+    expect(asked).toEqual([{ binary: 'bin', name: 'a <b> & "c"' }]);
+    expect(out).toContain('<testcase file="src/it&apos;s &amp; co.rs" rename="no"');
+    expect(out).toContain('<testcase name="placed" classname="bin" file="src/x.rs"/>');
+  });
 });
 
 describe('parseDoctests', () => {
@@ -104,5 +122,15 @@ describe('junitXml', () => {
       'c',
     ]);
     expect(xml).toContain('<failure message="it&apos;s broken"/>');
+  });
+
+  it("keeps a failure's lines and drops what XML can't hold", () => {
+    const xml = junitXml('doctests', [
+      { name: 'a', classname: 'doctests', file: 'src/lib.rs', failure: 'one\n\u001B[31m two' },
+    ]);
+    const parsed = parseXml(xml, 'JUnit', []) as {
+      testsuites: { testsuite: { testcase: { failure: { '@_message': string } } } };
+    };
+    expect(parsed.testsuites.testsuite.testcase.failure['@_message']).toBe('one\n\uFFFD[31m two');
   });
 });

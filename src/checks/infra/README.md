@@ -8,8 +8,14 @@ repository has files for it.
 | ------------------ | --------------------------- | ----------------------------------------------------------------------- | ------------------------------------------- |
 | `infra/shell`      | shellcheck                  | `*.sh`, `*.bash`, and extensionless files whose shebang names a shell   | `shellcheck/SC<code>`                       |
 | `infra/powershell` | PSScriptAnalyzer, in `pwsh` | `*.ps1`, `*.psm1`, `*.psd1`, but `PSScriptAnalyzerSettings.psd1`        | `psscriptanalyzer/<rule>`, parse errors too |
-| `infra/dockerfile` | hadolint                    | `Dockerfile`, `Containerfile`, `Dockerfile.*`, `*.dockerfile`           | `hadolint/DL<code>`, `hadolint/SC<code>`    |
+| `infra/dockerfile` | hadolint                    | Dockerfiles and Containerfiles, by the names below                      | `hadolint/DL<code>`, `hadolint/SC<code>`    |
 | `infra/workflows`  | actionlint, zizmor          | `.github/workflows/*.yml`, every `action.yml`, `.github/dependabot.yml` | `actionlint/<kind>`, `zizmor/<audit>`       |
+
+A Dockerfile is named as Docker and Podman name one, in their case: `Dockerfile` (or Docker's
+`dockerfile`) and `Containerfile`, either with a suffix (`Dockerfile.prod`), or a name with one as
+its extension (`api.Dockerfile`, `api.dockerfile`, `api.Containerfile`). A source file such as
+`dockerfile.ts` is not one, nor is an ignore file such as `Dockerfile.dockerignore`. The runtime
+pack reads the same files, and Semgrep's Dockerfile rules run when the repository has one.
 
 Every tool comes from `tools.lock`, PSScriptAnalyzer included (its PowerShell Gallery package,
 imported by path). `pwsh` itself must be on `PATH`, as it is on GitHub's runners; without it

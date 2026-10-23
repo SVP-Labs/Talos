@@ -16,7 +16,10 @@ export type ExecResult = {
   readonly stderr: string;
 };
 
-/** Runs a program without a shell; never throws for a non-zero exit, only when it can't start. */
+/**
+ * Runs a program without a shell (see `invocation`); never throws for a non-zero exit, only when
+ * it can't start or can't be given its arguments.
+ */
 export type Exec = (
   command: string,
   args: readonly string[],
@@ -39,8 +42,8 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Windows starts `npx` or `pnpm` only through their `.cmd` shims, which `spawn` won't find
- * without a shell; this finds the shim on PATH so no shell is ever needed.
+ * Windows starts `npx` or `pnpm` only through their `.cmd` shims, which `spawn` won't find on
+ * PATH by their bare names; this finds the shim, which `invocation` then hands to cmd.exe.
  */
 async function resolveCommand(
   command: string,
@@ -59,25 +62,85 @@ async function resolveCommand(
   return command;
 }
 
-function needsShell(command: string): boolean {
-  return process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
+/** The longest command cmd.exe reads. */
+const CMD_LIMIT = 8191;
+
+/** A `%` written so no name follows it: `%%` reads as one `%`, then `%cd:~,%` as nothing. */
+const PERCENT = '%%cd:~,%';
+
+/** Whether cmd.exe can carry a character in an argument: other control characters end its line. */
+function passable(char: string): boolean {
+  return char === '\t' || (char.codePointAt(0) ?? 0) >= 0x20;
 }
 
-function quoteForCmd(arg: string): string {
-  return /[\s"&|<>^]/.test(arg) ? `"${arg.replaceAll('"', '""')}"` : arg;
+/**
+ * One word of a batch program's command line, in double quotes so cmd reads `& | < > ( ) ^ , ; =`
+ * and spaces inside it as text. A quote inside it is doubled, which leaves cmd's quoting where
+ * it was however many times the line is read (a batch file passing `%*` on reads it again), and
+ * which the C runtime reads back as one quote; backslashes are doubled where they come before a
+ * quote, as the C runtime reads them. Each `%` is cut off from the text after it, so cmd
+ * expands no `%name%` in it.
+ */
+function batchWord(word: string, index: number, command: string): string {
+  let out = '"';
+  let backslashes = 0;
+  for (const char of word) {
+    if (!passable(char)) {
+      throw new ExecError(
+        `${command}: cmd.exe can't pass argument ${String(index)} to a batch program, as it holds a line break or a control character`,
+      );
+    }
+    if (char === '"') out += `${'\\'.repeat(backslashes)}""`;
+    else out += char === '%' ? PERCENT : char;
+    backslashes = char === '\\' ? backslashes + 1 : 0;
+  }
+  return `${out}${'\\'.repeat(backslashes)}"`;
+}
+
+/**
+ * The command cmd.exe runs for a batch program, as `/s /c` takes it: in quotes, the program and
+ * each argument quoted as one word that cmd never reads as syntax.
+ */
+export function batchCommand(command: string, args: readonly string[]): string {
+  const words = [command, ...args].map((word, index) => batchWord(word, index, command));
+  const line = `"${words.join(' ')}"`;
+  if (line.length > CMD_LIMIT) {
+    throw new ExecError(
+      `${command}: a command line of ${String(line.length)} characters is longer than cmd.exe's ${String(CMD_LIMIT)}`,
+    );
+  }
+  return line;
+}
+
+type Invocation = { readonly file: string; readonly args: string[]; readonly verbatim: boolean };
+
+/**
+ * How a program starts: directly, with no shell, except a batch program on Windows, which only
+ * cmd.exe can run. cmd.exe gets no AutoRun commands (`/d`), command extensions on (`/e:on`, for
+ * the `%` guard), `!name!` expansion off (`/v:off`), and the quoted command as written (`/s /c`).
+ */
+export function invocation(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): Invocation {
+  if (platform !== 'win32' || !/\.(?:bat|cmd)$/i.test(command)) {
+    return { file: command, args: [...args], verbatim: false };
+  }
+  const shell = process.env.ComSpec ?? 'cmd.exe';
+  const switches = ['/d', '/e:on', '/v:off', '/s', '/c'];
+  return { file: shell, args: [...switches, batchCommand(command, args)], verbatim: true };
 }
 
 export const exec: Exec = async (command, args, options) => {
   const env = { ...process.env, ...options.env };
-  const resolved = await resolveCommand(command, env);
-  const shell = needsShell(resolved);
-  const argv = shell ? args.map(quoteForCmd) : [...args];
+  const run = invocation(await resolveCommand(command, env), args);
   return new Promise((resolve, reject) => {
-    const child = spawn(shell ? quoteForCmd(resolved) : resolved, argv, {
+    const child = spawn(run.file, run.args, {
       cwd: options.cwd,
       env,
-      shell,
       windowsHide: true,
+      windowsVerbatimArguments: run.verbatim,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const stdout: Buffer[] = [];

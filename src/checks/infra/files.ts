@@ -85,12 +85,26 @@ export async function shellScripts(root: string, files: readonly string[]): Prom
   return [...namedShellScripts(files), ...found].sort((a, b) => a.localeCompare(b));
 }
 
+/** The names Docker and Podman look for: `Dockerfile`, Docker's `dockerfile`, `Containerfile`. */
+const CONTAINER_FILE = /^(?:Dockerfile|dockerfile|Containerfile)$/;
+/** One of them with a suffix: `Dockerfile.prod`, `Containerfile.dev`. */
+const SUFFIXED = /^(?:Dockerfile|Containerfile)\../;
+/** A name with one as its extension: `api.Dockerfile`, `api.dockerfile`, `api.Containerfile`. */
+const EXTENSION = /.\.(?:Dockerfile|dockerfile|Containerfile|containerfile)$/;
+
+/**
+ * Whether a path is a Dockerfile or a Containerfile, named as Docker and Podman name them, in
+ * their case: a source file such as `dockerfile.ts` is not one, nor is an ignore file such as
+ * `Dockerfile.dockerignore`.
+ */
+export function isDockerfile(path: string): boolean {
+  const name = posix.basename(path);
+  if (name.endsWith('.dockerignore')) return false;
+  return CONTAINER_FILE.test(name) || SUFFIXED.test(name) || EXTENSION.test(name);
+}
+
 export function dockerfiles(files: readonly string[]): string[] {
-  return files.filter((file) => {
-    const name = posix.basename(file);
-    if (/\.dockerignore$/i.test(name)) return false;
-    return /^(docker|container)file(\..+)?$/i.test(name) || /\.(docker|container)file$/i.test(name);
-  });
+  return files.filter((file) => isDockerfile(file));
 }
 
 export function powershellFiles(files: readonly string[]): string[] {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { lowers, type Rustflags, splitLintFlags } from './cargo-config.js';
 import { BASE_LINTS, isLevel, type Level, weakerThan } from './lints.js';
 import type { Finding } from '../../core/finding.js';
+import { setsKey } from '../../core/literal.js';
 
 type Table = Readonly<Record<string, unknown>>;
 
@@ -16,10 +17,6 @@ export function tableAt(root: unknown, path: readonly string[]): Table | undefin
   return isTable(value) ? value : undefined;
 }
 
-function escape(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
 /** The 1-based line that sets `key` (after `header`, when given), else the header's, else 1. */
 export function lineOf(text: string, key: string, header?: string): number {
   const lines = text.split(/\r?\n/);
@@ -30,8 +27,7 @@ export function lineOf(text: string, key: string, header?: string): number {
           0,
           lines.findIndex((l) => l.trim() === header),
         );
-  const pattern = new RegExp(String.raw`^\s*["']?${escape(key)}["']?\s*=`);
-  const index = lines.findIndex((line, i) => i >= start && pattern.test(line));
+  const index = lines.findIndex((line, i) => i >= start && setsKey(line, key, '='));
   if (index >= 0) return index + 1;
   return header === undefined || start === 0 ? 1 : start + 1;
 }

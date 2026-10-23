@@ -27,6 +27,16 @@ describe('commit subjects', () => {
     ]);
   });
 
+  it('read the prefix as written, and want text after the colon', () => {
+    expect(subjectFindings(commit('[A+-12]: Add the claim'), 'A+', 12, glossary)).toEqual([]);
+    const rules = (subject: string) =>
+      subjectFindings(commit(subject), 'A+', 12, glossary).map((f) => f.rule);
+    expect(rules('[AA-12]: Add the claim')).toEqual(['commit/subject']);
+    expect(rules('[A+-12]:Add the claim')).toEqual(['commit/subject']);
+    expect(rules('[A+-12]: ')).toEqual(['commit/subject']);
+    expect(rules('[A+-x]: Add the claim')).toEqual(['commit/subject']);
+  });
+
   it("refuse the glossary's avoided words", () => {
     const [hit] = subjectFindings(commit('[T-12]: Close the task'), 'T', 12, glossary);
     expect(hit?.message).toContain('"Ticket"');
@@ -41,5 +51,14 @@ describe('commit subjects', () => {
     expect(ticketOf('T-12', 'T')).toBe(12);
     expect(ticketOf('feature/x', 'T')).toBeUndefined();
     expect(ticketOf(undefined, 'T')).toBeUndefined();
+    expect(ticketOf('T-12x', 'T')).toBeUndefined();
+    expect(ticketOf('XT-12', 'T')).toBeUndefined();
+    expect(ticketOf('T-', 'T')).toBeUndefined();
+  });
+
+  it('read a prefix with pattern characters as written', () => {
+    expect(ticketOf('A.B-3', 'A.B')).toBe(3);
+    expect(ticketOf('AxB-3', 'A.B')).toBeUndefined();
+    expect(ticketOf('T-3', 'T|X')).toBeUndefined();
   });
 });
