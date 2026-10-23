@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { workflowReferenceSchema } from '../github/rulesets.js';
 import { assetsDir } from '../version/self.js';
 
 /**
@@ -98,12 +99,7 @@ export function channelRulesetName(channel: Channel): string {
   return `talos-${channel}`;
 }
 
-const workflowRefSchema = z.object({
-  path: z.string(),
-  repository_id: z.number().int(),
-  ref: z.string().optional(),
-  sha: z.string().optional(),
-});
+const workflowRefSchema = workflowReferenceSchema;
 const workflowsParameters = z.object({ workflows: z.array(workflowRefSchema).min(1) });
 const statusChecksParameters = z.object({
   strict_required_status_checks_policy: z.boolean(),

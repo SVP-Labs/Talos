@@ -13,7 +13,7 @@ export type SpanQuestion = {
  * Runs in the component's own Node with its own TypeScript (resolved from its root): for each
  * position, the last line of the innermost function whose code contains it, or null.
  */
-export const SPAN_SCRIPT = String.raw`
+const SPAN_SCRIPT = String.raw`
 const ts = require('typescript');
 const fs = require('node:fs');
 const asks = JSON.parse(fs.readFileSync(0, 'utf8'));

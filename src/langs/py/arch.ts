@@ -13,9 +13,10 @@ import {
   universalConfig,
 } from './importlinter.js';
 import { devOnlyDistributions, devOnlyModules } from './lock.js';
-import { componentDir, fileExists, inRepo, pythonFiles } from './paths.js';
+import { pythonFiles } from './paths.js';
 import { type Bound, runTool, tail } from './run.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inRepo } from '../../core/component.js';
 import type { Finding, Location } from '../../core/finding.js';
 
 /** The file a module lives in, repository-relative, among the component's Python files. */

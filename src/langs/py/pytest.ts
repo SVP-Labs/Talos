@@ -1,8 +1,8 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { componentDir, fileExists, inComponent } from './paths.js';
 import { type Bound, bind, failed, runTool } from './run.js';
 import type { CheckContext } from '../../core/check.js';
+import { componentDir, fileExists, inComponent } from '../../core/component.js';
 import type { RawTestRun, TestRequest, TestRunner } from '../../quality/protocol.js';
 
 /**

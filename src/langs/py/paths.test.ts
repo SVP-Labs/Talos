@@ -1,8 +1,9 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fromTool, inComponent, inRepo, isTestPath, pythonFiles, venvTool } from './paths.js';
+import { fromTool, isTestPath, pythonFiles, venvTool } from './paths.js';
 import { parseConfig } from '../../config/load.js';
 import { EngineError } from '../../core/check.js';
+import { inComponent, inRepo } from '../../core/component.js';
 import { repoFacts } from '../../repo/facts.js';
 import { tempRepo } from '../../testing/engine.js';
 

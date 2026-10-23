@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { compiled, toFinding } from './compile.js';
 import { DEAD_CODE } from './lint.js';
 import { dependencyLine, parseMachete, type Unused } from './machete.js';
-import { componentDir, inComponent, isInside, relativeTo } from './paths.js';
+import { isInside, relativeTo } from './paths.js';
 import { type Bound, failed, runIn } from './run.js';
+import { componentDir, inComponent } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 /**

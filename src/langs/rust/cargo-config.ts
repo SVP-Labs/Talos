@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
-import type { Place } from './paths.js';
 import type { ApplyContext } from '../../core/check.js';
+import type { Place } from '../../core/component.js';
 
 /** A `rustflags` setting in one of the repository's `.cargo/config.toml` files. */
 export type Rustflags = {

@@ -24,7 +24,7 @@ function escapeRegex(text: string): string {
 }
 
 /** An `exclude` entry (a path or a glob) as an anchored regular expression. */
-export function excludeRegex(entry: string): string {
+function excludeRegex(entry: string): string {
   const body = escapeRegex(entry)
     .replaceAll('**', '\0')
     .replaceAll('*', '[^/]*')

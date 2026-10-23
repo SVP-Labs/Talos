@@ -2,9 +2,6 @@ import { posix } from 'node:path';
 import type { ApplyContext, Component } from '../../core/check.js';
 import { underRoot } from '../../repo/facts.js';
 
-export const TS_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts'] as const;
-export const JS_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs'] as const;
-
 const CODE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const JAVASCRIPT = /\.(?:[cm]?js|jsx)$/;
 

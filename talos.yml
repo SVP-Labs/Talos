@@ -2,7 +2,7 @@ name: Talos
 prefix: TL
 components:
   - { lang: ts, root: ., os: [linux, windows] }
-exclude: [test-projects]
+exclude: [test-projects, src/version/fixtures]
 mutation:
   - src/core/compare.ts
   - src/core/fingerprint.ts

@@ -1,0 +1,7 @@
+on: push
+permissions: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest # zizmor: ignore[unpinned-images]
+    steps:
+      - run: echo ok

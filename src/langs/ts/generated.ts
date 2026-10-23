@@ -5,7 +5,7 @@ import { mapInChunks } from './node.js';
 import { GENERATED_MARKER } from '../../configs/header.js';
 
 /** Whether a file's first lines carry the generated-file marker (any pack's). */
-export async function carriesMarker(path: string): Promise<boolean> {
+async function carriesMarker(path: string): Promise<boolean> {
   const handle = await open(path, 'r').catch(() => undefined);
   if (handle === undefined) return false;
   try {

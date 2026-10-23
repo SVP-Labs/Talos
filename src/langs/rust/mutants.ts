@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { workspace } from './metadata.js';
-import { componentDir, fileExists, inComponent, relativeTo } from './paths.js';
+import { relativeTo } from './paths.js';
 import { bind, cargoTool, failed, HOUR, pathWith } from './run.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inComponent } from '../../core/component.js';
 import type { MutationRunner, Report } from '../../quality/protocol.js';
 
 /**

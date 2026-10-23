@@ -83,7 +83,7 @@ export function statusOf(verdict: Verdict): GateStatus {
   return verdict.blocking.length > 0 ? 'red' : 'green';
 }
 
-export const EXIT = { green: 0, findings: 1, engine: 2, usage: 3 } as const;
+const EXIT = { green: 0, findings: 1, engine: 2, usage: 3 } as const;
 
 export function exitCode(verdict: Verdict): number {
   if (verdict.faults.length > 0) return EXIT.engine;

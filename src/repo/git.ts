@@ -45,18 +45,6 @@ export async function showFile(repo: Git, sha: string, path: string): Promise<st
   }
 }
 
-export async function commitSubject(repo: Git, sha: string): Promise<string> {
-  return (await repo.run(['log', '-1', '--format=%s', sha])).trim();
-}
-
 export async function addWorktree(repo: Git, sha: string, directory: string): Promise<void> {
   await repo.run(['worktree', 'add', '--force', '--detach', directory, sha]);
-}
-
-export async function removeWorktree(repo: Git, directory: string): Promise<void> {
-  await repo.run(['worktree', 'remove', '--force', directory]);
-}
-
-export async function diffText(repo: Git, from: string, to: string): Promise<string> {
-  return repo.run(['diff', '--no-color', '--no-ext-diff', '-U0', '-M', from, to]);
 }

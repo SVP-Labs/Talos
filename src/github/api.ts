@@ -11,7 +11,7 @@ export class GitHubError extends Error {
   }
 }
 
-export type RequestOptions = {
+type RequestOptions = {
   readonly body?: unknown;
   readonly accept?: string;
   /** Resolves to `undefined` instead of throwing on 404. */

@@ -2,21 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_COGNITIVE, parseComplexipySarif } from './complexipy.js';
 import { ruffConfigFile } from './configs.js';
-import {
-  componentDir,
-  fileExists,
-  fromTool,
-  inComponent,
-  inRepo,
-  isTestPath,
-  pythonFiles,
-} from './paths.js';
+import { fromTool, isTestPath, pythonFiles } from './paths.js';
 import { parseRuffJson, sentence } from './ruff.js';
 import { failed, runTool, type ToolContext } from './run.js';
 import { sizeFindings } from './sizes.js';
 import { type FileSpans, type FunctionSpan, readSpans } from './spans.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inComponent, inRepo } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 type Lint = ToolContext & Pick<CheckContext, 'facts'>;

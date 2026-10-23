@@ -3,11 +3,11 @@ import { generatedJsonNote } from '../../configs/header.js';
 import { renderFlatJson } from '../../configs/json.js';
 import type { Generated } from '../../core/pack.js';
 
-export const JSCPD_CONFIG = '.jscpd.json';
+const JSCPD_CONFIG = '.jscpd.json';
 
 /** The smallest repetition that counts: 50 tokens spanning at least 5 lines. */
-export const MIN_TOKENS = 50;
-export const MIN_LINES = 5;
+const MIN_TOKENS = 50;
+const MIN_LINES = 5;
 
 function trimSlashes(entry: string): string {
   let end = entry.length;
@@ -43,9 +43,9 @@ export function renderJscpdBase(version: string, exclude: readonly string[]): st
   });
 }
 
-/** What the gate passes jscpd: the thresholds alone, since it names every file to compare. */
-export function gateSettings(): string {
-  return renderFlatJson({ minTokens: MIN_TOKENS, minLines: MIN_LINES });
+/** What the gate passes jscpd: the thresholds and every file to compare, by absolute path. */
+export function gateSettings(paths: readonly string[]): string {
+  return JSON.stringify({ minTokens: MIN_TOKENS, minLines: MIN_LINES, path: paths });
 }
 
 export const jscpdBase: Generated = {

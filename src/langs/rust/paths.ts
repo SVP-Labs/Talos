@@ -1,16 +1,13 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import type { ApplyContext, Component } from '../../core/check.js';
 import {
-  componentDir,
-  componentOf,
-  fileExists,
-  inComponent,
-  inRepo,
-  type Place,
-} from '../../core/component.js';
+  APPLIES,
+  type Applicability,
+  type ApplyContext,
+  type Component,
+  skip,
+} from '../../core/check.js';
+import { componentOf, inComponent } from '../../core/component.js';
 import { underRoot } from '../../repo/facts.js';
-
-export { componentDir, fileExists, inComponent, inRepo, type Place };
 
 export function component(ctx: { readonly component?: Component }): Component {
   return componentOf(ctx, 'rust');
@@ -50,4 +47,8 @@ export function isTestPath(path: string): boolean {
     .split('/')
     .slice(0, -1)
     .some((part) => TEST_DIRS.has(part));
+}
+
+export function hasRust(ctx: Pick<ApplyContext, 'facts' | 'component'>): Applicability {
+  return rustFiles(ctx).length > 0 ? APPLIES : skip('the component has no Rust files');
 }

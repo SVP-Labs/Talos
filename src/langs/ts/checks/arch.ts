@@ -32,7 +32,7 @@ const cruise = z.object({
 });
 
 export type Cruise = z.infer<typeof cruise>;
-export type Violation = z.infer<typeof violation>;
+type Violation = z.infer<typeof violation>;
 
 export function parseCruise(json: unknown): Cruise {
   const parsed = cruise.safeParse(json);

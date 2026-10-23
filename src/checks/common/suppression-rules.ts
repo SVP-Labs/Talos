@@ -14,11 +14,11 @@ function uncovers(directive: string): string {
   return `\`${directive}\` hides code from coverage: test it instead.`;
 }
 
-function unformats(directive: string, tool: string): string {
+function formatterSkips(directive: string, tool: string): string {
   return `\`${directive}\` keeps ${tool} from formatting this code: let it format it.`;
 }
 
-function unmutates(directive: string, tool: string): string {
+function mutationSkips(directive: string, tool: string): string {
   return `\`${directive}\` keeps ${tool} from mutating this code: test it so its mutants die.`;
 }
 
@@ -64,7 +64,7 @@ const JS: readonly Directive[] = [
   {
     kind: 'prettier-ignore',
     pattern: /^prettier-ignore(?:-start)?\b/,
-    message: unformats('prettier-ignore', 'Prettier'),
+    message: formatterSkips('prettier-ignore', 'Prettier'),
   },
   {
     kind: 'type-coverage-ignore',
@@ -74,13 +74,17 @@ const JS: readonly Directive[] = [
   {
     kind: 'stryker-disable',
     pattern: /^Stryker\s+disable\b/i,
-    message: unmutates('Stryker disable', 'Stryker'),
+    message: mutationSkips('Stryker disable', 'Stryker'),
   },
 ];
 
 /** Python tools, read from comments. */
 const PYTHON: readonly Directive[] = [
-  { kind: 'noqa', pattern: /(?:^|[\s#:])noqa\b/i, message: silences('noqa', 'Ruff') },
+  {
+    kind: 'noqa',
+    pattern: /(?:^|#\s*)(?:(?:ruff|flake8):\s*)?noqa\b/i,
+    message: silences('noqa', 'Ruff'),
+  },
   {
     kind: 'type-ignore',
     pattern: /(?:^|#\s*)type:\s*ignore\b/,
@@ -109,12 +113,12 @@ const PYTHON: readonly Directive[] = [
   {
     kind: 'pragma-no-mutate',
     pattern: /^pragma:\s*no\s+mutate\b/,
-    message: unmutates('pragma: no mutate', 'mutmut'),
+    message: mutationSkips('pragma: no mutate', 'mutmut'),
   },
   {
     kind: 'fmt-off',
     pattern: /(?:^|#\s*)fmt:\s*(?:off|skip)\b/,
-    message: unformats('fmt: off', 'Ruff'),
+    message: formatterSkips('fmt: off', 'Ruff'),
   },
   {
     kind: 'pylint-disable',
@@ -123,7 +127,7 @@ const PYTHON: readonly Directive[] = [
   },
 ];
 
-/** PHP tools, read from comments and docblocks. */
+/** PHP tools, read from comments and doc comments. */
 const PHP: readonly Directive[] = [
   {
     kind: 'phpstan-ignore',
@@ -153,7 +157,7 @@ const PHP: readonly Directive[] = [
   {
     kind: 'infection-ignore',
     pattern: /^@infection-ignore-all\b/,
-    message: unmutates('@infection-ignore-all', 'Infection'),
+    message: mutationSkips('@infection-ignore-all', 'Infection'),
   },
 ];
 
@@ -172,7 +176,7 @@ const LUA: readonly Directive[] = [
   {
     kind: 'stylua-ignore',
     pattern: /^stylua:\s*ignore\b/,
-    message: unformats('stylua: ignore', 'StyLua'),
+    message: formatterSkips('stylua: ignore', 'StyLua'),
   },
   { kind: 'luacov-disable', pattern: /^luacov:\s*disable\b/, message: uncovers('luacov: disable') },
 ];
@@ -214,11 +218,15 @@ const ANY: readonly Directive[] = [
     message:
       'A `cspell:` comment silences the spell checker: fix the word or add it to the word list.',
   },
-  { kind: 'nosemgrep', pattern: /\bnosemgrep\b/, message: silences('nosemgrep', 'Semgrep') },
+  {
+    kind: 'nosemgrep',
+    pattern: /(?:^|#\s*)nosemgrep\b/,
+    message: silences('nosemgrep', 'Semgrep'),
+  },
   { kind: 'nosonar', pattern: /\bNOSONAR\b/, message: silences('NOSONAR', "Sonar's rules") },
   {
     kind: 'nosec',
-    pattern: /(?:^|\s)#?nosec\b/,
+    pattern: /(?:^#?|#\s*)nosec\b/,
     message: silences('nosec', 'the security linter'),
   },
   {
@@ -228,7 +236,7 @@ const ANY: readonly Directive[] = [
   },
   {
     kind: 'allowlist-secret',
-    pattern: /\bpragma:\s*allowlist\s+(?:nextline\s+)?secret\b/,
+    pattern: /(?:^|#\s*)pragma:\s*allowlist\s+(?:nextline\s+)?secret\b/,
     message: hidesSecret('pragma: allowlist secret', 'the secret scanners'),
   },
 ];
@@ -267,7 +275,7 @@ export const RUST_ATTRIBUTES: readonly Directive[] = [
   {
     kind: 'rustfmt-skip',
     pattern: new RegExp(String.raw`${ATTRIBUTE}rustfmt::skip\b`),
-    message: unformats('#[rustfmt::skip]', 'rustfmt'),
+    message: formatterSkips('#[rustfmt::skip]', 'rustfmt'),
   },
   {
     kind: 'coverage-off',
@@ -277,7 +285,7 @@ export const RUST_ATTRIBUTES: readonly Directive[] = [
   {
     kind: 'mutants-skip',
     pattern: new RegExp(String.raw`${ATTRIBUTE}mutants::skip\b`),
-    message: unmutates('#[mutants::skip]', 'cargo-mutants'),
+    message: mutationSkips('#[mutants::skip]', 'cargo-mutants'),
   },
 ];
 

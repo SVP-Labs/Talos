@@ -10,7 +10,7 @@ export type CommitFacts = {
 const MAX_SUBJECT = 72;
 const DEPENDABOT = /^\d+\+dependabot\[bot\]@users\.noreply\.github\.com$|^support@dependabot\.com$/;
 
-export function isDependabot(commit: CommitFacts): boolean {
+function isDependabot(commit: CommitFacts): boolean {
   return DEPENDABOT.test(commit.authorEmail);
 }
 

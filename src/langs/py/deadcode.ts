@@ -2,9 +2,10 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { pyprojectTool } from './configs.js';
-import { componentDir, fromTool, pythonFiles } from './paths.js';
+import { fromTool, pythonFiles } from './paths.js';
 import { sentence } from './ruff.js';
 import { type Bound, failed, runTool } from './run.js';
+import { componentDir } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 /** vulture's own codes, which its `# noqa` comments name. */

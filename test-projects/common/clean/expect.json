@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "common/duplication",
+    "common/suppressions",
+    "common/custom-commit",
+    "common/custom-head"
+  ],
+  "clean": true
+}

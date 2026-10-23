@@ -4,6 +4,7 @@ import { type LiveRuleset, readRulesets } from './rulesets-api.js';
 import { type GitHub, GitHubError } from '../github/api.js';
 import { readFileAt } from '../github/contents.js';
 import type { Identities } from '../github/identities.js';
+import { propertyValuesSchema } from '../github/repos.js';
 
 /** Where the caller lives in every governed repository. */
 export const CALLER_PATH = '.github/workflows/talos.yml';
@@ -51,12 +52,6 @@ export type RepoState = {
 
 const refSchema = z.object({ object: z.object({ sha: z.string() }) });
 const listingSchema = z.array(z.object({ path: z.string(), type: z.string() }));
-const propertyValuesSchema = z.array(
-  z.object({
-    property_name: z.string(),
-    value: z.union([z.string(), z.array(z.string()), z.null()]),
-  }),
-);
 
 async function workflowFiles(
   gh: GitHub,

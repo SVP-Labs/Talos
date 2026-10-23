@@ -68,7 +68,7 @@ function isGateRun(
  * The newest gate run on a commit. A PR can add a workflow of its own that uploads an artifact
  * called `talos-verdict`, so a run counts only when its workflow file is Talos's gate.
  */
-export async function gateRunOn(
+async function gateRunOn(
   gh: GitHub,
   repo: string,
   sha: string,
@@ -108,7 +108,8 @@ export async function prFindings(
   });
   if (text === undefined) return unknown;
   const verdict = verdictSchema.safeParse(JSON.parse(text));
-  if (!verdict.success)
-    {return { ...unknown, error: 'the gate run left a verdict Talos cannot read' };}
+  if (!verdict.success) {
+    return { ...unknown, error: 'the gate run left a verdict Talos cannot read' };
+  }
   return { ...verdict.data, repo, pr, head, run: runId };
 }

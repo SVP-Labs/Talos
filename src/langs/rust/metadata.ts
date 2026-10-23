@@ -1,8 +1,9 @@
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { componentDir, relativeTo } from './paths.js';
+import { relativeTo } from './paths.js';
 import { type Bound, cargo, failed } from './run.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir } from '../../core/component.js';
 
 /** One Cargo target: a library, a binary, an integration test, a bench, an example. */
 export type Target = {

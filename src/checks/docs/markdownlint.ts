@@ -40,7 +40,8 @@ function inlineObject(value: Readonly<Record<string, unknown>>): string {
  * on, and the line length is the kit's.
  */
 export function renderMarkdownlintBase(version: string, exclude: readonly string[]): string {
-  const ignores = ['**/node_modules/**', ...excludeGlobs(exclude)];
+  // A PR template is a form of HTML comments to fill in, not a document.
+  const ignores = ['**/node_modules/**', '**/pull_request_template.md', ...excludeGlobs(exclude)];
   return [
     generatedHeader('//', version).trimEnd(),
     "// markdownlint's rules for every Markdown file, lines up to 100 outside tables and code.",

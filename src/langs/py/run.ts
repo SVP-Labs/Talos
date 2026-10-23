@@ -1,8 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { component, componentDir, type Place, venvTool } from './paths.js';
+import { component, venvTool } from './paths.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, type Place } from '../../core/component.js';
 import { failed, tail } from '../../core/component.js';
 import type { ExecResult } from '../../exec/exec.js';
 

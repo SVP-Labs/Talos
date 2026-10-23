@@ -122,8 +122,6 @@ function entry(change: FileChange): [string, FileChange] {
   return [change.path, change];
 }
 
-export const NO_CHANGES: ChangeSet = { files: new Map() };
-
 /** Whether a finding's lines are among those the change added or changed. */
 export function touches(changes: ChangeSet, location: Location | undefined): boolean {
   if (location === undefined) return false;
@@ -132,8 +130,4 @@ export function touches(changes: ChangeSet, location: Location | undefined): boo
   if (change.status === 'added') return true;
   const end = location.endLine ?? location.line;
   return change.added.some((r) => r.start <= end && location.line <= r.end);
-}
-
-export function changedPaths(changes: ChangeSet): string[] {
-  return [...changes.files.keys()];
 }

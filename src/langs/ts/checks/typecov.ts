@@ -2,11 +2,9 @@ import { join, posix, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { type Check, type CheckContext, EngineError, skip, APPLIES } from '../../../core/check.js';
 import type { Finding, Policy } from '../../../core/finding.js';
+import { reachesTypeFloor } from '../../../quality/index.js';
 import { fullTestsHere, inComponent, rootOf, TEST_GLOBS, tsconfigs } from '../files.js';
 import { nodeTool, parseJson, runTool, tail } from '../node.js';
-
-/** Per mille: 99.5% of a package's identifiers in shipped code are typed. */
-const FLOOR_PER_MILLE = 995;
 
 const report = z.object({
   correctCount: z.number(),
@@ -26,7 +24,7 @@ const report = z.object({
 export type TypeCoverage = z.infer<typeof report>;
 
 export function atFloor(coverage: Pick<TypeCoverage, 'correctCount' | 'totalCount'>): boolean {
-  return coverage.correctCount * 1000 >= coverage.totalCount * FLOOR_PER_MILLE;
+  return reachesTypeFloor(coverage.correctCount, coverage.totalCount);
 }
 
 /**

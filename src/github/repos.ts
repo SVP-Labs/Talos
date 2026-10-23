@@ -3,6 +3,11 @@ import type { GitHub } from './api.js';
 
 const propertyValue = z.union([z.string(), z.array(z.string()), z.null()]);
 
+/** `GET repos/{repo}/properties/values`: each custom property's value on a repository. */
+export const propertyValuesSchema = z.array(
+  z.object({ property_name: z.string(), value: propertyValue }),
+);
+
 const repositorySchema = z.object({
   id: z.number().int(),
   full_name: z.string(),

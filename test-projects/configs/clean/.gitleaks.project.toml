@@ -1,0 +1,4 @@
+# This project's additions to .gitleaks.toml: rules of its own, each with its own allowlist.
+# It keeps gitleaks' default rules: it disables none and adds no global allowlist.
+[extend]
+useDefault = true

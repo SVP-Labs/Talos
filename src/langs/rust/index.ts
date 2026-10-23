@@ -5,44 +5,18 @@ import { install } from './install.js';
 import { lint } from './lint.js';
 import { mutantsRunner } from './mutants.js';
 import { nextestRunner } from './nextest.js';
-import { rustFiles } from './paths.js';
+import { hasRust } from './paths.js';
 import { type Bound, bind } from './run.js';
 import { strength } from './strength.js';
 import { toolchain } from './toolchain.js';
 import { types } from './types.js';
-import {
-  APPLIES,
-  type ApplyContext,
-  type Applicability,
-  type Check,
-  skip,
-  type Tier,
-} from '../../core/check.js';
-import type { Finding } from '../../core/finding.js';
+import { type Check } from '../../core/check.js';
+import { componentCheck, type ComponentCheckSpec } from '../../core/component.js';
 import type { Pack } from '../../core/pack.js';
 import { mutationChecks, testChecks } from '../../quality/index.js';
 
-function hasRust(ctx: ApplyContext): Applicability {
-  return rustFiles(ctx).length > 0 ? APPLIES : skip('the component has no Rust files');
-}
-
-type Spec = {
-  readonly name: string;
-  readonly tier: Tier;
-  readonly title: string;
-  readonly run: (ctx: Bound) => Promise<Finding[]>;
-};
-
-function check(spec: Spec): Check {
-  return {
-    id: `rust/${spec.name}`,
-    tier: spec.tier,
-    scope: 'component',
-    langs: ['rust'],
-    title: spec.title,
-    applies: hasRust,
-    run: (ctx) => spec.run(bind(ctx)),
-  };
+function check(spec: ComponentCheckSpec<Bound>): Check {
+  return componentCheck('rust', bind, hasRust, spec);
 }
 
 const own: Check[] = [

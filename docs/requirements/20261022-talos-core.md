@@ -384,7 +384,8 @@ for an hour, and its private key is an org secret that never reaches Thea's hub.
 are switched on, it reviews and submits a real APPROVE or REQUEST_CHANGES; everywhere, it
 publishes `talos/review` (C16) as a check run, which the ruleset requires from that App alone.
 It also runs on `merge_group` and posts its verdict on the queue's merge commit, since a
-required check must report there too or the merge queue stalls. Events from an App start workflows, so Thea's push
+required check must report there too or the merge queue stalls. Events from an App start
+workflows, so Thea's push
 starts the gate and the reviewer's review reaches Thea as an event; the two-round limit still
 stops loops. This reverses ENGINEERING §2.4's "no GitHub App, no PAT".
 
@@ -536,7 +537,8 @@ whose key is an environment secret restricted to the Talos repository's `main`.
 whose ruleset runs in Evaluate mode: the gate runs and its results show on the Rule Insights
 dashboard without blocking anything. Nothing enforces `talos/review` in that phase either, and
 Thea arms auto-merge on every PR she marks ready (C14), so while a repository is at
-`evaluate`, a second repository ruleset that `govern` writes requires the owner's approval. It is a code-owner rule,
+`evaluate`, a second repository ruleset that `govern` writes requires the owner's approval. It
+is a code-owner rule,
 with `CODEOWNERS` naming only the owner (`* @SvenPGH`), because reports disagree on whether an
 App's APPROVE counts toward a plain approval count; if `talos-reviewer`'s did, Thea's PRs would
 auto-merge on a bot's word. A code owner can't be an App, so only the owner counts:
@@ -556,7 +558,8 @@ auto-merge on a bot's word. A code owner can't be an App, so only the owner coun
 
 `OrganizationAdmin` has a bypass with `bypass_mode: "pull_request"` on that second ruleset
 only, so the owner's own PRs merge without a self-approval, while the merge-queue ruleset (C14)
-has no bypass at all and the owner's PRs still go through the queue. In this phase Thea's PRs need the owner's
+has no bypass at all and the owner's PRs still go through the queue. In this phase Thea's PRs
+need the owner's
 approval on GitHub; a card can't stand in for it, since only `talos/review` reads `talos-approve`
 reviews and nothing enforces `talos/review` yet. Once the repository is green,
 `talos govern --channel` moves its property to `canary` or `stable`, whose rulesets are Active,
@@ -603,10 +606,12 @@ leaves the old backlog alone until someone rewrites an issue in the ticket forma
    - `talos check --json` before each push, and on every squashed commit at ready (C20);
    - approval cards as `talos-approve` COMMENT reviews, with the card as the only code path
      that submits reviews and every other GitHub-writing tool refusing that marker (C16);
-   - arming auto-merge when a PR is marked ready (C14), the queue's own daily budget (C13), and the new
+   - arming auto-merge when a PR is marked ready (C14), the queue's own daily budget (C13), and
+     the new
      events (C20).
 
    Without these, the next step stalls.
+
 3. Thea: every row of `docs/development/checks.md` maps to a Talos check. `ci.yml` and
    `mutation.yml` go; `desktop.yml` keeps only the installer build and release. The ~1,270
    decision citations in comments become findings in the debt list. Activating the ruleset also
@@ -741,25 +746,25 @@ finds and edited by hand afterwards. Changes to it need the owner (C16).
 ```yaml
 name: Thea
 prefix: T
-components:                       # one per language and root; os defaults to linux
+components: # one per language and root; os defaults to linux
   - { lang: ts, root: . }
   - { lang: rust, root: apps/desktop, os: [linux, windows] }
-exclude: []                       # committed generated or vendored code (LoreLock: [app])
+exclude: [] # committed generated or vendored code (LoreLock: [app])
 tests:
-  full: [apps/web/e2e]            # runs at the PR's head; every other test runs per commit
-services:                         # started by the gate; images pinned by digest
-  postgres: { image: "pgvector/pgvector:pg17@sha256:…", env: { POSTGRES_USER: thea } }
-setup: .github/talos-setup.sh     # one project script, run before the checks
+  full: [apps/web/e2e] # runs at the PR's head; every other test runs per commit
+services: # started by the gate; images pinned by digest
+  postgres: { image: 'pgvector/pgvector:pg17@sha256:…', env: { POSTGRES_USER: thea } }
+setup: .github/talos-setup.sh # one project script, run before the checks
 mutation: [packages/shared/src/risk, apps/hub/src/gate.ts]
 size: .size-limit.json
-licences: { MPL-2.0: lightningcss, OFL-1.1: Geist fonts }   # beyond the org allowlist, with reasons
+licences: { MPL-2.0: lightningcss, OFL-1.1: Geist fonts } # beyond the org allowlist, with reasons
 docs: { glossary: docs/glossary.md, briefs: docs/requirements }
 protected: [packages/shared/src/risk/**, apps/hub/src/gate.ts]
-checks: {}                        # custom checks (C19)
+checks: {} # custom checks (C19)
 agents: { max_claims: 2 }
-supply_chain:                     # C27; every entry has a reason and an expiry
-  allow: {}                       # young releases, e.g. "pkg@1.2.3": { reason: "…", expires: 2026-10-30 }
-  exceptions: {}                  # advisories, e.g. "GHSA-xxxx-xxxx-xxxx": { reason: "…", expires: 2026-11-15 }
+supply_chain: # C27; every entry has a reason and an expiry
+  allow: {} # young releases, e.g. "pkg@1.2.3": { reason: "…", expires: 2026-10-30 }
+  exceptions: {} # advisories, e.g. "GHSA-xxxx-xxxx-xxxx": { reason: "…", expires: 2026-11-15 }
 ```
 
 Tool options stay in the C10 extension files and architecture rules in the tools' own syntax
@@ -782,7 +787,7 @@ on:
   issues:
   issue_comment:
   pull_request_review:
-  schedule: [{ cron: "17 3 * * *" }]
+  schedule: [{ cron: '17 3 * * *' }]
   workflow_dispatch:
 ```
 
@@ -947,6 +952,7 @@ Dependabot alerts (C29), which her G8 already turns into events.
     code-owner ruleset with its bypass.
 
   Where GitHub's API doesn't expose a setting, `govern` prints the manual step instead.
+
 - **`talos adopt`** writes files and labels issues, and touches no repository setting, so Thea
   can run it: `talos.yml`, the generated configs,
   `CLAUDE.md`, the issue forms, the labels, the brief and issue #1, in one bootstrap PR. It
@@ -1002,7 +1008,7 @@ repository to keep).
 
 ### C31 · `talos status`: state is queried, never remembered
 
-*Added 2026-10-23.*
+_Added 2026-10-23._
 
 **Decision:** `talos status --json` returns each governed repository's current state as one
 compact object (`talos.status/1`): its channel, whether `main` is green or red (the gate's last
@@ -1017,7 +1023,7 @@ do), or per-repository lookups she assembles herself (each costs her context).
 
 ### C32 · Events carry enough to act on
 
-*Added 2026-10-23.*
+_Added 2026-10-23._
 
 **Decision:** every event C20 adds names the repository and the PR and carries its findings
 summarised, so one event leads to one decision without loading anything else:
@@ -1036,7 +1042,7 @@ summarised, so one event leads to one decision without loading anything else:
 
 ### C33 · Agent-facing output is compact
 
-*Added 2026-10-23.*
+_Added 2026-10-23._
 
 **Decision:** every Talos command an agent runs has a `--json` form that prints capped JSON:
 lists cut at a fixed length with a total, messages clipped, and never a tool's raw output, which
@@ -1048,7 +1054,7 @@ output, such as repository listings and CI logs).
 
 ### C34 · Less memory, not more
 
-*Added 2026-10-23.*
+_Added 2026-10-23._
 
 **Decision:** lasting things (the owner's decisions and preferences, what each project is for)
 stay Thea's core memory entries. Anything Talos can answer at any time (which PRs are open, what

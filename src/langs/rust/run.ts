@@ -1,6 +1,7 @@
 import { delimiter, dirname } from 'node:path';
-import { component, componentDir, type Place } from './paths.js';
+import { component } from './paths.js';
 import type { CheckContext } from '../../core/check.js';
+import { componentDir, type Place } from '../../core/component.js';
 import { failed, tail } from '../../core/component.js';
 import type { Exec, ExecResult } from '../../exec/exec.js';
 

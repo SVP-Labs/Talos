@@ -12,6 +12,7 @@ export default mergeConfig(
         '**/.stryker-tmp/**',
         '**/.talos/**',
         'test-projects/**',
+        'src/version/fixtures/**',
       ],
       coverage: { provider: 'v8' },
     },

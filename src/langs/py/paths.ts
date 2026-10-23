@@ -1,17 +1,21 @@
 import { access } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
-import { type ApplyContext, type Component, EngineError } from '../../core/check.js';
+import {
+  APPLIES,
+  type Applicability,
+  type ApplyContext,
+  type Component,
+  EngineError,
+  skip,
+} from '../../core/check.js';
 import {
   componentDir,
   componentOf,
-  fileExists,
   inComponent,
   inRepo,
   type Place,
 } from '../../core/component.js';
 import { underRoot } from '../../repo/facts.js';
-
-export { componentDir, fileExists, inComponent, inRepo, type Place };
 
 export function component(ctx: { readonly component?: Component }): Component {
   return componentOf(ctx, 'py');
@@ -66,4 +70,8 @@ export async function venvTool(place: Place, name: string): Promise<string> {
     `${name} is not installed in ${inRepo(place.component.root, '.venv')}: ` +
       'add it to the dev dependencies at the version Talos pins',
   );
+}
+
+export function hasPython(ctx: Pick<ApplyContext, 'facts' | 'component'>): Applicability {
+  return pythonFiles(ctx).length > 0 ? APPLIES : skip('the component has no Python files');
 }

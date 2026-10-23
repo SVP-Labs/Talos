@@ -49,7 +49,14 @@ describe('renderMarkdownlintBase', () => {
     expect(config).toEqual({
       config: MARKDOWNLINT_RULES,
       globs: ['**/*.md'],
-      ignores: ['**/node_modules/**', 'vendor', 'vendor/**', 'app', 'app/**'],
+      ignores: [
+        '**/node_modules/**',
+        '**/pull_request_template.md',
+        'vendor',
+        'vendor/**',
+        'app',
+        'app/**',
+      ],
       gitignore: true,
       noInlineConfig: true,
     });

@@ -1,3 +1,4 @@
+import { listed } from './conditions.js';
 import { isTestPath } from './testfiles.js';
 import type { PullFile } from './types.js';
 import { type FileChange, parseDiff } from '../repo/changes.js';
@@ -161,11 +162,6 @@ function deletedTests(files: readonly PullFile[]): string[] {
 /** Files with changes whose patch GitHub left out: too large to show, so unreadable here. */
 function unreadable(files: readonly PullFile[]): string[] {
   return files.filter((file) => file.patch === undefined && file.changes > 0).map((f) => f.path);
-}
-
-function listed(paths: readonly string[]): string {
-  const shown = paths.slice(0, 3).join(', ');
-  return paths.length > 3 ? `${shown} and ${paths.length - 3} more` : shown;
 }
 
 /**

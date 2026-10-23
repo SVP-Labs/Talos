@@ -1,8 +1,8 @@
 import { compiled, toFinding } from './compile.js';
 import type { Diagnostic } from './diagnostics.js';
-import { inComponent } from './paths.js';
 import type { Bound } from './run.js';
 import { isTestCode, shapeFindings, type Shapes, shapes } from './shapes.js';
+import { inComponent } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 /** Lints rust/deadcode reports instead. */

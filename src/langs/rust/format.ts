@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { renderRustfmt } from './configs.js';
-import { componentDir, inComponent, isInside, relativeTo, rustFiles } from './paths.js';
+import { isInside, relativeTo, rustFiles } from './paths.js';
 import { type Bound, cargo, failed } from './run.js';
+import { componentDir, inComponent } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 /** The lines of one file rustfmt would change, on the file's current side. */

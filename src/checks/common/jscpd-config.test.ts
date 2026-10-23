@@ -26,8 +26,12 @@ describe('the jscpd base', () => {
     expect(await format(text, { ...PRETTIER_OPTIONS, parser: 'json' })).toBe(text);
   });
 
-  it('gives the gate the thresholds alone', () => {
-    expect(JSON.parse(gateSettings())).toEqual({ minTokens: 50, minLines: 5 });
+  it('gives the gate the thresholds and the files', () => {
+    expect(JSON.parse(gateSettings(['/r/a.ts']))).toEqual({
+      minTokens: 50,
+      minLines: 5,
+      path: ['/r/a.ts'],
+    });
   });
 
   it('turns exclude entries into globs', () => {

@@ -1,7 +1,7 @@
 import type { Reported } from './finding.js';
 import { type ChangeSet, touches } from '../repo/changes.js';
 
-export type Why = 'new' | 'changed-line' | 'security' | 'lost' | 'existing' | 'info';
+type Why = 'new' | 'changed-line' | 'security' | 'lost' | 'existing' | 'info';
 
 export type Judged = Reported & {
   /** More of this fingerprint at head than at base, and this occurrence is one of the extra. */
@@ -61,9 +61,4 @@ export function judge(
     return { index, judged: { ...finding, isNew, ...verdict(finding, isNew, touched) } };
   });
   return judged.toSorted((a, b) => a.index - b.index).map((entry) => entry.judged);
-}
-
-/** Judges findings with nothing to compare against: every finding counts as new. */
-export function judgeAlone(head: readonly Reported[]): Judged[] {
-  return judge([], head, { files: new Map() });
 }

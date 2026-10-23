@@ -11,7 +11,7 @@ const IDENTITY = [
 ];
 
 /** Runs git in `root`, returning its output. */
-export async function gitIn(root: string, ...args: string[]): Promise<string> {
+async function gitIn(root: string, ...args: string[]): Promise<string> {
   return execOk(exec, 'git', [...IDENTITY, ...args], { cwd: root });
 }
 

@@ -42,7 +42,7 @@ async function exists(path: string): Promise<boolean> {
  * Windows starts `npx` or `pnpm` only through their `.cmd` shims, which `spawn` won't find
  * without a shell; this finds the shim on PATH so no shell is ever needed.
  */
-export async function resolveCommand(
+async function resolveCommand(
   command: string,
   env: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform = process.platform,

@@ -1,5 +1,3 @@
-<!-- markdownlint-disable-file MD041 -->
-
 Closes #
 
 ## Problem

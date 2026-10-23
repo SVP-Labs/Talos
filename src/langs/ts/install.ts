@@ -13,7 +13,7 @@ export type InstallCommand = {
 };
 
 /** Each package manager's lockfile and its install that never changes the lockfile. */
-export const INSTALLS: readonly InstallCommand[] = [
+const INSTALLS: readonly InstallCommand[] = [
   { lockfile: 'pnpm-lock.yaml', command: 'pnpm', args: ['install', '--frozen-lockfile'] },
   { lockfile: 'package-lock.json', command: 'npm', args: ['ci'] },
   { lockfile: 'yarn.lock', command: 'yarn', args: ['install', '--immutable'] },

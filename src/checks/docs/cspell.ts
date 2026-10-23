@@ -39,6 +39,8 @@ export const IGNORED_PATTERNS = [
   '/sha256:[0-9a-f]{64}/g',
   String.raw`/\b[0-9a-f]{40}\b/g`,
   String.raw`/\[[A-Za-z0-9#^-]{8,}\]/g`,
+  // mutmut names a mutant after its function, joined by `ǁ`: an identifier, not prose.
+  '/xǁ[\\wǁ]*/gu',
 ];
 
 const LANGUAGE = 'en,en-GB';

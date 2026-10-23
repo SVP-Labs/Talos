@@ -42,7 +42,7 @@ module.exports = {
   options: {
     ...(project.options ?? {}),
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: String.raw`^(?!.*node_modules/)(?:dist|coverage|\.stryker-tmp|.*/dist|.*/coverage)/|^test-projects(/|$)` },
+    exclude: { path: String.raw`^(?!.*node_modules/)(?:dist|coverage|\.stryker-tmp|.*/dist|.*/coverage)/|^test-projects(/|$)|^src/version/fixtures(/|$)` },
     tsPreCompilationDeps: true,
     combinedDependencies: false,
     enhancedResolveOptions: {

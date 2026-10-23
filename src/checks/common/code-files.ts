@@ -38,12 +38,12 @@ const LANGUAGES: readonly (readonly [format: string, extensions: readonly string
 export const JSCPD_FORMATS: readonly string[] = LANGUAGES.map(([format]) => format);
 
 /** Every file of a language jscpd compares. */
-export const CODE_GLOBS: readonly string[] = [
+const CODE_GLOBS: readonly string[] = [
   `**/*.{${LANGUAGES.flatMap(([, extensions]) => extensions).join(',')}}`,
 ];
 
 /** Tests and what only tests use, by each language's conventions; repeating them is allowed. */
-export const TEST_GLOBS: readonly string[] = [
+const TEST_GLOBS: readonly string[] = [
   '**/{test,tests,spec,specs,e2e,testing,__tests__,__mocks__,fixtures}/**',
   '**/*.{test,spec}.*',
   '**/test_*.py',
@@ -53,7 +53,7 @@ export const TEST_GLOBS: readonly string[] = [
   '**/*_spec.lua',
 ];
 
-/** Laravel's Blade views: markup in PHP files, whose repetition is layout. */
+/** Blade views: markup in PHP files, whose repetition is layout. */
 const TEMPLATE_GLOBS: readonly string[] = ['**/*.blade.php'];
 
 /** What the duplication check never compares, beside `talos.yml`'s `exclude`. */

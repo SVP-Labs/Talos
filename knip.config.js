@@ -8,6 +8,7 @@ export default {
   ...project,
   ignore: [
     'test-projects/**',
+    'src/version/fixtures/**',
     ...(project.ignore ?? []),
   ],
   ignoreDependencies: [

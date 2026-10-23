@@ -1,8 +1,9 @@
 import { parseDoctests } from './doctests.js';
 import type { Case } from './junit.js';
 import { isLibrary, rootDir, type Workspace } from './metadata.js';
-import { componentDir, relativeTo } from './paths.js';
+import { relativeTo } from './paths.js';
 import { type Bound, cargo, HOUR, tail } from './run.js';
+import { componentDir } from '../../core/component.js';
 
 export type DocRun = {
   readonly code: number;

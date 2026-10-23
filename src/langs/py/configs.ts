@@ -2,9 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
-import { componentDir, fileExists, type Place, pythonFiles } from './paths.js';
+import { pythonFiles } from './paths.js';
 import { generatedHeader } from '../../configs/header.js';
 import type { ApplyContext } from '../../core/check.js';
+import { componentDir, fileExists, type Place } from '../../core/component.js';
 import type { Generated } from '../../core/pack.js';
 
 export const RUFF_BASE = 'ruff.talos.toml';

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
@@ -17,7 +17,7 @@ const manifest = z.object({
 });
 
 /** jscpd ships with Talos as a dependency: its launcher script, run with Talos's own Node. */
-export async function jscpdScript(): Promise<string> {
+async function jscpdScript(): Promise<string> {
   let path: string;
   try {
     path = resolveFromTalos.resolve('jscpd/package.json');
@@ -41,9 +41,18 @@ function tail(result: ExecResult): string {
   return `${result.stderr}\n${result.stdout}`.trim().split('\n').slice(-15).join('\n');
 }
 
-async function runJscpd(ctx: CheckContext, files: readonly string[]): Promise<ExecResult> {
+/**
+ * Runs jscpd over the files, absolute, listed in its config rather than on its command line,
+ * which a large repository would overflow. jscpd reads an empty list as the working directory,
+ * so the caller never passes one.
+ */
+async function runJscpd(
+  ctx: CheckContext,
+  root: string,
+  files: readonly string[],
+): Promise<ExecResult> {
   const config = join(ctx.scratch, 'jscpd.json');
-  await writeFile(config, gateSettings());
+  await writeFile(config, gateSettings(files.map((file) => join(root, file))));
   const args = [
     await jscpdScript(),
     '--config',
@@ -57,11 +66,10 @@ async function runJscpd(ctx: CheckContext, files: readonly string[]): Promise<Ex
     '--no-gitignore',
     '--no-colors',
     '--no-tips',
-    ...files,
   ];
   try {
     return await ctx.exec(process.execPath, args, {
-      cwd: ctx.root,
+      cwd: root,
       env: { NO_COLOR: '1', JSCPD_NO_TIPS: '1' },
     });
   } catch (error) {
@@ -73,7 +81,9 @@ async function runJscpd(ctx: CheckContext, files: readonly string[]): Promise<Ex
 async function duplication(ctx: CheckContext): Promise<Finding[]> {
   const files = (await ownTexts(ctx.root, comparedFiles(ctx.facts))).map((text) => text.file);
   if (files.length < 1) return [];
-  const result = await runJscpd(ctx, files);
+  // jscpd reports paths with links resolved, so the checkout's own path is resolved too.
+  const root = await realpath(ctx.root);
+  const result = await runJscpd(ctx, root, files);
   if (result.code !== 0) {
     throw new EngineError(`jscpd exited ${result.code}:\n${tail(result)}`);
   }
@@ -81,7 +91,7 @@ async function duplication(ctx: CheckContext): Promise<Finding[]> {
     () => undefined,
   );
   if (report === undefined) throw new EngineError(`jscpd wrote no report:\n${tail(result)}`);
-  return cloneFindings(report, ctx.root);
+  return cloneFindings(report, root);
 }
 
 export const duplicationCheck: Check = {

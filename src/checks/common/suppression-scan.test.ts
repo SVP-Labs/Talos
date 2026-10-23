@@ -46,7 +46,7 @@ describe('suppressionsIn', () => {
     ]);
   });
 
-  it('finds the Python directives, but not in docstrings', () => {
+  it('finds the Python directives, but not in doc strings', () => {
     const source = [
       'import os  # noqa: F401',
       'x: int = "a"  # type: ignore[assignment]  # noqa',
@@ -61,6 +61,8 @@ describe('suppressionsIn', () => {
       '    """Never write # noqa or type: ignore here."""',
       '# mypy: ignore-errors',
       '# pylint: disable=invalid-name',
+      '# Explains that `# noqa` and `# nosec` are suppressions, and a noqa marker too.',
+      'x = 1  # ruff: noqa: E501',
     ].join('\n');
     expect(kinds('app/m.py', source)).toEqual([
       '1:noqa',
@@ -74,10 +76,11 @@ describe('suppressionsIn', () => {
       '9:nosec',
       '12:mypy-config',
       '13:pylint-disable',
+      '15:noqa',
     ]);
   });
 
-  it('finds the PHP directives in comments and docblocks', () => {
+  it('finds the PHP directives in comments and doc comments', () => {
     const source = [
       '<?php',
       '/** @phpstan-ignore-next-line */',
@@ -156,7 +159,7 @@ describe('suppressionsIn', () => {
     const ps = [
       "[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]",
       'param()',
-      "[System.Diagnostics.CodeAnalysis.suppressmessage('PSUseShouldProcess', '')]",
+      "[System.Diagnostics.CodeAnalysis.suppressMessage('PSUseShouldProcess', '')]",
     ].join('\n');
     expect(kinds('tools/a.ps1', ps)).toEqual(['1:suppress-message', '3:suppress-message']);
     const docker = 'FROM x\n# hadolint ignore=DL3008\nRUN apt-get install -y curl\n';
@@ -194,12 +197,17 @@ describe('suppressionsIn', () => {
     expect(kinds('docs/a.md', doc)).toEqual(['2:markdownlint-disable', '8:prettier-ignore']);
   });
 
-  it('finds the secret scanners in any language, once a line each', () => {
-    const source = 'const key = "abc"; // gitleaks:allow pragma: allowlist secret NOSONAR\n';
+  it('finds the secret scanners and Sonar in any language, once a line each', () => {
+    const source = [
+      'const key = "abc"; // gitleaks:allow gitleaks:allow',
+      'const token = "def"; // pragma: allowlist secret',
+      'run(); // NOSONAR',
+      '// Never add `gitleaks:allow` or a nosemgrep marker.',
+    ].join('\n');
     expect(kinds('src/k.js', source)).toEqual([
-      '1:nosonar',
       '1:gitleaks-allow',
-      '1:allowlist-secret',
+      '2:allowlist-secret',
+      '3:nosonar',
     ]);
     expect(suppressionsIn('src/k.js', '// eslint-disable\n')[0]?.message).toBe(
       '`eslint-disable` silences ESLint: fix what it reports instead.',

@@ -10,7 +10,7 @@ import { type Git, mergeBase, revList, revParse } from '../repo/git.js';
  */
 export type Mode = 'draft' | 'ready' | 'merge-group';
 
-export type RunSpec = { readonly sha: string; readonly tiers: readonly Tier[]; readonly os: Os };
+type RunSpec = { readonly sha: string; readonly tiers: readonly Tier[]; readonly os: Os };
 
 export type GatePlan = {
   readonly mode: Mode;
@@ -35,13 +35,13 @@ const mergeGroupEvent = z.object({
   merge_group: z.object({ base_sha: z.string(), head_sha: z.string(), head_ref: z.string() }),
 });
 
-export function osesOf(config: TalosConfig): Os[] {
+function osesOf(config: TalosConfig): Os[] {
   const all = new Set<Os>(['linux']);
   for (const component of config.components) for (const os of component.os) all.add(os);
   return [...all];
 }
 
-export function runsFor(
+function runsFor(
   range: { mode: Mode; base: string; head: string; commits: readonly string[] },
   oses: readonly Os[],
 ): RunSpec[] {

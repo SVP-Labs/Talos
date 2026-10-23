@@ -7,6 +7,7 @@ import type { Finding, Reported } from '../core/finding.js';
 import { fingerprint, identity } from '../core/fingerprint.js';
 import type { Logger } from '../core/log.js';
 import type { Pack } from '../core/pack.js';
+import { inPool } from '../core/pool.js';
 import type { Outcome, RunResult } from '../core/result.js';
 import type { Exec } from '../exec/exec.js';
 import type { ChangeSet } from '../repo/changes.js';
@@ -44,7 +45,7 @@ export type RunPlan = {
 type Task = { readonly check: Check; readonly component?: Component };
 
 /** Repository-wide checks run once, on Linux; a component's checks on each OS it declares. */
-export function tasksFor(packs: readonly Pack[], plan: RunPlan): Task[] {
+function tasksFor(packs: readonly Pack[], plan: RunPlan): Task[] {
   const wanted = (check: Check): boolean =>
     plan.tiers.includes(check.tier) && (plan.only === undefined || plan.only.includes(check.id));
   return packs.flatMap((pack) =>
@@ -62,7 +63,7 @@ function toPosix(path: string): string {
 }
 
 /** Checks report repository-relative paths; an absolute one under the checkout is made relative. */
-export function repoPath(root: string, file: string): string {
+function repoPath(root: string, file: string): string {
   return toPosix(isAbsolute(file) ? relative(root, file) : file.replace(/^\.\//, ''));
 }
 
@@ -177,25 +178,6 @@ async function runTask(shared: Shared, task: Task): Promise<Outcome> {
   }
 }
 
-async function pool<T, R>(
-  items: readonly T[],
-  limit: number,
-  work: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      const item = items[index] as T;
-      results[index] = await work(item);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
-  return results;
-}
-
 /** Runs every applicable check of the plan's tiers at one checkout; never throws for a check. */
 export async function runChecks(engine: Engine, plan: RunPlan): Promise<RunResult> {
   const scratchRoot = await mkdtemp(join(tmpdir(), `talos-${plan.sha.slice(0, 8)}-`));
@@ -211,7 +193,7 @@ export async function runChecks(engine: Engine, plan: RunPlan): Promise<RunResul
     engine.log.debug(
       `${tasks.length} checks at ${plan.sha.slice(0, 12)} (${plan.tiers.join(', ')})`,
     );
-    const outcomes = await pool(tasks, plan.concurrency ?? 2, async (task) => {
+    const outcomes = await inPool(tasks, plan.concurrency ?? 2, async (task) => {
       const outcome = await runTask(shared, task);
       const at = outcome.component === undefined ? '' : `@${outcome.component}`;
       engine.log.debug(`${outcome.check}${at}: ${outcome.status}`);

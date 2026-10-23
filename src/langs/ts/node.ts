@@ -134,13 +134,6 @@ export function tail(result: ExecResult, lines = 15): string {
   return `${result.stderr}\n${result.stdout}`.trim().split('\n').slice(-lines).join('\n');
 }
 
-/** An engine error for a tool whose output could not be read. */
-export function unreadable(tool: string, result: ExecResult): EngineError {
-  return new EngineError(
-    `${tool} exited ${result.code} without a report Talos can read:\n${tail(result)}`,
-  );
-}
-
 /** Maps in chunks, so reading thousands of files never runs out of file handles. */
 export async function mapInChunks<T, R>(
   items: readonly T[],

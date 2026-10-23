@@ -11,3 +11,15 @@ trustPolicyExclude:
   # Type declarations only, never executed; the 6.x line @types/node 22 wants was
   # published before undici's later releases gained provenance.
   - undici-types@6.21.0
+
+# Stryker's Vitest runner predates Vitest 5, which joins a test's suites with " > "; without this
+# the runner selects no tests for a mutant and every mutant survives. Drop it once a runner
+# release supports Vitest 5.
+patchedDependencies:
+  '@stryker-mutator/vitest-runner@10.0.0': patches/@stryker-mutator__vitest-runner@10.0.0.patch
+
+# Fixed releases of what dev tools pin to vulnerable ones.
+overrides:
+  markdownlint-cli2>markdown-it: 15.0.3
+  markdownlint-cli2>smol-toml: 1.9.1
+  typed-rest-client>qs: 6.16.1

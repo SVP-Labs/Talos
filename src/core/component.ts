@@ -1,6 +1,17 @@
 import { access } from 'node:fs/promises';
 import { join, posix } from 'node:path';
-import { type Component, EngineError, type Lang, type Os } from './check.js';
+import {
+  type Applicability,
+  type ApplyContext,
+  type Check,
+  type CheckContext,
+  type Component,
+  EngineError,
+  type Lang,
+  type Os,
+  type Tier,
+} from './check.js';
+import type { Finding } from './finding.js';
 import type { ExecResult } from '../exec/exec.js';
 
 /** Where a component's tools run: its checkout and the OS it runs on. */
@@ -54,4 +65,30 @@ export function tail(result: ExecResult, lines = 15): string {
 
 export function failed(what: string, result: ExecResult): EngineError {
   return new EngineError(`${what} exited ${result.code}:\n${tail(result)}`);
+}
+
+export type ComponentCheckSpec<B> = {
+  readonly name: string;
+  readonly tier: Tier;
+  readonly title: string;
+  readonly applies?: (ctx: ApplyContext) => Applicability;
+  readonly run: (ctx: B) => Promise<Finding[]>;
+};
+
+/** A language pack's component check, run with its context bound to the component. */
+export function componentCheck<B>(
+  lang: Lang,
+  bind: (ctx: CheckContext) => B,
+  applies: (ctx: ApplyContext) => Applicability,
+  spec: ComponentCheckSpec<B>,
+): Check {
+  return {
+    id: `${lang}/${spec.name}`,
+    tier: spec.tier,
+    scope: 'component',
+    langs: [lang],
+    title: spec.title,
+    applies: spec.applies ?? applies,
+    run: (ctx) => spec.run(bind(ctx)),
+  };
 }

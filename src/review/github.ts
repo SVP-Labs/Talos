@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ClosingIssue, IssueEvent, Pull, PullCommit, PullFile, Review } from './types.js';
 import type { GitHub } from '../github/api.js';
+import { propertyValuesSchema } from '../github/repos.js';
 
 /**
  * The REST and GraphQL reads `talos/review` makes, and the review it submits. Each validates
@@ -135,12 +136,7 @@ export async function listIssueEvents(gh: GitHub, repo: string, n: number): Prom
     }));
 }
 
-const propertySchema = z.array(
-  z.object({
-    property_name: z.string(),
-    value: z.union([z.string(), z.array(z.string()), z.null()]),
-  }),
-);
+const propertySchema = propertyValuesSchema;
 
 /**
  * Whether the repository's `talos-agents` property is on. Read from the properties endpoint,

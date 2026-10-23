@@ -13,6 +13,8 @@ export default {
     'src/core/fingerprint.ts',
     'src/review/conditions.ts',
     'src/version/provenance.ts',
+    'src/quality/verdicts.ts',
+    'src/quality/lines.ts',
   ],
   reporters: ['clear-text', 'progress', 'html', 'json'],
   tempDirName: '.stryker-tmp',

@@ -42,7 +42,7 @@ export function formatTargets(files: readonly string[], root: string): string[] 
     .filter((file) => !(LOCK_FILES as readonly string[]).includes(posix.basename(file)));
 }
 
-export type PrettierError = {
+type PrettierError = {
   readonly file: string;
   readonly line: number;
   readonly column: number;

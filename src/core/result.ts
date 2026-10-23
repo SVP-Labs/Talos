@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Os, Tier } from './check.js';
 import type { Reported } from './finding.js';
 
-export type Status = 'passed' | 'findings' | 'skipped' | 'error';
+type Status = 'passed' | 'findings' | 'skipped' | 'error';
 
 export type Outcome = {
   readonly check: string;
@@ -53,7 +53,7 @@ const outcome = z.object({
   findings: z.array(reported),
 });
 
-export const runResultSchema = z.object({
+const runResultSchema = z.object({
   talos: z.string(),
   sha: z.string(),
   tiers: z.array(z.enum(['commit', 'head'])),

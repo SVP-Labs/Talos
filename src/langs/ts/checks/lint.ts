@@ -21,7 +21,7 @@ const message = z.object({
 
 const report = z.array(z.object({ filePath: z.string(), messages: z.array(message) }));
 
-export type LintProblem = {
+type LintProblem = {
   readonly rule: string;
   readonly message: string;
   readonly file: string;

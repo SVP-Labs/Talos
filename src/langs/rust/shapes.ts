@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
-import { componentDir, inRepo, isTestPath, rustFiles } from './paths.js';
+import { isTestPath, rustFiles } from './paths.js';
 import type { Bound } from './run.js';
 import { type FileShape, MAX_DEPTH, shapeOf, type Span } from './structure.js';
+import { componentDir, inRepo } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 const MAX_FILE_LINES = 400;

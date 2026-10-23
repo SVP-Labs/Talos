@@ -5,9 +5,7 @@ import type { Bound } from './run.js';
 import { scopeFor } from './scope.js';
 import { EngineError } from '../../core/check.js';
 import type { Finding, Policy } from '../../core/finding.js';
-
-/** Per mille: 99.5% of each kind of declaration in shipped code carries a type. */
-const FLOOR_PER_MILLE = 995;
+import { reachesTypeFloor, TYPE_COVERAGE_FLOOR } from '../../quality/index.js';
 
 type Kind = 'param' | 'return' | 'property' | 'constant';
 
@@ -50,7 +48,7 @@ export function untypedFrom(report: PhpstanReport): Untyped[] {
 }
 
 export function atFloor(untyped: Pick<Untyped, 'total' | 'typed'>): boolean {
-  return untyped.typed * 1000 >= untyped.total * FLOOR_PER_MILLE;
+  return reachesTypeFloor(untyped.typed, untyped.total);
 }
 
 const MISSING: Readonly<Record<Kind, string>> = {
@@ -87,7 +85,7 @@ export function typecovFindings(
       rule: `typecov/${u.kind}`,
       message:
         `${MISSING[u.kind]}; ${u.typed} of ${u.total} ${PLURAL[u.kind]} in shipped code ` +
-        `are typed (${percent(u)}%), ${where} the 99.5% floor.`,
+        `are typed (${percent(u)}%), ${where} the ${TYPE_COVERAGE_FLOOR}% floor.`,
       location: { file: toRepo(u.file), line: u.line },
       ...(policy === undefined ? {} : { policy }),
     };

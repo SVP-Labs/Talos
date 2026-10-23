@@ -48,10 +48,10 @@ function parseLine(id: string, root: string, text: string, number: number): Find
   }
   const parsed = reported.safeParse(raw);
   if (!parsed.success) {
+    const problem = z.prettifyError(parsed.error);
+    const expected = '{rule, file, line, message}';
     throw new EngineError(
-      `custom check ${id}: output line ${number} is not {rule, file, line, message}: ${z.prettifyError(
-        parsed.error,
-      )}`,
+      `custom check ${id}: output line ${number} is not ${expected}: ${problem}`,
     );
   }
   const file = insideRepo(root, parsed.data.file);

@@ -145,7 +145,6 @@ export function adoptPlan(input: AdoptInput): AdoptPlan {
   const kept: AdoptInput = { ...input, files: input.files.filter((file) => !leftovers.has(file)) };
   const resolved = resolveConfig(kept);
   const config = resolved.config;
-  const facts = repoFacts(kept.files, config.exclude);
   const scaffold = fromScaffold(input.files, input.read);
   const pins = toolPins(config.components, input.packs, kept.files, input.read);
   const brief = briefFile(input, config);
@@ -153,13 +152,16 @@ export function adoptPlan(input: AdoptInput): AdoptPlan {
     resolved.text === undefined
       ? []
       : [{ path: 'talos.yml', content: resolved.text, why: 'talos.yml' }];
-  const all: PlannedFile[] = [
-    ...talosYml,
-    ...generatedFiles(kept, config, facts),
-    ...kitFiles(kept, config, scaffold),
-    ...pins.files,
-    ...(brief === undefined ? [] : [brief]),
+  const kit = kitFiles(kept, config, scaffold);
+  const rest = [...kit, ...pins.files, ...(brief === undefined ? [] : [brief])];
+  // The files adoption writes decide which generated configs apply, so a rerun plans nothing.
+  const after = [
+    ...new Set(
+      [...kept.files, ...talosYml, ...rest].map((f) => (typeof f === 'string' ? f : f.path)),
+    ),
   ];
+  const generated = generatedFiles(kept, config, repoFacts(after, config.exclude));
+  const all: PlannedFile[] = [...talosYml, ...generated, ...rest];
   const write = changed(input, all);
   return {
     config,

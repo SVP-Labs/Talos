@@ -9,7 +9,7 @@ const summarySchema = z.object({
   source: z.string().optional(),
 });
 
-const workflowReferenceSchema = z.object({
+export const workflowReferenceSchema = z.object({
   path: z.string(),
   repository_id: z.number().int(),
   ref: z.string().optional(),

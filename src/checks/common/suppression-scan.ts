@@ -31,7 +31,7 @@ export const SUPPRESSION_GLOBS: readonly string[] = [
   '**/*.{md,markdown}',
 ];
 
-/** Comments of a language Talos reads; a Python docstring is a string, not a comment. */
+/** Comments of a language Talos reads; a Python doc string is a string, not a comment. */
 function sourceComments(file: string, text: string): CommentText[] {
   const python = PYTHON.test(file);
   return commentsIn(file, text).filter((comment) => !(python && comment.doc));
@@ -72,10 +72,18 @@ function markdownComments(text: string): CommentText[] {
   });
 }
 
-function commentTexts(file: string, text: string): CommentText[] {
+function commentsOf(file: string, text: string): CommentText[] {
   if (HASH_COMMENTED.test(file)) return hashComments(text);
   if (MARKDOWN.test(file)) return markdownComments(text);
   return sourceComments(file, text);
+}
+
+/** Comments with their inline code left out: a directive quoted in prose is not one. */
+function commentTexts(file: string, text: string): CommentText[] {
+  return commentsOf(file, text).map((comment) => ({
+    line: comment.line,
+    text: comment.text.replaceAll(/`[^`]*`/g, ' ').trim(),
+  }));
 }
 
 function attributesFor(file: string): readonly Directive[] {

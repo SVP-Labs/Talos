@@ -69,5 +69,4 @@ export const talosConfigSchema = z.strictObject({
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;
-export type ServiceConfig = z.infer<typeof service>;
 export type ExceptionEntry = z.infer<typeof exception>;

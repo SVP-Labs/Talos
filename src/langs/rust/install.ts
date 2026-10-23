@@ -1,7 +1,7 @@
 import { dirname, join, relative } from 'node:path';
-import { componentDir, fileExists, inRepo } from './paths.js';
 import { HOUR, runIn, tail } from './run.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inRepo } from '../../core/component.js';
 import type { InstallContext } from '../../core/pack.js';
 import { ExecError } from '../../exec/exec.js';
 

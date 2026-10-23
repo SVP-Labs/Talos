@@ -121,6 +121,8 @@ export const base = defineConfig(
       '**/.talos/**',
       'test-projects',
       'test-projects/**',
+      'src/version/fixtures',
+      'src/version/fixtures/**',
       ...(project.ignores ?? []),
     ],
   },

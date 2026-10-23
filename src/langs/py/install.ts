@@ -1,8 +1,8 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { componentDir, fileExists, inRepo } from './paths.js';
 import { tail } from './run.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inRepo } from '../../core/component.js';
 import type { InstallContext } from '../../core/pack.js';
 
 const HOUR = 60 * 60 * 1000;

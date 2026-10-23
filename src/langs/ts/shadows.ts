@@ -13,7 +13,7 @@ import type { Finding } from '../../core/finding.js';
  * Config files a tool would read before (or instead of) the base Talos renders, so an editor
  * or a plain run of the tool would use other settings than the gate.
  */
-export const SHADOWS: Readonly<Record<string, readonly string[]>> = {
+const SHADOWS: Readonly<Record<string, readonly string[]>> = {
   [PRETTIER_CONFIG]: [
     '.prettierrc',
     '.prettierrc.json',

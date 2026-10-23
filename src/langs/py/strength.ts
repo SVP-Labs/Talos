@@ -7,7 +7,7 @@ import {
   RUFF_BASE,
   ruffConfigFile,
 } from './configs.js';
-import { componentDir, inRepo, pythonFiles } from './paths.js';
+import { pythonFiles } from './paths.js';
 import { resolvePyright, weakerComments, weakerPyright } from './pyright-config.js';
 import {
   parseRuffSettings,
@@ -17,6 +17,7 @@ import {
 } from './ruff-settings.js';
 import { type Bound, failed, runTool } from './run.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, inRepo } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 
 function weaker(ctx: Bound, file: string, base: string, w: Weakening): Finding {

@@ -8,11 +8,11 @@ import {
   MUTMUT_REPORT,
   mutmutStatus,
 } from './mutmut-report.js';
-import { componentDir, inComponent } from './paths.js';
 import { type Bound, bind, failed, runTool } from './run.js';
 import { type FileSpans, readSpans } from './spans.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, inComponent } from '../../core/component.js';
 import type { MutationRunner, Report } from '../../quality/protocol.js';
 
 /** mutmut's module name for a component-relative file: dotted, without `src.` or `__init__`. */

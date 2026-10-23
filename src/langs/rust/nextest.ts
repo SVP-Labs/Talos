@@ -4,12 +4,13 @@ import { cargoTests, type DocRun } from './cargo-test.js';
 import { junitXml, withFiles } from './junit.js';
 import { rewriteLcov } from './lcov.js';
 import { type Workspace, workspace } from './metadata.js';
-import { componentDir, fileExists, inComponent, isInside, relativeTo, rustFiles } from './paths.js';
+import { isInside, relativeTo, rustFiles } from './paths.js';
 import { type Bound, bind, cargoTool, HOUR, pathWith, type RunOptions } from './run.js';
 import { isTestCode, shapes } from './shapes.js';
 import { filterFor, testFile } from './testfiles.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, fileExists, inComponent } from '../../core/component.js';
 import type { ExecResult } from '../../exec/exec.js';
 import type { RawTestRun, Report, TestRequest, TestRunner } from '../../quality/protocol.js';
 

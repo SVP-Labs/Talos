@@ -3,7 +3,7 @@ import type { Pack, RenderContext } from '../core/pack.js';
 import { generatedTargets, targetPath } from '../engine/prepare.js';
 
 /** A file to write: repository-relative path and content. */
-export type ConfigFile = { readonly path: string; readonly content: string };
+type ConfigFile = { readonly path: string; readonly content: string };
 
 /** A generated file as this Talos renders it, with the project's extension file of it. */
 export type RenderedConfig = ConfigFile & { readonly extension?: ConfigFile };

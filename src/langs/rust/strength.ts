@@ -4,7 +4,7 @@ import { parse as parseToml } from 'smol-toml';
 import { readRustflags } from './cargo-config.js';
 import { CLIPPY_BASE, CLIPPY_SETTINGS, RUSTFMT_BASE, RUSTFMT_SETTINGS } from './configs.js';
 import { workspace } from './metadata.js';
-import { componentDir, inComponent, relativeTo } from './paths.js';
+import { relativeTo } from './paths.js';
 import { type Bound, failed, runIn } from './run.js';
 import {
   lintTableFindings,
@@ -14,6 +14,7 @@ import {
   tableAt,
 } from './strength-rules.js';
 import { EngineError } from '../../core/check.js';
+import { componentDir, inComponent } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
 import { underRoot } from '../../repo/facts.js';
 

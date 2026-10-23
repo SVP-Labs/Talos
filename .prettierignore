@@ -11,3 +11,4 @@ yarn.lock
 /stryker.config.mjs
 /.prettierignore
 /test-projects
+/src/version/fixtures
