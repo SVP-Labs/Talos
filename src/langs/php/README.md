@@ -42,6 +42,11 @@ the recordings `TALOS_RUNTIME_FEEDS` names). The project's tests and every tool 
 so no check runs on a release with a known hole. Which PHP a project ships is the runtime pack's
 `runtime/runtimes` check.
 
+The gate and the self-test install PHP with setup-php, asking for the cycle the component's
+`composer.json` needs (never older than 8.4) with `update: true`, so the runner takes that cycle's
+newest patch. On the day php.net ships a release, setup-php's package sources can trail it for
+some hours, and the gate's PHP runs end in this engine error until they catch up.
+
 The pinned tools need PHP 8.4 or later (Pest 5, and the Pest plugin for PHPStan).
 
 ## Configs

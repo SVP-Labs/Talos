@@ -94,7 +94,7 @@ describe('every workflow', () => {
         .filter((line) => /^\s*(?:- )?uses:/.test(line));
       expect(uses.length, path).toBeGreaterThan(0);
       for (const line of uses) {
-        expect(line, path).toMatch(/uses: [\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+        expect(line, path).toMatch(/uses: [\w.-]+\/[\w./-]+@[0-9a-f]{40} # v?\d+\.\d+\.\d+$/);
       }
     }
   });

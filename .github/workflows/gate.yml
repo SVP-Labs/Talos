@@ -238,7 +238,7 @@ jobs:
         if: >-
           ${{ steps.cached.outputs.cache-hit != 'true' &&
             contains(fromJSON(needs.plan.outputs.php-oses), matrix.os) }}
-        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # v2.35.5
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ needs.plan.outputs.php-version }}
           coverage: pcov
