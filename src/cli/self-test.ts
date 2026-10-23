@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { cp, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
@@ -82,6 +83,11 @@ export const selfTest: Command = async (argv, io) => {
     true,
   );
   const root = resolve(io.cwd, positionals[0] ?? 'test-projects');
+  // The runtime cases read recorded vendor feeds, so the self-test doesn't drift with the network.
+  const feeds = join(root, 'runtime', 'feeds');
+  if (process.env.TALOS_RUNTIME_FEEDS === undefined && existsSync(feeds)) {
+    process.env.TALOS_RUNTIME_FEEDS = feeds;
+  }
   const engine = createEngine(values.verbose);
   const os = currentOs();
   let failed = 0;
