@@ -39,21 +39,38 @@ Besides these files, `talos adopt` gives a TypeScript component:
 
 ## Checks
 
-| Check                     | Tier         | Tool                                              | Rules                                                               |
-| ------------------------- | ------------ | ------------------------------------------------- | ------------------------------------------------------------------- |
-| `ts/format`               | commit       | `prettier --list-different`                       | `prettier/unformatted`, `prettier/syntax-error`                     |
-| `ts/lint`                 | commit       | `eslint -f json`                                  | `eslint/<rule id>`, `eslint/parse-error`, `eslint/unused-directive` |
-| `ts/types`                | commit       | `tsc --noEmit -p` for each `tsconfig.json`        | `tsc/TS<code>`                                                      |
-| `ts/deadcode`             | commit       | `knip --reporter json`                            | `knip/<issue type>`                                                 |
-| `ts/javascript`           | commit       | none                                              | `ts/javascript`                                                     |
-| `ts/tests`, `ts/coverage` | commit, head | Vitest, through the shared checks                 | see `src/quality/`                                                  |
-| `ts/typecov`              | head         | `type-coverage --strict` per `tsconfig.json`      | `typecov/untyped`                                                   |
-| `ts/arch`                 | head         | `depcruise --output-type json`                    | `depcruise/<rule name>`                                             |
-| `ts/size`                 | head         | `size-limit --json`, when `talos.yml` sets `size` | `size-limit/exceeded`                                               |
-| `ts/e2e`                  | head         | Playwright, for `tests.full` paths it runs        | `playwright/failed`, `e2e/no-axe`                                   |
-| `ts/config-strength`      | head         | `eslint --print-config`, `tsc --showConfig`       | `config/weaker`, `config/shadowed`                                  |
-| `ts/toolchain`            | head         | the installed packages                            | `toolchain/version`                                                 |
-| `ts/mutation`             | head         | Stryker, through the shared check                 | see `src/quality/`                                                  |
+| Check                     | Tier         | Tool                                               | Rules                                                               |
+| ------------------------- | ------------ | -------------------------------------------------- | ------------------------------------------------------------------- |
+| `ts/format`               | commit       | `prettier --list-different`                        | `prettier/unformatted`, `prettier/syntax-error`                     |
+| `ts/lint`                 | commit       | `eslint -f json`                                   | `eslint/<rule id>`, `eslint/parse-error`, `eslint/unused-directive` |
+| `ts/types`                | commit       | `tsc --noEmit -p` for each `tsconfig.json`         | `tsc/TS<code>`                                                      |
+| `ts/deadcode`             | commit       | `knip --reporter json`                             | `knip/<issue type>`                                                 |
+| `ts/javascript`           | commit       | none                                               | `ts/javascript`                                                     |
+| `ts/tests`, `ts/coverage` | commit, head | Vitest, through the shared checks                  | see `src/quality/`                                                  |
+| `ts/typecov`              | head         | `type-coverage --strict` per `tsconfig.json`       | `typecov/untyped`                                                   |
+| `ts/arch`                 | head         | `depcruise --output-type json`                     | `depcruise/<rule name>`                                             |
+| `ts/size`                 | head         | `size-limit --json`, when `talos.yml` sets `size`  | `size-limit/exceeded`                                               |
+| `ts/e2e`                  | head         | Playwright, for `tests.full` paths it runs         | `playwright/failed`, `e2e/no-axe`                                   |
+| `ts/config-strength`      | head         | `eslint --print-config`, `tsc --showConfig`, Talos | `config/weaker`, `config/shadowed`                                  |
+| `ts/toolchain`            | head         | the installed packages                             | `toolchain/version`                                                 |
+| `ts/mutation`             | head         | Stryker, through the shared check                  | see `src/quality/`                                                  |
 
 Complexity findings span the whole function (found with the component's own TypeScript), so
 a change anywhere in a function that is too complex touches it.
+
+### What counts as weaker
+
+`ts/config-strength` compares ESLint's effective rules for one file of each kind with the base's
+alone, and `tsc --showConfig` of each `tsconfig.json` with the base's flags. It reports any
+ESLint ignore `talos.yml` doesn't exclude, the keys of `knip.project.json` that can only hide
+unused code (`rules`, `include`, `exclude`, `ignoreExportsUsedInFile`), a universal
+dependency-cruiser rule that isn't an error or an `includeOnly`, and a file that would shadow a
+base (`config/shadowed`).
+
+The Stryker base spreads `stryker.project.json`, and the mutation runner spreads the base, so
+the check also reports each setting there that never runs a mutant or counts one as killed
+without a test failing: a `testRunner` other than `vitest`, `ignoreStatic`, `ignorers`,
+`checkers`, `mutator.excludedMutations`, a `timeoutMS` below Stryker's 5000 or a `timeoutFactor`
+below its 1.5 (a mutant that times out counts as killed), and `dryRunOnly`. What else the file
+sets (a Vitest config of its own, concurrency, the Vitest runner's options) changes no mutant's
+fate.

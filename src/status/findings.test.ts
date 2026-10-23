@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { prFindings } from './findings.js';
+import { compactVerdict } from '../engine/gate.js';
 import { github, GitHubError } from '../github/api.js';
 import { makeZip } from '../ticket/test/fake-github.js';
 
@@ -152,6 +153,72 @@ describe('prFindings', () => {
       status: 'unknown',
       error: 'the gate run left a verdict Talos cannot read',
     });
+  });
+
+  it('refuses a forged verdict that holds more than Talos prints', async () => {
+    const finding = { sha: SHA, rule: 'r', why: 'new', file: null, line: null, message: 'm' };
+    const red = { ...green, status: 'red', counts: { ...green.counts, blocking: 1 } };
+    const rules = (n: number, length = 2) =>
+      Object.fromEntries(Array.from({ length: n }, (_, i) => [`${i}`.padEnd(length, 'r'), 1]));
+    const odd = (length: number) => '\u0001'.repeat(length);
+    const forged = [
+      { ...green, talos: '1'.repeat(51) },
+      { ...red, blocking: [{ ...finding, rule: 'r'.repeat(101) }] },
+      { ...red, blocking: [{ ...finding, file: 'f'.repeat(301) }] },
+      { ...red, counts: { ...red.counts, byRule: rules(1, 101) } },
+      { ...red, counts: { ...red.counts, byRule: rules(41) } },
+      { ...green, flaky: [{ id: 'i'.repeat(301), file: null }] },
+      { ...green, flaky: [{ id: 'i', file: 'f'.repeat(301) }] },
+      { ...green, faults: [{ sha: SHA, os: 'linux', check: 'c'.repeat(101), reason: '' }] },
+      {
+        ...red,
+        blocking: Array.from({ length: 20 }, () => ({
+          ...finding,
+          rule: odd(100),
+          file: odd(300),
+          message: odd(200),
+        })),
+        flaky: Array.from({ length: 20 }, () => ({ id: odd(300), file: odd(300) })),
+      },
+    ];
+    for (const verdict of forged) {
+      const deps = withArchive(makeZip({ 'verdict.json': JSON.stringify(verdict) }));
+      const answer = await prFindings(deps, 'SVP-Labs/Thea', 5);
+      expect(answer, JSON.stringify(verdict).slice(0, 120)).toEqual({
+        schema: 'talos.verdict/1',
+        status: 'unknown',
+        repo: 'SVP-Labs/Thea',
+        pr: 5,
+        head: 'abc',
+        error: 'the gate run left a verdict Talos cannot read',
+      });
+    }
+  });
+
+  it('passes the largest verdict the gate itself writes', async () => {
+    const odd = (length: number) => '\u0001'.repeat(length);
+    const located = (n: number) => ({
+      rule: `${n}${odd(200)}`,
+      message: odd(500),
+      location: { file: odd(500), line: 1 },
+      check: 'ts/lint',
+      fingerprint: `fp${n}`,
+      policy: 'standard' as const,
+      isNew: true,
+      blocking: true,
+      why: 'new' as const,
+      sha: SHA,
+    });
+    const blocking = Array.from({ length: 60 }, (_, n) => located(n));
+    const flaky = blocking.map((f) => ({ ...f, rule: 'tests/flaky', key: odd(500) }));
+    const written = compactVerdict(
+      { findings: [...blocking, ...flaky], blocking, faults: [] },
+      { talos: '1.4.0', mode: 'ready', base: SHA, head: SHA },
+    );
+    const deps = withArchive(makeZip({ 'verdict.json': JSON.stringify(written, null, 2) }));
+    const answer = await prFindings(deps, 'SVP-Labs/Thea', 5);
+    expect(answer).toEqual({ ...written, repo: 'SVP-Labs/Thea', pr: 5, head: 'abc', run: 4 });
+    expect(Buffer.byteLength(JSON.stringify(answer))).toBeLessThan(64 * 1024);
   });
 
   it("answers with the merge queue's verdict when the queue judged the PR after its head", async () => {

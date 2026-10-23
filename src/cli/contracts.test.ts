@@ -168,6 +168,66 @@ describe('talos.claim/1', () => {
   });
 });
 
+describe('talos.ticket/1', () => {
+  const ticketContract = contract('ticket');
+  const TIP = 'd'.repeat(40);
+  let fake: FakeGitHub;
+
+  beforeEach(() => {
+    fake = governed();
+    fake.refs.set('main', TIP);
+  });
+
+  const hub = (...argv: string[]) => asTheHub(fake, 'ticket', ...argv, '--repo', 'o/r');
+
+  it("describes a claimed ticket, an unclaimed one and an unknown issue, as Thea's hub reads them", async () => {
+    const unclaimed = await hub('status', '7');
+    await hub('claim', '7', '--agent', 'thea');
+    const pull = { isDraft: true, state: 'OPEN', mergeQueueEntry: null };
+    const commits = { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] };
+    fake.graphql = () => ({
+      repository: { pullRequests: { nodes: [{ number: 30, ...pull, commits }] } },
+    });
+    const claimed = await hub('status', '7');
+    const unknown = await hub('status', '99');
+    expect(unclaimed).toMatchObject({
+      code: 0,
+      json: { schema: 'talos.ticket/1', repo: 'o/r', issue: 7, branch: 'R-7', claimed: false },
+    });
+    expect(unclaimed.json).toMatchObject({ agent: null, since: null, lastCommit: null, pr: null });
+    expect(claimed).toMatchObject({
+      code: 0,
+      json: { issue: 7, branch: 'R-7', claimed: true, agent: 'thea', state: 'open' },
+    });
+    expect(claimed.json).toMatchObject({
+      lastCommit: { sha: TIP },
+      pr: { number: 30, stage: 'draft', checks: 'red' },
+    });
+    expect(unknown).toMatchObject({
+      code: 0,
+      json: { issue: 99, branch: 'R-99', state: null, labels: [], claimed: false, agent: null },
+    });
+    for (const { json } of [unclaimed, claimed, unknown]) {
+      expect(ticketContract.safeParse(json).error).toBeUndefined();
+    }
+  });
+
+  it('refuses what the contract rules out', async () => {
+    const { json } = await hub('status', '7');
+    for (const wrong of [
+      { ...json, schema: 'talos.ticket/2' },
+      { ...json, claimed: 'no' },
+      { ...json, agent: '' },
+      { ...json, branch: 'r-7' },
+      { ...json, pr: { number: 30, stage: 'open', checks: 'red' } },
+      { ...json, extra: 1 },
+      Object.fromEntries(Object.entries(json).filter(([key]) => key !== 'agent')),
+    ]) {
+      expect(ticketContract.safeParse(wrong).success, JSON.stringify(wrong)).toBe(false);
+    }
+  });
+});
+
 const MAIN = '1'.repeat(40);
 
 /** `talos status`'s two queries, answered for `o/r`: its state, then its claims' comments. */

@@ -39,8 +39,8 @@ assets/               what Talos writes into repositories: the caller, the pre-p
                       (hooks/pre-push), forms, labels, rulesets, the CLAUDE.md block, patches
 bootstrap/            find-pin.sh, launch.ts and php.sh, which workflows run before Talos is
                       installed
-docs/contracts/       the JSON schemas of talos.verdict/1, talos.status/1, talos.claim/1 and
-                      talos.version/1
+docs/contracts/       the JSON schemas of talos.verdict/1, talos.status/1, talos.claim/1,
+                      talos.ticket/1 and talos.version/1
 test-projects/        a project per check that it must fail on, and clean projects
 .githooks/            Talos's own pre-push, which runs assets/hooks/pre-push with the build at
                       hand
@@ -151,6 +151,10 @@ repository at the pin and runs `bootstrap/launch.ts`, which installs and verifie
    `talos.sarif`, `verdict.json` (`talos.verdict/1`), annotations and the job summary. It
    uploads both files as the artifact `talos-verdict`, even when red. `talos verdict` exits 0
    (green), 1 (findings) or 2 (engine error).
+   A merge commit gets a `commit/merge` finding in place of its subject's, and no comparison of
+   its own. A commit whose parent is outside the range gets none either: only a merge of `main`
+   puts one there, and against the base it would carry `main`'s changes reversed. The head is
+   still compared with the base, their merge base, which stays exact.
 5. `engine (talos <version>)` fails when the verdict exited anything but 0 or 1, including when
    it never ran: a missing result never passes as clean. The channels job counts gate runs and
    engine errors under a release by these two jobs' names.
@@ -315,8 +319,8 @@ talos.adopt/1     talos adopt --json; also talos.govern/1, talos.new/1, talos.or
 
 [agents.md](agents.md) shows the ones an agent reads, with examples.
 [docs/contracts/](contracts/README.md) holds the JSON schemas of `talos.verdict/1`,
-`talos.status/1`, `talos.claim/1` and `talos.version/1`, which tests keep equal to the code, and
-the flags and exit codes of the commands that print them.
+`talos.status/1`, `talos.claim/1`, `talos.ticket/1` and `talos.version/1`, which tests keep equal
+to the code, and the flags and exit codes of the commands that print them.
 
 ### Marker lines
 
@@ -335,7 +339,9 @@ talos-drift/1      hidden    drift issues: key=
 ```
 
 A hidden line sits inside an HTML comment, since people read these issues, and its values are
-URL-encoded; readers accept both forms.
+URL-encoded. Every reader goes through `markerFields` (`src/status/markers.ts`), which reads the
+grammar `docs/contracts/README.md` publishes: both forms, fields in any order, unknown ones
+ignored; each reader then requires the fields it needs.
 
 ## Security rules every part keeps
 

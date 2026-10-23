@@ -172,6 +172,10 @@ describe('the security issue', () => {
     });
     expect(readSecurityLine('talos-debt/1 kind=x')).toBeUndefined();
     expect(readSecurityLine('talos-security/1 Kind=x odd')).toEqual({});
+    expect(
+      readSecurityLine('<!-- talos-security/1 priority=p0 later=1 version=8.4.26 kind=runtime -->'),
+    ).toEqual({ kind: 'runtime', version: '8.4.26', priority: 'p0', later: '1' });
+    expect(readSecurityLine('<!-- talos-security/2 kind=runtime -->')).toBeUndefined();
   });
 
   it('is a p0 bug, ready and in the queue, that passes issue readiness', () => {

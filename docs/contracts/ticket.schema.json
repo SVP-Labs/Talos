@@ -1,0 +1,98 @@
+{
+  "$id": "https://github.com/SVP-Labs/Talos/blob/main/docs/contracts/ticket.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "talos.ticket/1",
+  "description": "What `talos ticket status <N>` prints: who holds a ticket, since when, its branch's last commit and its newest PR. It exits 0 whatever it finds, an issue that doesn't exist included; 2 is an error and 3 a usage error, which print nothing on stdout. Thea's hub reads `schema`, `repo`, `issue`, `branch`, `claimed` and `agent`, which keep their meaning under this number.",
+  "type": "object",
+  "properties": {
+    "schema": { "const": "talos.ticket/1" },
+    "repo": { "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$" },
+    "result": { "const": "status" },
+    "issue": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "the ticket asked about"
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{0,5}-[1-9]\\d*$",
+      "description": "the ticket's branch, <prefix>-<issue>, whether or not it exists"
+    },
+    "state": {
+      "anyOf": [{ "enum": ["open", "closed"] }, { "type": "null" }],
+      "description": "the issue's state; null when there is no such issue"
+    },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "the issue's labels; empty when there is no such issue"
+    },
+    "claimed": {
+      "type": "boolean",
+      "description": "whether the ticket's branch exists: the branch is the lock, so this alone says someone holds the ticket"
+    },
+    "agent": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+      "description": "the agent the latest claim comment a trusted author wrote names; null when the branch doesn't exist, or no such comment does yet"
+    },
+    "since": {
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+      "description": "when that claim comment says the claim was made, as it says it (Talos writes an ISO 8601 time in UTC); null whenever `agent` is"
+    },
+    "lastCommit": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "date": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "its committer date; null when GitHub names none"
+            }
+          },
+          "required": ["sha", "date"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ],
+      "description": "the commit the branch points at; null when the branch doesn't exist"
+    },
+    "pr": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "number": { "type": "integer", "minimum": 1 },
+            "stage": {
+              "enum": ["draft", "ready", "queued", "merged", "closed"],
+              "description": "queued is in the merge queue"
+            },
+            "checks": {
+              "enum": ["green", "red", "pending", "none"],
+              "description": "GitHub's combined state of the checks on the PR's last commit"
+            }
+          },
+          "required": ["number", "stage", "checks"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ],
+      "description": "the newest PR from the branch, open or not; null when there is none"
+    }
+  },
+  "required": [
+    "schema",
+    "repo",
+    "result",
+    "issue",
+    "branch",
+    "state",
+    "labels",
+    "claimed",
+    "agent",
+    "since",
+    "lastCommit",
+    "pr"
+  ],
+  "additionalProperties": false
+}

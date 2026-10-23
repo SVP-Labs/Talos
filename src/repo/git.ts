@@ -26,8 +26,9 @@ export async function revList(repo: Git, base: string, head: string): Promise<st
   return out.split('\n').filter(Boolean);
 }
 
-export async function parentOf(repo: Git, sha: string): Promise<string> {
-  return revParse(repo, `${sha}^`);
+/** A commit's parents, first parent first: none for a root commit, two or more for a merge. */
+export async function parentsOf(repo: Git, sha: string): Promise<string[]> {
+  return (await repo.run(['log', '-1', '--format=%P', sha])).trim().split(' ').filter(Boolean);
 }
 
 export async function mergeBase(repo: Git, a: string, b: string): Promise<string> {

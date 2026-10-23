@@ -26,6 +26,20 @@ function numberAfter(text: string, lead: string, rest: RegExp): number | undefin
   return digits === undefined ? undefined : Number(digits);
 }
 
+/**
+ * A merge commit, which no governed repository lands: `main` takes rebased commits through the
+ * merge queue, and a merge's change against its first parent carries whatever it merged in, so
+ * the commit is reported once and judged no further.
+ */
+export function mergeFinding(sha: string): Finding {
+  return {
+    rule: 'commit/merge',
+    key: `${sha}:merge`,
+    policy: 'always',
+    message: `${sha.slice(0, 12)}: a merge commit; rebase instead of merging, since main takes no merges`,
+  };
+}
+
 /** The ticket a branch names, when it is a ticket branch `<P>-<N>`. */
 export function ticketOf(branch: string | undefined, prefix: string): number | undefined {
   return branch === undefined ? undefined : numberAfter(branch, `${prefix}-`, /^(\d+)$/);

@@ -111,6 +111,10 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
   commits are fine in a draft. Before marking it ready, squash them into one commit per
   acceptance criterion, or one in all, and check each (C20). That force-push is the last: once a
   PR is ready, answer review with new commits and never rewrite what anyone has reviewed.
+- **Rebase, never merge.** Bring a branch up to date by rebasing it onto `main`, never by
+  merging `main` into it. A merge commit in a PR is a `commit/merge` finding on that commit;
+  the gate judges it no further, and the commits from before it one by one only once the branch
+  is rebased.
 - **Conflicts.** The merge queue rebases; when it can't, rebase the branch onto `main` and
   resolve conflicts only in files the PR's own commits touch. Any other conflict is
   `needs-human`. Every push voids earlier approvals.
@@ -143,7 +147,8 @@ merge group   fast tier on every commit of the group; head tier on its tip
 ```
 
 - **The fast tier:** format, lint, types, dead code, unit tests, suppressions and the commit
-  subject. Run `talos check` before every push; the pre-push hook `talos adopt` writes
+  subject. Each commit is judged against its parent; a merge commit is a `commit/merge` finding
+  instead (section 4). Run `talos check` before every push; the pre-push hook `talos adopt` writes
   (`.githooks/pre-push`) runs the fast tier too, but the gate decides.
 - **The head tier:** integration and e2e tests, coverage, type coverage, architecture,
   duplication, secrets, dependencies and licences, Semgrep, Markdown, spelling, the shell,

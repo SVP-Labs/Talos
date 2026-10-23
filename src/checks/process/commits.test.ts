@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { subjectFindings, ticketOf } from './commits.js';
+import { mergeFinding, subjectFindings, ticketOf } from './commits.js';
 import { parseGlossary } from '../../docs/glossary.js';
 
 const glossary = parseGlossary('**Ticket**\nAn issue.\nAvoid: task, job.\n');
@@ -70,5 +70,18 @@ describe('commit subjects', () => {
     expect(ticketOf('A.B-3', 'A.B')).toBe(3);
     expect(ticketOf('AxB-3', 'A.B')).toBeUndefined();
     expect(ticketOf('T-3', 'T|X')).toBeUndefined();
+  });
+});
+
+describe('merge commits', () => {
+  it('are a finding of their own, on the merge, that asks for a rebase', () => {
+    const finding = mergeFinding('abcdef1234567890');
+    expect(finding).toEqual({
+      rule: 'commit/merge',
+      key: 'abcdef1234567890:merge',
+      policy: 'always',
+      message:
+        'abcdef123456: a merge commit; rebase instead of merging, since main takes no merges',
+    });
   });
 });

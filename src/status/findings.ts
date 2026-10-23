@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EngineError } from '../core/check.js';
+import { printedBytes, VERDICT_CAPS } from '../engine/verdict-caps.js';
 import type { GitHub } from '../github/api.js';
 import { type Download, readArtifactFile } from '../github/artifacts.js';
 import { isGateFile, queueGateRuns } from '../github/gate-runs.js';
@@ -44,58 +45,62 @@ const pullSchema = z.object({
   base: z.object({ ref: z.string() }),
 });
 
-const MAX_LISTED = 20;
-const MAX_FAULTS = 5;
-const MAX_MESSAGE = 200;
-const MAX_REASON = 300;
+const CAP = VERDICT_CAPS;
 
 const count = z.number().int().nonnegative();
 const sha = z.string().regex(/^[0-9a-f]{40}$/);
+const rule = z.string().min(1).max(CAP.rule);
+const path = z.string().max(CAP.path).nullable();
 
 /**
  * Re-checked on the way out: a verdict passes through only in its own capped shape, the one
- * `docs/contracts/verdict.schema.json` publishes, and only with the fields that shape names.
+ * `docs/contracts/verdict.schema.json` publishes, and only with the fields that shape names. A
+ * verdict past any cap, its bytes included, is none the gate wrote.
  */
-const verdictSchema = z.object({
-  schema: z.literal('talos.verdict/1'),
-  talos: z.string().min(1),
-  repo: z.string().nullable(),
-  pr: z.number().int().positive().nullable(),
-  mode: z.enum(['draft', 'ready', 'merge-group']),
-  base: sha,
-  head: sha,
-  status: z.enum(['green', 'red', 'engine-error']),
-  counts: z.object({
-    blocking: count,
-    existing: count,
-    faults: count,
-    byRule: z.record(z.string(), z.number().int().positive()),
-  }),
-  blocking: z
-    .array(
-      z.object({
-        sha,
-        rule: z.string().min(1),
-        why: z.enum(['new', 'changed-line', 'security', 'lost', 'existing', 'info']),
-        file: z.string().nullable(),
-        line: z.number().int().positive().nullable(),
-        message: z.string().max(MAX_MESSAGE),
-      }),
-    )
-    .max(MAX_LISTED),
-  faults: z
-    .array(
-      z.object({
-        sha,
-        os: z.enum(['linux', 'windows', 'macos']),
-        check: z.string().min(1),
-        reason: z.string().max(MAX_REASON),
-      }),
-    )
-    .max(MAX_FAULTS),
-  flaky: z.array(z.object({ id: z.string(), file: z.string().nullable() })).max(MAX_LISTED),
-  truncated: z.boolean(),
-});
+const verdictSchema = z
+  .object({
+    schema: z.literal('talos.verdict/1'),
+    talos: z.string().min(1).max(CAP.talos),
+    repo: z.string().nullable(),
+    pr: z.number().int().positive().nullable(),
+    mode: z.enum(['draft', 'ready', 'merge-group']),
+    base: sha,
+    head: sha,
+    status: z.enum(['green', 'red', 'engine-error']),
+    counts: z.object({
+      blocking: count,
+      existing: count,
+      faults: count,
+      byRule: z
+        .record(rule, z.number().int().positive())
+        .refine((rules) => Object.keys(rules).length <= CAP.rules),
+    }),
+    blocking: z
+      .array(
+        z.object({
+          sha,
+          rule,
+          why: z.enum(['new', 'changed-line', 'security', 'lost', 'existing', 'info']),
+          file: path,
+          line: z.number().int().positive().nullable(),
+          message: z.string().max(CAP.message),
+        }),
+      )
+      .max(CAP.listed),
+    faults: z
+      .array(
+        z.object({
+          sha,
+          os: z.enum(['linux', 'windows', 'macos']),
+          check: z.string().min(1).max(CAP.check),
+          reason: z.string().max(CAP.reason),
+        }),
+      )
+      .max(CAP.faults),
+    flaky: z.array(z.object({ id: z.string().max(CAP.test), file: path })).max(CAP.listed),
+    truncated: z.boolean(),
+  })
+  .refine((verdict) => printedBytes(verdict) <= CAP.bytes);
 
 /** The artifact's text as a verdict, or `undefined` when it is no verdict Talos can read. */
 function readVerdict(text: string): z.infer<typeof verdictSchema> | undefined {
@@ -158,7 +163,7 @@ async function verdictFile(
     return text === undefined ? {} : { text };
   } catch (error) {
     if (!(error instanceof EngineError)) throw error;
-    return { error: error.message.slice(0, MAX_MESSAGE) };
+    return { error: error.message.slice(0, CAP.message) };
   }
 }
 

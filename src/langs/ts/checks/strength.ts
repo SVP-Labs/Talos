@@ -10,6 +10,7 @@ import { weakerFlags, weakerRules, type Weakening } from '../compare.js';
 import { UNIVERSAL_RULES, DEPCRUISE_PROJECT } from '../configs/depcruise.js';
 import { ESLINT_BASE, ESLINT_PROJECT } from '../configs/eslint.js';
 import { KNIP_PROJECT, KNIP_WEAKENING_KEYS } from '../configs/knip.js';
+import { STRYKER_PROJECT, weakerStryker } from '../configs/stryker.js';
 import {
   componentFiles,
   inComponent,
@@ -162,20 +163,44 @@ async function tscFlags(ctx: CheckContext): Promise<Finding[]> {
   return findings;
 }
 
-async function knipKeys(ctx: CheckContext): Promise<Finding[]> {
-  const file = inRepo(rootOf(ctx.component), KNIP_PROJECT);
+/** A project's JSON extension file, when it has one holding an object. */
+async function projectJson(
+  ctx: CheckContext,
+  name: string,
+): Promise<{ readonly file: string; readonly data: Record<string, unknown> } | undefined> {
+  const file = inRepo(rootOf(ctx.component), name);
   const text = await readFile(join(ctx.root, file), 'utf8').catch(() => undefined);
-  if (text === undefined) return [];
-  const parsed = z.record(z.string(), z.unknown()).safeParse(parseJson(KNIP_PROJECT, text));
-  if (!parsed.success) return [];
-  const keys = KNIP_WEAKENING_KEYS.filter((key) => key in parsed.data);
+  if (text === undefined) return undefined;
+  const parsed = z.record(z.string(), z.unknown()).safeParse(parseJson(name, text));
+  return parsed.success ? { file, data: parsed.data } : undefined;
+}
+
+async function knipKeys(ctx: CheckContext): Promise<Finding[]> {
+  const project = await projectJson(ctx, KNIP_PROJECT);
+  if (project === undefined) return [];
+  const keys = KNIP_WEAKENING_KEYS.filter((key) => key in project.data);
   return Promise.all(
     keys.map((key) =>
       weaker(
         ctx,
-        file,
+        project.file,
         `knip ${key}`,
         `${KNIP_PROJECT} sets ${key}, which can only hide unused code.`,
+      ),
+    ),
+  );
+}
+
+async function strykerKeys(ctx: CheckContext): Promise<Finding[]> {
+  const project = await projectJson(ctx, STRYKER_PROJECT);
+  if (project === undefined) return [];
+  return Promise.all(
+    weakerStryker(project.data).map((w) =>
+      weaker(
+        ctx,
+        project.file,
+        `stryker ${w.setting}`,
+        `${STRYKER_PROJECT} sets ${w.setting}, which ${w.how}; it may only tighten the base.`,
       ),
     ),
   );
@@ -215,6 +240,7 @@ async function run(ctx: CheckContext): Promise<Finding[]> {
     eslintIgnores(ctx),
     tscFlags(ctx),
     knipKeys(ctx),
+    strykerKeys(ctx),
     cruiseRules(ctx),
     shadowingFindings(ctx),
   ]);

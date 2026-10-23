@@ -88,6 +88,17 @@ non-empty `ignore` or `allowedUntypedLibraries`. basedpyright also honours file-
 over every config file, so a `# pyright:` comment that sets a mode other than `all` or a rule
 below an error is reported on its line.
 
+The mutation runner takes the project's mutmut settings as they are, from `pyproject.toml`'s
+`[tool.mutmut]`, else `setup.cfg`'s `[mutmut]`, as mutmut reads them, so the check also reports
+each setting there that never runs a mutant or counts one as killed without a test failing:
+`only_mutate`, `do_not_mutate` and `do_not_mutate_patterns` that name anything,
+`mutate_only_covered_lines` turned on, a `type_check_command` (a mutant it rejects counts as
+killed), and a `timeout_multiplier` below mutmut's 15 or a `timeout_constant` below its 1 (a
+mutant that times out counts as killed). It reports a file under `talos.yml`'s mutation paths
+that the source paths leave out (`source_paths`, else `paths_to_mutate`, else mutmut's guess,
+`lib` or `src`), since mutmut never copies it to mutate. Files to copy, pytest's arguments and
+which tests run change no mutant's fate, or only make one harder to kill.
+
 ## Lint beyond ruff
 
 ruff has no cognitive complexity and no file or function length, which the standard limits for
@@ -135,11 +146,13 @@ collects no data yields an empty LCOV file.
 
 ## Mutation
 
-mutmut 3 runs in a copy of the component (without `.venv`), so its `mutants/` directory never
-meets a concurrent test run, on the mutants of the requested files only. It forks, so it runs on
-Linux and macOS; on Windows the runner raises an engine error. mutmut can report each mutant's
-fate (`mutmut results`) and its diff (`mutmut show`), but never where in the file the change is,
-so the runner writes a report of its own: format `mutmut` in the quality protocol, read by
+mutmut 3 runs in a copy of the component (without `.venv`), so its `mutants/` directory never meets
+a concurrent test run, on the mutants of the requested files only. When the project configures
+mutmut itself, the runner leaves its settings as they are, and `py/config-strength` judges them;
+otherwise it sets `source_paths` to the requested files' top directories. mutmut forks, so it runs
+on Linux and macOS; on Windows the runner raises an engine error. mutmut can report each mutant's
+fate (`mutmut results`) and its diff (`mutmut show`), but never where in the file the change is, so
+the runner writes a report of its own: format `mutmut` in the quality protocol, read by
 `parseMutmutReport` in `mutmut-report.ts`.
 
 ### Mutation report

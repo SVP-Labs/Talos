@@ -321,7 +321,8 @@ findings it lists, `talos check` writes every one to `.talos/check/talos.sarif`.
 ```
 
 `faults` lists up to five engine errors (`sha`, `os`, `check`, `reason`); `flaky` the tests that
-passed on their rerun.
+passed on their rerun. Every text is capped (rules at 100 characters, files and test ids at 300)
+and the whole stays under 48 KiB; [contracts/](contracts/README.md) lists each cap.
 
 `talos findings --repo <o/n> --pr <N>` prints the verdict of the newest gate run on the PR's
 head, with `head` and `run` added, as Thea's hub reads it for an event. When the merge queue's
@@ -430,8 +431,10 @@ prints `released: true` with the `branch` and whether it was `deleted`, or `refu
 `reason: "open-pr"` and the `pr` while a PR is open from the branch.
 
 `talos ticket status <N>` prints `talos.ticket/1`: the `branch`, the issue's `state` and
-`labels`, whether it is `claimed`, by which `agent` and `since` when, the branch's `lastCommit`,
-and its newest `pr` with its stage and checks.
+`labels`, whether it is `claimed` (its branch exists), by which `agent` and `since` when, the
+branch's `lastCommit`, and its newest `pr` with its stage and checks. An issue that doesn't exist
+is an answer too, with `state` `null`. The full shape is
+[contracts/ticket.schema.json](contracts/ticket.schema.json).
 
 ### `talos-review/1`
 

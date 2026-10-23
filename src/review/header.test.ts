@@ -24,10 +24,26 @@ describe('the talos-review/1 header', () => {
     'talos-review/1 verdict=COMMENT round=1 findings=0',
     'talos-review/2 verdict=APPROVE round=1 findings=0',
     'talos-review/1 verdict=APPROVE round=1',
+    'talos-review/1 round=1 findings=0',
+    'talos-review/1 verdict=APPROVE round=x findings=0',
+    'talos-review/1 verdict=APPROVE round=12345 findings=0',
     'x talos-review/1 verdict=APPROVE round=1 findings=0',
-    'talos-review/1 verdict=APPROVE round=1 findings=0 extra=1',
+    'talos-review/1verdict=APPROVE round=1 findings=0',
+    '<!-- talos-review/1 verdict=APPROVE round=1 findings=0',
+    '<!-- talos-review/2 verdict=APPROVE round=1 findings=0 -->',
   ])('reads no header from %j', (body) => {
     expect(parseHeader(body)).toBeUndefined();
+  });
+
+  it.each([
+    'talos-review/1 verdict=REQUEST_CHANGES round=2 findings=3 head=abc1234',
+    'talos-review/1 findings=3 round=2 verdict=REQUEST_CHANGES',
+    'talos-review/1 model=x verdict=REQUEST_CHANGES  round=2 odd findings=3\n\nFix it.',
+    '<!-- talos-review/1 verdict=REQUEST_CHANGES round=2 findings=3 -->\n\nFix it.',
+    '<!--talos-review/1 round=2 findings=3 verdict=REQUEST_CHANGES-->',
+    '\n  talos-review/1 verdict=REQUEST_CHANGES round=2 findings=3  \r\nFix it.',
+  ])('reads the header from %j, in the published grammar', (body) => {
+    expect(parseHeader(body)).toEqual({ verdict: 'REQUEST_CHANGES', round: 2, findings: 3 });
   });
 
   it('reads the first line only, with its line ending', () => {

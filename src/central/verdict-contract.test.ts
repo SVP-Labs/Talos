@@ -65,6 +65,46 @@ const VERDICTS: Record<string, Verdict> = {
     const existing = located(99, { blocking: false, why: 'existing', isNew: false });
     return { findings: [...blocking, existing], blocking, faults: [] };
   })(),
+  'red, with every text past its cap': (() => {
+    const long = (n: number) =>
+      located(n, {
+        rule: `custom/${n}-${'r'.repeat(200)}`,
+        location: { file: `${n}/${'d/'.repeat(200)}f.ts`, line: 1 },
+      });
+    const blocking = Array.from({ length: 45 }, (_, n) => long(n));
+    const flaky = located(0, {
+      rule: 'tests/flaky',
+      blocking: false,
+      why: 'info',
+      key: 'k'.repeat(1000),
+      location: { file: 'p'.repeat(1000), line: 1 },
+    });
+    return {
+      findings: [...blocking, flaky],
+      blocking,
+      faults: [{ ...fault(0, 'r'), check: `custom/${'c'.repeat(200)}` }],
+    };
+  })(),
+  'red, past the size an event holds': (() => {
+    const odd = (length: number) => '\u0001'.repeat(length);
+    const blocking = Array.from({ length: 20 }, (_, n) =>
+      located(n, {
+        rule: `${n}${odd(200)}`,
+        message: odd(500),
+        location: { file: odd(500), line: 1 },
+      }),
+    );
+    const flaky = Array.from({ length: 20 }, (_, n) =>
+      located(n, {
+        rule: 'tests/flaky',
+        blocking: false,
+        why: 'info',
+        key: `${n}${odd(500)}`,
+        location: { file: odd(500), line: 1 },
+      }),
+    );
+    return { findings: [...blocking, ...flaky], blocking, faults: [] };
+  })(),
   'an engine error with flaky tests': {
     findings: [
       located(1, { rule: 'tests/flaky', blocking: false, why: 'info', key: 'suite > test' }),
@@ -103,8 +143,38 @@ describe('talos.verdict/1', () => {
     expect(faulty.flaky).toEqual([{ id: 'suite > test', file: 'src/f1.ts' }]);
   });
 
+  it('clips rules, paths, checks and flaky ids, and counts the 40 rules with the most', () => {
+    const capped = compactVerdict(VERDICTS['red, with every text past its cap']!, CONTEXT);
+    const blocking = z
+      .array(z.object({ rule: z.string(), file: z.string() }))
+      .parse(capped.blocking);
+    expect(blocking.map((f) => [f.rule.length, f.file.length])).toEqual(
+      Array.from({ length: 20 }, () => [100, 300]),
+    );
+    const { byRule } = z.object({ byRule: z.record(z.string(), z.number()) }).parse(capped.counts);
+    expect(Object.keys(byRule)).toHaveLength(40);
+    expect(Object.keys(byRule).every((rule) => rule.length <= 100)).toBe(true);
+    expect(capped.counts).toMatchObject({ blocking: 45 });
+    expect(capped.faults).toMatchObject([{ check: `custom/${'c'.repeat(92)}…` }]);
+    expect(capped.flaky).toEqual([{ id: `${'k'.repeat(299)}…`, file: `${'p'.repeat(299)}…` }]);
+  });
+
+  it('lists no more than fits in 48 KiB, however its text escapes', () => {
+    const big = compactVerdict(VERDICTS['red, past the size an event holds']!, CONTEXT);
+    expect(Buffer.byteLength(JSON.stringify(big))).toBeLessThanOrEqual(48 * 1024);
+    expect(big).toMatchObject({ truncated: true, counts: { blocking: 20 } });
+    expect((big.blocking as unknown[]).length).toBeLessThan(20);
+  });
+
   it('refuses what the contract rules out', () => {
     const good = compactVerdict(VERDICTS.green!, CONTEXT);
+    const finding = { sha: HEAD, rule: 'r', why: 'new', file: null, line: null, message: '' };
+    const counts = { blocking: 0, existing: 0, faults: 0 };
+    const rules = (n: number) =>
+      Object.fromEntries(Array.from({ length: n }, (_, i) => [`r${i}`, 1]));
+    expect(contract.safeParse({ ...good, counts: { ...counts, byRule: rules(40) } }).success).toBe(
+      true,
+    );
     const bad: Record<string, unknown>[] = [
       { ...good, schema: 'talos.verdict/2' },
       { ...good, extra: true },
@@ -129,6 +199,14 @@ describe('talos.verdict/1', () => {
         })),
       },
       { ...good, counts: { blocking: 0, existing: 0, faults: 0 } },
+      { ...good, talos: '1'.repeat(51) },
+      { ...good, blocking: [{ ...finding, rule: 'r'.repeat(101) }] },
+      { ...good, blocking: [{ ...finding, file: 'f'.repeat(301) }] },
+      { ...good, counts: { ...counts, byRule: { ['r'.repeat(101)]: 1 } } },
+      { ...good, counts: { ...counts, byRule: rules(41) } },
+      { ...good, faults: [{ sha: HEAD, os: 'linux', check: 'c'.repeat(101), reason: '' }] },
+      { ...good, flaky: [{ id: 'i'.repeat(301), file: null }] },
+      { ...good, flaky: [{ id: 'i', file: 'f'.repeat(301) }] },
     ];
     for (const value of bad) expect(contract.safeParse(value).success).toBe(false);
     const { truncated: _truncated, ...missing } = good;

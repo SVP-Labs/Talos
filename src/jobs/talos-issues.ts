@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { GitHub } from '../github/api.js';
 import { type Identities, sameLogin } from '../github/identities.js';
+import { markerFields } from '../status/markers.js';
 import { addLabels } from '../ticket/github.js';
 import { clip } from '../ticket/payload.js';
 import { type Issue, parseIssue, parseIssues } from '../ticket/schemas.js';
@@ -21,8 +22,6 @@ export function marker(kind: MarkerKind, fields: Readonly<Record<string, string>
   return `<!-- ${[head, ...pairs].join(' ')} -->`;
 }
 
-const MARKER_LINE = /^talos-([a-z]+)\/1((?: [a-z]+=\S*)*)$/;
-
 function decoded(value: string): string | undefined {
   try {
     return decodeURIComponent(value);
@@ -31,26 +30,20 @@ function decoded(value: string): string | undefined {
   }
 }
 
-/** A first line without its HTML comment, when it is wrapped in one. */
-function unwrapped(line: string): string {
-  return line.startsWith('<!--') && line.endsWith('-->') ? line.slice(4, -3).trim() : line;
-}
-
 /**
- * The fields of the marker of `kind` on a body's first line, hidden or visible, or `undefined`
- * when there is none.
+ * The fields of the marker of `kind` on a body's first line, hidden or visible, decoded, or
+ * `undefined` when there is none. A field that can't be decoded is left out.
  */
 export function readMarker(
   body: string,
   kind: MarkerKind,
 ): Readonly<Record<string, string>> | undefined {
-  const match = MARKER_LINE.exec(unwrapped(body.split(/\r?\n/, 1)[0]?.trim() ?? ''));
-  if (match?.[1] !== kind) return undefined;
+  const raw = markerFields(body, `talos-${kind}/1`);
+  if (raw === undefined) return undefined;
   const fields: Record<string, string> = {};
-  for (const pair of (match[2] ?? '').trim().split(' ').filter(Boolean)) {
-    const [key = '', value = ''] = pair.split('=');
+  for (const [key, value] of Object.entries(raw)) {
     const text = decoded(value);
-    if (key !== '' && text !== undefined) fields[key] = text;
+    if (text !== undefined) fields[key] = text;
   }
   return fields;
 }

@@ -35,9 +35,10 @@ async function judge(
   files: Readonly<Record<string, string>>,
   ruff: (config: string) => ExecResult,
   seen: Seen = { configs: [], files: [] },
+  talos = MINIMAL_CONFIG,
 ): Promise<Awaited<ReturnType<typeof strength>>> {
   const root = await tempRepo({ ...files, 'svc/.venv/bin/ruff': '' });
-  const config = parseConfig(MINIMAL_CONFIG);
+  const config = parseConfig(talos);
   const ctx: Bound = {
     root,
     sha: '0'.repeat(40),
@@ -132,6 +133,38 @@ describe('py/config-strength', () => {
       'svc/ruff.talos.toml linter.mccabe.max_complexity',
       'svc/pyproject.toml typeCheckingMode',
     ]);
+  });
+
+  it('reports the mutmut settings that weaken mutation, where mutmut reads them', async () => {
+    const base = (): ExecResult => ({ code: 0, stdout: BASE_SETTINGS, stderr: '' });
+    const files = {
+      'svc/app/main.py': 'import os\n',
+      'svc/app/extra.py': 'import os\n',
+      'svc/tests/test_main.py': 'import os\n',
+      'svc/pyproject.toml':
+        '[tool.mutmut]\nsource_paths = ["app/main.py"]\ndo_not_mutate = ["app/*"]\n',
+      'svc/setup.cfg': '[mutmut]\nmutate_only_covered_lines = true\n',
+      'svc/pyrightconfig.talos.json': '{ "typeCheckingMode": "all" }\n',
+    };
+    const talos = `${MINIMAL_CONFIG}mutation: [svc/app]\n`;
+    const findings = await judge(files, base, { configs: [], files: [] }, talos);
+    expect(findings).toEqual([
+      {
+        rule: 'config/weaker',
+        message:
+          "svc/pyproject.toml's [tool.mutmut] sets do_not_mutate, which never mutates the files it names; it may only tighten mutation.",
+        key: 'svc/pyproject.toml mutmut do_not_mutate',
+      },
+      {
+        rule: 'config/weaker',
+        message:
+          "svc/pyproject.toml's [tool.mutmut] leaves svc/app/extra.py, under talos.yml's mutation paths, outside its source paths, so mutmut never mutates it.",
+        key: 'svc/pyproject.toml mutmut source svc/app/extra.py',
+      },
+    ]);
+    const cfg = { ...files, 'svc/pyproject.toml': '[project]\nname = "svc"\n' };
+    const fromCfg = await judge(cfg, base, { configs: [], files: [] }, talos);
+    expect(fromCfg.map((f) => f.key)).toEqual(['svc/setup.cfg mutmut mutate_only_covered_lines']);
   });
 
   it("can't judge when ruff can't show its settings, or with no Python file", async () => {

@@ -2,7 +2,7 @@
   "$id": "https://github.com/SVP-Labs/Talos/blob/main/docs/contracts/verdict.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "talos.verdict/1",
-  "description": "The gate's compact verdict: what `talos check --json` prints, the gate's `verdict.json` in its `talos-verdict` artifact, and what `talos findings` prints of the newest one on a PR's head. Small enough to ride in an event: at most 20 blocking findings listed, the rest counted by rule. Exit codes: `talos check` 0 green, 1 red, 2 engine error; `talos findings` 1 red, 0 for any other answer.",
+  "description": "The gate's compact verdict: what `talos check --json` prints, the gate's `verdict.json` in its `talos-verdict` artifact, and what `talos findings` prints of the newest one on a PR's head. Small enough to ride in an event: at most 20 blocking findings listed, the rest counted by rule, every text capped as each field says, and the whole at most 48 KiB as compact JSON, past which the flaky tests and then the blocking findings listed are cut (`truncated` says so of the findings). `talos findings` passes no verdict past these caps: it answers `unknown` with `error` instead. Exit codes: `talos check` 0 green, 1 red, 2 engine error; `talos findings` 1 red, 0 for any other answer.",
   "oneOf": [
     {
       "title": "verdict",
@@ -13,6 +13,7 @@
         "talos": {
           "type": "string",
           "minLength": 1,
+          "maxLength": 50,
           "description": "the Talos release that judged"
         },
         "repo": {
@@ -42,8 +43,10 @@
             "faults": { "type": "integer", "minimum": 0 },
             "byRule": {
               "type": "object",
+              "propertyNames": { "maxLength": 100 },
               "additionalProperties": { "type": "integer", "minimum": 1 },
-              "description": "every blocking finding counted by its rule, listed or not"
+              "maxProperties": 40,
+              "description": "every blocking finding counted by its rule as `blocking` lists rules, listed or not, for the 40 rules with the most (ties by name); `blocking` above counts them all"
             }
           },
           "required": ["blocking", "existing", "faults", "byRule"],
@@ -56,9 +59,14 @@
             "type": "object",
             "properties": {
               "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-              "rule": { "type": "string", "minLength": 1 },
+              "rule": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "<tool>/<rule>, clipped with … past 100 characters"
+              },
               "why": { "enum": ["new", "changed-line", "security", "lost", "existing", "info"] },
-              "file": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+              "file": { "$ref": "#/$defs/path" },
               "line": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
               "message": { "type": "string", "maxLength": 200 }
             },
@@ -74,7 +82,7 @@
             "properties": {
               "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
               "os": { "enum": ["linux", "windows", "macos"] },
-              "check": { "type": "string", "minLength": 1 },
+              "check": { "type": "string", "minLength": 1, "maxLength": 100 },
               "reason": { "type": "string", "maxLength": 300 }
             },
             "required": ["sha", "os", "check", "reason"],
@@ -87,8 +95,8 @@
           "items": {
             "type": "object",
             "properties": {
-              "id": { "type": "string" },
-              "file": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+              "id": { "type": "string", "maxLength": 300 },
+              "file": { "$ref": "#/$defs/path" }
             },
             "required": ["id", "file"],
             "additionalProperties": false
@@ -136,5 +144,11 @@
       "required": ["schema", "status", "repo", "pr", "head"],
       "additionalProperties": false
     }
-  ]
+  ],
+  "$defs": {
+    "path": {
+      "anyOf": [{ "type": "string", "maxLength": 300 }, { "type": "null" }],
+      "description": "repository-relative, clipped with … past 300 characters; null for no file"
+    }
+  }
 }

@@ -35,6 +35,19 @@ describe('marker and readMarker', () => {
     expect(readMarker('talos-sync/10 files=2', 'sync')).toBeUndefined();
     expect(readMarker('Note: talos-sync/1 files=2', 'sync')).toBeUndefined();
   });
+
+  it('takes fields in any order, ignoring what it does not know, plainly or hidden', () => {
+    const fields = { file: 'src/a.ts', findings: 'abc' };
+    for (const body of [
+      'talos-debt/1 findings=abc file=src%2Fa.ts',
+      '<!-- talos-debt/1 later=1 file=src%2Fa.ts  odd findings=abc -->\n### Goal',
+      '<!--talos-debt/1 file=src%2Fa.ts findings=abc-->',
+      '\n\ntalos-debt/1 file=src%2Fa.ts findings=abc',
+    ]) {
+      expect(readMarker(body, 'debt'), body).toMatchObject(fields);
+    }
+    expect(readMarker('<!-- talos-debt/1 Kind=x -->', 'debt')).toEqual({});
+  });
 });
 
 describe('digest', () => {

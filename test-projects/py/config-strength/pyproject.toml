@@ -12,3 +12,6 @@ build-backend = "hatchling.build"
 dev = [
   "ruff==0.17.2",
 ]
+
+[tool.mutmut]
+do_not_mutate = ["src/*"]

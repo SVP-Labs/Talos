@@ -1,4 +1,5 @@
 import type { IssueDraft } from '../jobs/talos-issues.js';
+import { markerFields } from '../status/markers.js';
 import { LABEL } from '../ticket/labels.js';
 
 /**
@@ -169,12 +170,10 @@ export function driftMarker(key: string): string {
 
 /** The key of a body's drift marker, hidden or visible, or `undefined` without one. */
 export function driftKey(body: string): string | undefined {
-  let line = (body.trimStart().split(/\r?\n/, 1)[0] ?? '').trim();
-  if (line.startsWith('<!--') && line.endsWith('-->')) line = line.slice(4, -3).trim();
-  const match = new RegExp(`^${DRIFT_MARKER.replace('/', '\\/')} key=(\\S+)$`).exec(line);
-  if (match?.[1] === undefined) return undefined;
+  const key = markerFields(body, DRIFT_MARKER)?.key;
+  if (key === undefined || key === '') return undefined;
   try {
-    return decodeURIComponent(match[1]);
+    return decodeURIComponent(key);
   } catch {
     return undefined;
   }

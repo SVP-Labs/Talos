@@ -199,6 +199,10 @@ describe('the drift issue', () => {
     expect(driftKey('talos-drift/1 key=%E0%A4%A')).toBeUndefined();
     expect(driftKey('talos-debt/1 key=x')).toBeUndefined();
     expect(driftKey('')).toBeUndefined();
+    expect(driftKey('<!-- talos-drift/1 since=2026 key=a%20b -->')).toBe('a b');
+    expect(driftKey('talos-drift/1 key=x later=1 odd\nrest')).toBe('x');
+    expect(driftKey('<!-- talos-drift/1 since=2026 -->')).toBeUndefined();
+    expect(driftKey('<!-- talos-drift/2 key=x -->')).toBeUndefined();
     expect(driftMarker('a b')).toBe('<!-- talos-drift/1 key=a%20b -->');
   });
 

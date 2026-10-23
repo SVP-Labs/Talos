@@ -12,6 +12,7 @@ anything else takes the next one, and a reader refuses a contract or number it d
 | `talos.verdict/1` | `talos check --json`; the gate's `verdict.json`; `talos findings` | [verdict.schema.json](verdict.schema.json) |
 | `talos.status/1`  | `talos status --json`, one element per repository                 | [status.schema.json](status.schema.json)   |
 | `talos.claim/1`   | `talos ticket claim`, `next` and `release`                        | [claim.schema.json](claim.schema.json)     |
+| `talos.ticket/1`  | `talos ticket status`                                             | [ticket.schema.json](ticket.schema.json)   |
 | `talos.version/1` | `talos version --enforced --json`                                 | [version.schema.json](version.schema.json) |
 
 Each schema lists every field Talos writes under its number, and refuses anything else; a test
@@ -32,6 +33,15 @@ merge groups since, that run's verdict (`mode` `merge-group`, `head` still the P
 it can read, its `status` is `unknown`, beside the `repo`, `pr` and `head` it looked at, and
 `error` says why when the run left a verdict Talos can't read.
 
+Everything in `talos.verdict/1` is capped, so an event can carry it whole. Text is clipped with `…`:
+a rule at 100 characters (as a `byRule` key too), a file at 300, a flaky test's id at 300, a fault's
+`check` at 100, the release in `talos` at 50, a message at 200 and a fault's reason at 300. `byRule`
+counts the 40 rules with the most blocking findings. The whole verdict is at most 48 KiB as compact
+JSON, since escaped text can take six bytes a character: past that the gate lists fewer flaky tests,
+then fewer blocking findings, with `truncated`. `talos findings` passes no verdict past any of these
+caps, a forged artifact's included, and answers `unknown` with `error` instead, so its answer stays
+well inside the 64 KB Thea's hub reads.
+
 ## Flags and exit codes
 
 Every command above takes `--json`, which a caller such as Thea's hub may append to each one:
@@ -46,6 +56,7 @@ document on stdout, and an exit code says which kind it is:
 | `talos ticket claim <N> --agent <id>`          | claimed                      | refused: any `reason` but `open-pr` | claimed by someone else |                        |
 | `talos ticket next --agent <id>`               | claimed                      |                                     |                         | `none` or `max-claims` |
 | `talos ticket release <N> --reason <one line>` | released                     | refused: `open-pr`, `not-found`     |                         |                        |
+| `talos ticket status <N>`                      | every answer                 |                                     |                         |                        |
 | `talos version --enforced --json`              | the release                  |                                     |                         |                        |
 
 Exit 2 is an engine error. When a check broke, `talos check` prints its verdict with the
@@ -56,12 +67,11 @@ every subcommand; without it, the repository is `GITHUB_REPOSITORY`'s or the `or
 
 ## Other contracts
 
-The other commands' `--json` output names its contract the same way (`talos.ticket/1` for
-`talos ticket status`, `talos.debt/1`, `talos.why/1`, `talos.doctor/1`, `talos.job/1`,
-`talos.central/1`, and `talos.adopt/1`, `talos.govern/1`, `talos.new/1`, `talos.org/1`), without
-a published schema yet. `talos.adopt/1` lists each file adoption writes or deletes with its
-`why`, and `prefixChecked` says whether it could read the organisation's prefixes; both grew
-under the same number.
+The other commands' `--json` output names its contract the same way (`talos.debt/1`, `talos.why/1`,
+`talos.doctor/1`, `talos.job/1`, `talos.central/1`, and `talos.adopt/1`, `talos.govern/1`,
+`talos.new/1`, `talos.org/1`), without a published schema yet. `talos.adopt/1` lists each file
+adoption writes or deletes with its `why`, and `prefixChecked` says whether it could read the
+organisation's prefixes; both grew under the same number.
 
 ## Marker lines
 
@@ -69,7 +79,10 @@ A marker line is the first line of a body Talos writes on GitHub: the marker, th
 `key=value` fields separated by spaces, where a key is lower-case letters and a value has no
 space. It counts only when `talos-reviewer[bot]` wrote the body; from anyone else it is text. On
 issues Talos files for its own bookkeeping the line sits inside an HTML comment
-(`<!-- talos-debt/1 … -->`); a reader accepts both forms and ignores fields it doesn't know.
+(`<!-- talos-debt/1 … -->`). A reader, Talos's own included, accepts both forms, takes the
+fields in any order, ignores fields it doesn't know and words that are no `key=value`, and still
+requires the fields it needs: a `talos-review/1` line without a verdict, a round and a count of
+findings is no verdict.
 
 ### `talos-review/1`
 

@@ -454,6 +454,10 @@ describe('markers', () => {
       markerFields('Looks right. talos-review/1 verdict=APPROVE', 'talos-review/1'),
     ).toBeUndefined();
     expect(markerFields('talos-review/10 verdict=APPROVE', 'talos-review/1')).toBeUndefined();
+    expect(
+      markerFields('<!-- talos-review/1 round=2 verdict=APPROVE -->\r\nrest', 'talos-review/1'),
+    ).toEqual({ round: '2', verdict: 'APPROVE' });
+    expect(markerFields('<!-- talos-review/1 verdict=APPROVE', 'talos-review/1')).toBeUndefined();
   });
 
   it("takes the reviewer's verdict from its line, else from the review's state", () => {

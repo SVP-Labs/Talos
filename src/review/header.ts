@@ -1,3 +1,4 @@
+import { markerFields } from '../status/markers.js';
 import { clip } from '../ticket/payload.js';
 
 /**
@@ -33,14 +34,20 @@ export function headerLine(header: ReviewHeader): string {
   return `${REVIEW_MARKER} verdict=${header.verdict} round=${header.round} findings=${header.findings}`;
 }
 
-const HEADER =
-  /^talos-review\/1 verdict=(APPROVE|REQUEST_CHANGES) round=(\d{1,4}) findings=(\d{1,4})$/;
+const COUNT = /^\d{1,4}$/;
 
-/** The header of a reviewer review, or `undefined` when its first line is no such header. */
+/**
+ * The header of a reviewer review, or `undefined` when its first line is no such header: a
+ * `talos-review/1` line whose verdict, round and count of findings are all there.
+ */
 export function parseHeader(body: string): ReviewHeader | undefined {
-  const match = HEADER.exec(body.split(/\r?\n/, 1)[0]?.trim() ?? '');
-  if (match?.[1] !== 'APPROVE' && match?.[1] !== 'REQUEST_CHANGES') return undefined;
-  return { verdict: match[1], round: Number(match[2]), findings: Number(match[3]) };
+  const fields = markerFields(body, REVIEW_MARKER);
+  const verdict = fields?.verdict;
+  const round = fields?.round ?? '';
+  const findings = fields?.findings ?? '';
+  if (verdict !== 'APPROVE' && verdict !== 'REQUEST_CHANGES') return undefined;
+  if (!COUNT.test(round) || !COUNT.test(findings)) return undefined;
+  return { verdict, round: Number(round), findings: Number(findings) };
 }
 
 /**
