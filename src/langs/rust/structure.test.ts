@@ -85,6 +85,25 @@ describe('shapeOf', () => {
     expect([...shape.codeLines]).toEqual([2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14, 15]);
   });
 
+  it('spans each function with a body from its fn to its closing brace', () => {
+    const source = [
+      'pub trait T {',
+      '    fn bare(&self) -> u32;',
+      '}',
+      'pub fn outer(',
+      '    f: fn(u32) -> u32,',
+      '    xs: [u8; 4],',
+      ') -> impl Fn(u32) -> u32 {',
+      '    fn inner() {}',
+      '    move |x| f(x) + u32::from(xs[0])',
+      '}',
+    ].join('\n');
+    expect(shapeOf(source).functions).toEqual([
+      { start: 4, open: 7, end: 10 },
+      { start: 8, open: 8, end: 8 },
+    ]);
+  });
+
   it('marks a file that opens with #![cfg(test)] as test code', () => {
     expect(
       shapeOf('//! Helpers.\n#![allow(dead_code)]\n#![cfg(test)]\nfn f() {}\n').wholeFileTest,

@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { dependencyLine, parseMachete } from './machete.js';
 
+const TAB = '\t';
+
 /** Recorded from cargo-machete 0.9.2 in a workspace root. */
 const REPORT = `Analyzing dependencies of crates in this directory...
 cargo-machete found the following unused dependencies in this directory:
 demo-core -- ./core/Cargo.toml:
-\titoa
-\tserde
+${TAB}itoa
+${TAB}serde
 demo-app -- .\\app\\Cargo.toml:
-\tlog
+${TAB}log
 
 If you believe cargo-machete has detected an unused dependency incorrectly,
 you can add the dependency to the list of dependencies to ignore in the

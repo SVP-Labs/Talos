@@ -50,7 +50,7 @@ export function parseRustflags(file: string, text: string): Rustflags[] {
  * component, as cargo merges them (deeper files later). Files outside the repository are the
  * machine's, not the project's.
  */
-export function configPaths(ctx: Pick<ApplyContext, 'facts'> & Pick<Place, 'component'>): string[] {
+function configPaths(ctx: Pick<ApplyContext, 'facts'> & Pick<Place, 'component'>): string[] {
   const parts = ctx.component.root === '.' ? [] : ctx.component.root.split('/');
   const dirs = parts.map((_, index) => parts.slice(0, index + 1).join('/'));
   const tracked = new Set(ctx.facts.files);
@@ -72,7 +72,7 @@ export async function readRustflags(
   return found;
 }
 
-const LEVEL_FLAGS = /^(-[AWDF]|--(allow|warn|deny|forbid|force-warn|cap-lints))(=?)(.*)$/;
+const LEVEL_FLAGS = /^(-A|-W|-D|-F|--(?:allow|warn|deny|forbid|force-warn|cap-lints))(=?)(.*)$/;
 
 /** Splits flags into the ones that set lint levels and the rest. */
 export function splitLintFlags(flags: readonly string[]): {
@@ -88,7 +88,7 @@ export function splitLintFlags(flags: readonly string[]): {
       rest.push(flag);
       continue;
     }
-    const joined = (match[4] ?? '') !== '';
+    const joined = (match[3] ?? '') !== '';
     lint.push(joined ? flag : `${flag} ${flags[i + 1] ?? ''}`.trim());
     if (!joined) i += 1;
   }

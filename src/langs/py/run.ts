@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import { component, componentDir, type Place, venvTool } from './paths.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
+import { failed, tail } from '../../core/component.js';
 import type { ExecResult } from '../../exec/exec.js';
+
+export { failed, tail };
 
 export type ToolContext = Pick<CheckContext, 'exec' | 'scratch'> & Place;
 
@@ -36,15 +39,6 @@ export async function runTool(
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.env === undefined ? {} : { env: options.env }),
   });
-}
-
-/** The last lines of a tool's output, for an engine error's message. */
-export function tail(result: ExecResult, lines = 15): string {
-  return (result.stderr || result.stdout).trim().split('\n').slice(-lines).join('\n');
-}
-
-export function failed(what: string, result: ExecResult): EngineError {
-  return new EngineError(`${what} exited ${result.code}:\n${tail(result)}`);
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clippyBase, renderClippy, renderRustfmt, rustfmtBase } from './configs.js';
 import type { Diagnostic } from './diagnostics.js';
 import { rustPack } from './index.js';
-import { lintDiagnostics } from './lint.js';
+import { lintDiagnostics, widened } from './lint.js';
 import { classify, isTestCode, shapeFindings } from './shapes.js';
 import { shapeOf } from './structure.js';
 import { parseConfig } from '../../config/load.js';
@@ -74,8 +74,42 @@ describe('lintDiagnostics', () => {
   });
 });
 
+describe('widened', () => {
+  const source = [
+    '/// Long.',
+    'pub fn long(',
+    '    a: u32,',
+    ') -> u32 {',
+    '    a + 1',
+    '}',
+    '',
+    'pub fn other() {}',
+  ].join('\n');
+  const one = classify(new Map([['src/lib.rs', shapeOf(source)]]));
+  const at = (code: string, line: number): Diagnostic => ({
+    code,
+    level: 'warning',
+    message: code,
+    site: { file: 'app/src/lib.rs', line, endLine: line, column: 8 },
+  });
+
+  it('spans a function-level lint over the whole function', () => {
+    expect(widened(at('clippy::cognitive_complexity', 2), one, 'app').site).toMatchObject({
+      line: 2,
+      endLine: 6,
+    });
+    expect(widened(at('clippy::too_many_arguments', 4), one, 'app').site?.endLine).toBe(6);
+  });
+
+  it('leaves other lints, and sites outside a signature, as they are', () => {
+    expect(widened(at('clippy::unwrap_used', 2), one, 'app').site?.endLine).toBe(2);
+    expect(widened(at('clippy::too_many_lines', 5), one, 'app').site?.endLine).toBe(5);
+    expect(widened(at('clippy::too_many_lines', 2), one, 'elsewhere').site?.endLine).toBe(2);
+  });
+});
+
 describe('the pack', () => {
-  it('checks the tiers C8 puts each job in', () => {
+  it('puts format, lint, types and dead code in the commit tier', () => {
     const tiers = Object.fromEntries(rustPack.checks.map((c) => [c.id, c.tier]));
     expect(tiers).toMatchObject({
       'rust/format': 'commit',

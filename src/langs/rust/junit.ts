@@ -8,11 +8,11 @@ const ENTITIES: Readonly<Record<string, string>> = {
   '&apos;': "'",
 };
 
-export function unescapeXml(text: string): string {
+function unescapeXml(text: string): string {
   return text.replaceAll(/&(amp|lt|gt|quot|apos);/g, (entity) => ENTITIES[entity] ?? entity);
 }
 
-export function escapeXml(text: string): string {
+function escapeXml(text: string): string {
   return text
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

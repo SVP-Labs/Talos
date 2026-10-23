@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRustfmtCheck, unparsable } from './format.js';
+import { parseRustfmtCheck, unformattedMessage, unparsable } from './format.js';
 
 /** Recorded from `cargo fmt --all --check -- --color never` (rustfmt 1.9.0, Rust 1.97). */
 const CHECK = `Diff in /ws/app/src/main.rs:1:
@@ -42,6 +42,17 @@ describe('parseRustfmtCheck', () => {
 
   it('reads nothing from a clean run', () => {
     expect(parseRustfmtCheck('')).toEqual([]);
+  });
+});
+
+describe('unformattedMessage', () => {
+  it('names one line or a range', () => {
+    expect(unformattedMessage({ file: 'a.rs', line: 3, endLine: 3 })).toBe(
+      "Line 3 isn't formatted the way rustfmt writes it.",
+    );
+    expect(unformattedMessage({ file: 'a.rs', line: 3, endLine: 9 })).toBe(
+      "Lines 3 to 9 aren't formatted the way rustfmt writes them.",
+    );
   });
 });
 

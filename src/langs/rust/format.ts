@@ -65,10 +65,11 @@ export function unparsable(stderr: string): string[] {
   });
 }
 
-function span(u: Unformatted): string {
+/** The finding's message: which lines rustfmt would write differently. */
+export function unformattedMessage(u: Unformatted): string {
   return u.line === u.endLine
-    ? `Line ${String(u.line)} is`
-    : `Lines ${String(u.line)} to ${String(u.endLine)} are`;
+    ? `Line ${String(u.line)} isn't formatted the way rustfmt writes it.`
+    : `Lines ${String(u.line)} to ${String(u.endLine)} aren't formatted the way rustfmt writes them.`;
 }
 
 /**
@@ -94,7 +95,7 @@ export async function format(ctx: Bound): Promise<Finding[]> {
     return [
       {
         rule: 'rustfmt/format',
-        message: `${span(u)} not formatted the way rustfmt writes them.`,
+        message: unformattedMessage(u),
         location: { file, line: u.line, endLine: u.endLine },
       },
     ];

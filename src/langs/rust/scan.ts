@@ -4,7 +4,7 @@
  * shapes the code. It never fails; text it doesn't understand becomes punctuation.
  */
 
-export type TokenKind = 'ident' | 'punct' | 'literal' | 'lifetime';
+type TokenKind = 'ident' | 'punct' | 'literal' | 'lifetime';
 
 export type Token = {
   readonly kind: TokenKind;

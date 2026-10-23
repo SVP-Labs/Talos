@@ -19,7 +19,7 @@ function failureBlocks(lines: readonly string[]): Map<string, string[]> {
 }
 
 /** What went wrong, in a line: the panic's message or the compiler's first error. */
-export function failureMessage(block: readonly string[] | undefined): string {
+function failureMessage(block: readonly string[] | undefined): string {
   const lines = (block ?? []).filter((line) => line !== '' && !NOISE.test(line));
   const panic = lines.findIndex((line) => line.includes('panicked at'));
   const picked = panic >= 0 ? lines.slice(panic + 1, panic + 2) : lines.slice(0, 1);

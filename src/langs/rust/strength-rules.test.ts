@@ -1,7 +1,7 @@
 import { parse as parseToml } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { parseRustflags } from './cargo-config.js';
-import { workspaceLintsBlock } from './lints.js';
+import { lintsBlock } from './lints.js';
 import {
   lineOf,
   lintTableFindings,
@@ -16,7 +16,7 @@ const rules = (findings: readonly { key?: string }[]): (string | undefined)[] =>
 
 describe('lintTableFindings', () => {
   it('accepts Talos’s block and anything stricter', () => {
-    const text = `[workspace]\nmembers = []\n\n${workspaceLintsBlock()}\nmissing_docs = "deny"\n`;
+    const text = `[workspace]\nmembers = []\n\n${lintsBlock('workspace.lints')}\nmissing_docs = "deny"\n`;
     const table = tableAt(parseToml(text), ['workspace', 'lints']);
     expect(lintTableFindings({ file: 'Cargo.toml', text }, 'workspace.lints', table)).toEqual([]);
   });
@@ -53,6 +53,9 @@ describe('lintTableFindings', () => {
       message: 'core/Cargo.toml sets unsafe_code to warn; Talos holds it at deny.',
       location: { file: 'core/Cargo.toml', line: 2 },
     });
+    expect(findings[1]?.message).toBe(
+      'core/Cargo.toml sets clippy::unwrap_used to allow; Talos holds it at warn.',
+    );
     expect(findings[2]?.message).toBe(
       'core/Cargo.toml allows clippy::module_name_repetitions, which the gate reports.',
     );
@@ -84,7 +87,7 @@ describe('shadowingFindings', () => {
 
 describe('rustflagFindings and macheteFindings', () => {
   it('reports flags that lower lint levels', () => {
-    const text = '[build]\nrustflags = ["-A", "dead_code", "-D", "warnings"]\n';
+    const text = ['[build]', 'rustflags = ["-A", "dead_code", "-D", "warnings"]', ''].join('\n');
     const findings = rustflagFindings(
       parseRustflags('.cargo/config.toml', text),
       new Map([['.cargo/config.toml', text]]),

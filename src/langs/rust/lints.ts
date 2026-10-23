@@ -1,8 +1,8 @@
 /**
  * The lint levels Talos holds Rust to. The gate passes them to Clippy on the command line, after
  * anything the project's `Cargo.toml` or `.cargo/config.toml` sets, so the project can't lower
- * them there; `talos adopt` writes the same levels into the workspace's `[workspace.lints]` so the
- * editor shows what the gate reports.
+ * them there; `talos adopt` writes the same levels into the manifest's lint table so the editor
+ * shows what the gate reports.
  */
 
 export type Level = 'allow' | 'warn' | 'deny' | 'forbid';
@@ -57,13 +57,16 @@ function entry(lint: BaseLint): string {
   return `${lint.name} = ${value}`;
 }
 
-/** The `[workspace.lints]` block `talos adopt` writes, at the levels above. */
-export function workspaceLintsBlock(): string {
-  const table = (tool: BaseLint['tool']): string[] => [
-    `[workspace.lints.${tool}]`,
+/**
+ * The lint tables `talos adopt` writes at the levels above: `[workspace.lints]` in a workspace's
+ * root manifest (each member then sets `[lints] workspace = true`), `[lints]` in a lone package's.
+ */
+export function lintsBlock(table: 'lints' | 'workspace.lints'): string {
+  const section = (tool: BaseLint['tool']): string[] => [
+    `[${table}.${tool}]`,
     ...BASE_LINTS.filter((lint) => lint.tool === tool).map(entry),
   ];
-  return [...table('rust'), '', ...table('clippy'), ''].join('\n');
+  return [...section('rust'), '', ...section('clippy'), ''].join('\n');
 }
 
 const ORDER: Readonly<Record<Level, number>> = { allow: 0, warn: 1, deny: 2, forbid: 3 };

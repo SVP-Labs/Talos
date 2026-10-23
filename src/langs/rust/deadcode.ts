@@ -7,9 +7,14 @@ import { componentDir, inComponent, isInside, relativeTo } from './paths.js';
 import { type Bound, failed, runIn } from './run.js';
 import type { Finding } from '../../core/finding.js';
 
+/**
+ * cargo-machete over the component. `--with-metadata` names each dependency's library the way
+ * Cargo does, so a renamed library isn't reported; it can't touch Cargo.lock, which `install()`
+ * has already checked is current.
+ */
 async function machete(ctx: Bound): Promise<Unused[]> {
   const tool = await ctx.tools.path('cargo-machete');
-  const result = await runIn(ctx, tool, ['--skip-target-dir', '.']);
+  const result = await runIn(ctx, tool, ['--with-metadata', '--skip-target-dir', '.']);
   if (result.code > 1) throw failed('cargo-machete', result);
   const unused = parseMachete(result.stdout);
   if (result.code === 1 && unused.length === 0) throw failed('cargo-machete', result);

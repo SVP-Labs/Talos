@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { z } from 'zod';
 import { lowers, type Rustflags, splitLintFlags } from './cargo-config.js';
 import { BASE_LINTS, isLevel, type Level, weakerThan } from './lints.js';
 import type { Finding } from '../../core/finding.js';
@@ -88,7 +89,8 @@ function missingLevels(source: Source, prefix: Prefix, table: Table): Finding[] 
   return BASE_LINTS.flatMap((lint): Finding[] => {
     const level = levelOf(new Map(entries(table, lint.tool)).get(lint.name));
     if (level !== undefined && !weakerThan(level, lint.level)) return [];
-    const how = level === undefined ? `doesn't set ${lint.name}` : `sets ${lint.name} to ${level}`;
+    const name = lint.tool === 'clippy' ? `clippy::${lint.name}` : lint.name;
+    const how = level === undefined ? `doesn't set ${name}` : `sets ${name} to ${level}`;
     const line = lineOf(source.text, lint.name, `[${prefix}.${lint.tool}]`);
     const key = `${prefix}.${lint.tool}.${lint.name}`;
     return [
@@ -149,6 +151,8 @@ export function rustflagFindings(
   );
 }
 
+const LIST = z.array(z.unknown()).catch([]);
+
 /** cargo-machete's ignore lists: dependencies it is told never to report. */
 export function macheteFindings(source: Source, manifest: unknown): Finding[] {
   const { file, text } = source;
@@ -156,7 +160,7 @@ export function macheteFindings(source: Source, manifest: unknown): Finding[] {
     (path) => tableAt(manifest, [...path, 'metadata', 'cargo-machete'])?.ignored,
   );
   return lists.flatMap((list) =>
-    (Array.isArray(list) ? list : [])
+    LIST.parse(list)
       .filter((name): name is string => typeof name === 'string')
       .map((name) =>
         weaker(

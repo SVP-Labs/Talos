@@ -1,41 +1,19 @@
-import { access } from 'node:fs/promises';
-import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
-import type { ApplyContext, Component, Os } from '../../core/check.js';
-import { EngineError } from '../../core/check.js';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
+import type { ApplyContext, Component } from '../../core/check.js';
+import {
+  componentDir,
+  componentOf,
+  fileExists,
+  inComponent,
+  inRepo,
+  type Place,
+} from '../../core/component.js';
 import { underRoot } from '../../repo/facts.js';
 
-/** Where a component's tools run: its checkout and the OS it runs on. */
-export type Place = {
-  readonly root: string;
-  readonly component: Component;
-  readonly os: Os;
-};
+export { componentDir, fileExists, inComponent, inRepo, type Place };
 
 export function component(ctx: { readonly component?: Component }): Component {
-  if (ctx.component === undefined) throw new EngineError('a rust check ran without a component');
-  return ctx.component;
-}
-
-/** The component's directory, absolute. */
-export function componentDir(place: Pick<Place, 'root' | 'component'>): string {
-  return place.component.root === '.' ? place.root : join(place.root, place.component.root);
-}
-
-function prefix(root: string): string {
-  let end = root.length;
-  while (end > 0 && root[end - 1] === '/') end -= 1;
-  return root === '.' || end === 0 ? '' : `${root.slice(0, end)}/`;
-}
-
-/** A repository-relative path made relative to the component's root, or undefined outside it. */
-export function inComponent(root: string, path: string): string | undefined {
-  const start = prefix(root);
-  return path.startsWith(start) ? path.slice(start.length) : undefined;
-}
-
-/** A component-relative path made repository-relative. */
-export function inRepo(root: string, path: string): string {
-  return posix.normalize(`${prefix(root)}${path}`);
+  return componentOf(ctx, 'rust');
 }
 
 function posixPath(path: string): string {
@@ -72,13 +50,4 @@ export function isTestPath(path: string): boolean {
     .split('/')
     .slice(0, -1)
     .some((part) => TEST_DIRS.has(part));
-}
-
-export async function fileExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
 }

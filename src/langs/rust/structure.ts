@@ -3,6 +3,9 @@ import { scanRust, type Token } from './scan.js';
 /** Inclusive, 1-based lines. */
 export type Span = { readonly start: number; readonly end: number };
 
+/** A function with a body: from its `fn` to its closing brace, `open` the line its body opens. */
+type FnSpan = Span & { readonly open: number };
+
 export type FileShape = {
   /** Lines holding code: neither blank nor only comments. */
   readonly codeLines: ReadonlySet<number>;
@@ -14,6 +17,7 @@ export type FileShape = {
   readonly testModules: readonly string[];
   /** Blocks nested one level deeper than the limit, each spanning its whole block. */
   readonly deep: readonly Span[];
+  readonly functions: readonly FnSpan[];
 };
 
 export const MAX_DEPTH = 3;
@@ -124,7 +128,38 @@ export function shapeOf(text: string): FileShape {
     wholeFileTest: tests.wholeFile,
     testModules: tests.modules,
     deep: deepBlocks(tokens),
+    functions: functionSpans(tokens),
   };
+}
+
+/** The index of the `{` opening the body of the item after `from`, or undefined at a `;`. */
+function bodyOpen(tokens: readonly Token[], from: number): number | undefined {
+  let i = from;
+  while (i < tokens.length) {
+    const text = tokens[i]?.text;
+    if (text === ';') return undefined;
+    if (text === '{') return i;
+    i = text === '(' || text === '[' ? closing(tokens, i) : i + 1;
+  }
+  return undefined;
+}
+
+/** The function whose `fn` is at `at`, or undefined for a function type or one without a body. */
+function functionAt(tokens: readonly Token[], at: number): FnSpan | undefined {
+  const start = tokens[at];
+  if (start?.text !== 'fn' || tokens[at + 1]?.kind !== 'ident') return undefined;
+  const open = bodyOpen(tokens, at + 2);
+  const brace = open === undefined ? undefined : tokens[open];
+  if (open === undefined || brace === undefined) return undefined;
+  const end = tokens[closing(tokens, open) - 1]?.endLine ?? brace.line;
+  return { start: start.line, open: brace.line, end };
+}
+
+/** Every function and method with a body, nested ones included, in source order. */
+function functionSpans(tokens: readonly Token[]): FnSpan[] {
+  return tokens.flatMap((token, i) =>
+    token.kind === 'ident' ? (functionAt(tokens, i) ?? []) : [],
+  );
 }
 
 type Frame = {

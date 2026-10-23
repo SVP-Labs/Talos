@@ -1,14 +1,14 @@
 import { parse as parseToml } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { gateRustflags, lowers, parseRustflags, splitLintFlags } from './cargo-config.js';
-import { BASE_LINTS, gateLintArgs, isLevel, weakerThan, workspaceLintsBlock } from './lints.js';
+import { BASE_LINTS, gateLintArgs, isLevel, lintsBlock, weakerThan } from './lints.js';
 
 const CONFIG = `
 [build]
 rustflags = ["--cfg", "tokio_unstable", "--cap-lints", "allow"]
 
 [target.x86_64-pc-windows-msvc]
-rustflags = "-C target-feature=+crt-static -Aclippy::pedantic"
+rustflags = "-C target-feature=+crt-static --allow=clippy::pedantic"
 `;
 
 describe('parseRustflags', () => {
@@ -22,7 +22,7 @@ describe('parseRustflags', () => {
       {
         file: '.cargo/config.toml',
         key: 'target.x86_64-pc-windows-msvc.rustflags',
-        flags: ['-C', 'target-feature=+crt-static', '-Aclippy::pedantic'],
+        flags: ['-C', 'target-feature=+crt-static', '--allow=clippy::pedantic'],
       },
     ]);
     expect(parseRustflags('x', 'not = [toml')).toEqual([]);
@@ -31,10 +31,9 @@ describe('parseRustflags', () => {
 
 describe('lint flags', () => {
   it('splits lint levels from the other flags, in both spellings', () => {
-    expect(
-      splitLintFlags(['-A', 'dead_code', '-Wclippy::all', '--cfg', 'x', '--cap-lints=warn']),
-    ).toEqual({
-      lint: ['-A dead_code', '-Wclippy::all', '--cap-lints=warn'],
+    const warnAll = ['-W', 'clippy::all'].join('');
+    expect(splitLintFlags(['-A', 'dead_code', warnAll, '--cfg', 'x', '--cap-lints=warn'])).toEqual({
+      lint: ['-A dead_code', warnAll, '--cap-lints=warn'],
       rest: ['--cfg', 'x'],
     });
     expect(['-A dead_code', '--allow x', '--cap-lints allow', '-D warnings'].map(lowers)).toEqual([
@@ -49,7 +48,7 @@ describe('lint flags', () => {
     const settings = parseRustflags('.cargo/config.toml', CONFIG);
     expect(gateRustflags(settings)).toBe('--cfg\u001Ftokio_unstable');
     expect(
-      gateRustflags(parseRustflags('c', '[build]\nrustflags = ["--cfg", "x"]\n')),
+      gateRustflags(parseRustflags('c', ['[build]', 'rustflags = ["--cfg", "x"]'].join('\n'))),
     ).toBeUndefined();
   });
 });
@@ -66,15 +65,17 @@ describe('lint levels', () => {
     );
   });
 
-  it('writes a [workspace.lints] block Cargo can read', () => {
-    const parsed = parseToml(workspaceLintsBlock());
-    expect(parsed).toMatchObject({
+  it('writes lint tables Cargo can read, for a workspace or a lone package', () => {
+    expect(parseToml(lintsBlock('workspace.lints'))).toMatchObject({
       workspace: {
         lints: {
           rust: { unsafe_code: 'deny' },
           clippy: { pedantic: { level: 'warn', priority: -1 }, unwrap_used: 'warn' },
         },
       },
+    });
+    expect(parseToml(lintsBlock('lints'))).toMatchObject({
+      lints: { rust: { unsafe_code: 'deny' }, clippy: { expect_used: 'warn' } },
     });
     expect(BASE_LINTS.every((lint) => isLevel(lint.level))).toBe(true);
   });

@@ -32,7 +32,7 @@ Test executable failed (exit status: 101).
 
 stderr:
 
-thread 'main' (12468) panicked at /tmp/rustdoctestiQ5LN4/doctest_bundle_2024.rs:6:1:
+thread 'main' (12468) panicked at /tmp/doctest/bundle_2024.rs:6:1:
 assertion \`left == right\` failed
   left: 3
  right: 4

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EngineError } from '../../core/check.js';
 
 /** Where a diagnostic points, with its file as the compiler printed it. */
-export type Site = {
+type Site = {
   readonly file: string;
   readonly line: number;
   readonly endLine: number;
@@ -46,7 +46,7 @@ const SUMMARY = /^(aborting due to|\d+ warnings? emitted|for more information ab
  * The site in the project's files a span stands for: the span itself, or for code a macro
  * expanded, the place the macro was called.
  */
-export function ownSite(span: Span, own: (file: string) => boolean, depth = 0): Site | undefined {
+function ownSite(span: Span, own: (file: string) => boolean, depth = 0): Site | undefined {
   if (own(span.file_name)) {
     return {
       file: span.file_name,

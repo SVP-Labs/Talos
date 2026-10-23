@@ -5,7 +5,7 @@ import type { Bound } from './run.js';
 import { type FileShape, MAX_DEPTH, shapeOf, type Span } from './structure.js';
 import type { Finding } from '../../core/finding.js';
 
-export const MAX_FILE_LINES = 400;
+const MAX_FILE_LINES = 400;
 
 /** Every Rust file of a component, by its path relative to the component's root. */
 export type Shapes = {
@@ -30,7 +30,7 @@ function moduleCandidates(file: string, name: string): string[] {
 }
 
 /** The files `#[cfg(test)] mod name;` declarations point at, among the known files. */
-export function testModuleFiles(files: ReadonlyMap<string, FileShape>): Set<string> {
+function testModuleFiles(files: ReadonlyMap<string, FileShape>): Set<string> {
   const candidates = [...files].flatMap(([file, shape]) =>
     shape.testModules.flatMap((name) => moduleCandidates(file, name)),
   );

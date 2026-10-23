@@ -8,7 +8,7 @@ import type { Finding } from '../../core/finding.js';
 const FILES = ['rust-toolchain.toml', 'rust-toolchain'];
 
 /** What the editor needs beside the compiler to show what the gate reports. */
-export const REQUIRED_COMPONENTS = ['clippy', 'rustfmt'];
+const REQUIRED_COMPONENTS = ['clippy', 'rustfmt'];
 
 const toolchainSchema = z.object({
   toolchain: z.object({

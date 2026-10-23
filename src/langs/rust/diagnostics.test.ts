@@ -102,7 +102,7 @@ describe('findings from diagnostics', () => {
     });
   });
 
-  it('keeps diagnostics in tracked files, drops warnings elsewhere and unlocates errors', () => {
+  it('keeps diagnostics in tracked files, drops warnings elsewhere and the sites of errors there', () => {
     const tracked = new Set(['core/src/lib.rs']);
     const kept = located(parseDiagnostics(STREAM, own), tracked, (f) => f.startsWith('vendor/'));
     expect(kept.map((d) => [d.code, d.site?.file])).toEqual([

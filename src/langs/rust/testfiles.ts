@@ -4,7 +4,7 @@ import { binaryId, type Package, rootDir, type Target, type Workspace } from './
 type Binary = { readonly id: string; readonly target: Target };
 
 /** Every test binary cargo-nextest can build, by its binary id. */
-export function binaries(ws: Workspace): Binary[] {
+function binaries(ws: Workspace): Binary[] {
   return ws.packages.flatMap((pkg: Package) =>
     pkg.targets.flatMap((target): Binary[] => {
       const id = binaryId(pkg, target);

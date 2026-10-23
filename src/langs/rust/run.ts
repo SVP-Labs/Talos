@@ -1,8 +1,10 @@
 import { delimiter, dirname } from 'node:path';
 import { component, componentDir, type Place } from './paths.js';
 import type { CheckContext } from '../../core/check.js';
-import { EngineError } from '../../core/check.js';
+import { failed, tail } from '../../core/component.js';
 import type { Exec, ExecResult } from '../../exec/exec.js';
+
+export { failed, tail };
 
 /** A component check's context with its component, which the engine always sets. */
 export type Bound = CheckContext & Place;
@@ -44,15 +46,6 @@ export async function cargo(
   options: RunOptions = {},
 ): Promise<ExecResult> {
   return runIn(ctx, 'cargo', args, options);
-}
-
-/** The last lines of a tool's output, for an engine error's message. */
-export function tail(result: ExecResult, lines = 15): string {
-  return (result.stderr || result.stdout).trim().split('\n').slice(-lines).join('\n');
-}
-
-export function failed(what: string, result: ExecResult): EngineError {
-  return new EngineError(`${what} exited ${result.code}:\n${tail(result)}`);
 }
 
 /**
