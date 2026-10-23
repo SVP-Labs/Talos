@@ -202,8 +202,9 @@ applies to parameters, returns, properties and constants each (`typecov/<kind>`)
 `src/jobs/dispatch.ts`:
 
 - **analyze** runs only on the schedule or a dispatch, on the default branch's checkout, with
-  no secret: the weekly debt run and mutation report, the engine run once for both. It leaves
-  `debt.json` (`talos.debt/1`) and `mutation.json` (`talos.mutation/1`) for act.
+  no secret and with PHP set up as the gate does: the weekly debt run and mutation report, the
+  engine run once for both. It leaves `debt.json` (`talos.debt/1`) and `mutation.json`
+  (`talos.mutation/1`) for act.
 - **act** holds the reviewer's token and never runs repository code: issue readiness on
   `issues`; `talos/review` and the AI review on `pull_request_target`, `merge_group` and
   trusted `pull_request_review`; on the schedule, label sync, the stale-claim sweep and flaky

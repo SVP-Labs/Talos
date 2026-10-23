@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { carriesGeneratedMarker } from '../configs/header.js';
 
 /**
  * The workflows Talos runs and ships, read as data: the rules every one keeps (pinned actions,
@@ -324,6 +325,40 @@ describe('the caller', () => {
     const run = act.steps.at(-1);
     expect(run?.run).toContain('job "$EVENT" --phase act');
     expect(run?.env?.TALOS_REVIEWER_TOKEN).toBe('${{ steps.token.outputs.token }}');
+  });
+
+  it('carries the generated marker, so governed repositories never judge it as their own', () => {
+    expect(carriesGeneratedMarker(text(FILES.caller))).toBe(true);
+  });
+
+  it('acts after analyze, on what it left, with the model only in the act phase', () => {
+    const { analyze, act } = caller.jobs;
+    expect(needsOf(act!)).toEqual(['analyze']);
+    expect(act?.if).toMatch(/^\$\{\{ !cancelled\(\) && \(/);
+    const upload = analyze?.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'));
+    const download = act?.steps.find((s) => s.uses?.startsWith('actions/download-artifact@'));
+    expect(upload?.with?.name).toBe('talos-analyze');
+    expect(download?.with).toEqual(upload?.with && { name: 'talos-analyze', path: upload.with.path });
+    const checkout = analyze?.steps.find((s) => s.with?.path === 'repo');
+    expect(checkout?.with?.ref).toBe('${{ github.event.repository.default_branch }}');
+    expect(JSON.stringify(analyze)).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN|TALOS_REVIEW_MODEL/);
+    const run = act?.steps.at(-1);
+    expect(run?.env).toMatchObject({
+      CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+      REVIEW_MODEL: '${{ vars.TALOS_REVIEW_MODEL }}',
+      TALOS_OWNER: '${{ vars.TALOS_OWNER }}',
+    });
+    expect(run?.run).toContain('export TALOS_REVIEW_MODEL="$REVIEW_MODEL"');
+  });
+
+  it('lets one event at a time act on a PR or an issue, cancelling none', () => {
+    expect(caller.jobs.act?.concurrency).toEqual({
+      group:
+        "talos-${{ github.event_name == 'issue_comment' && github.run_id || " +
+        'github.event.pull_request.number || github.event.issue.number || github.run_id }}',
+      'cancel-in-progress': false,
+    });
+    expect(caller.jobs.act?.permissions).toEqual({ actions: 'read', contents: 'write' });
   });
 });
 
