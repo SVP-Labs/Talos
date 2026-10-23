@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Exec } from '../exec/exec.js';
+import { EngineError } from '../core/check.js';
 import type { GitHub } from '../github/api.js';
 import { type Download, readArtifactFile } from '../github/artifacts.js';
 
@@ -135,9 +135,24 @@ async function gateRunOn(
 export type FindingsDeps = {
   readonly gh: GitHub;
   readonly download: Download;
-  readonly exec: Exec;
   readonly talosRepo: string;
 };
+
+/** The run's `verdict.json`, `undefined` with none, or why its archive can't be read. */
+async function verdictFile(
+  deps: FindingsDeps,
+  repo: string,
+  runId: number,
+): Promise<{ readonly text?: string; readonly error?: string }> {
+  const wanted = { repo, runId, artifact: 'talos-verdict', file: 'verdict.json' };
+  try {
+    const text = await readArtifactFile(deps.gh, deps.download, wanted);
+    return text === undefined ? {} : { text };
+  } catch (error) {
+    if (!(error instanceof EngineError)) throw error;
+    return { error: error.message.slice(0, MAX_MESSAGE) };
+  }
+}
 
 /**
  * The latest gate verdict for a PR's head (`talos.verdict/1`) with the `run` that left it, or
@@ -153,12 +168,8 @@ export async function prFindings(
   const unknown = { schema: 'talos.verdict/1', status: 'unknown', repo, pr, head };
   const runId = await gateRunOn(deps.gh, repo, head, deps.talosRepo);
   if (runId === undefined) return unknown;
-  const text = await readArtifactFile(deps.gh, deps.download, deps.exec, {
-    repo,
-    runId,
-    artifact: 'talos-verdict',
-    file: 'verdict.json',
-  });
+  const { text, error } = await verdictFile(deps, repo, runId);
+  if (error !== undefined) return { ...unknown, error };
   if (text === undefined) return unknown;
   const verdict = readVerdict(text);
   if (verdict === undefined) {

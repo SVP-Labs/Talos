@@ -99,27 +99,27 @@ describe('talos.claim/1', () => {
     const answers = [
       await talos('claim', '8', '--agent', 'thea'),
       await talos('claim', '7', '--agent', 'thea'),
-    ];
-    const seven = fake.issues.get(7);
-    seven?.labels.push('status/ready');
-    answers.push(
       await talos('claim', '7', '--agent', 'other'),
       await talos('next', '--agent', 'thea'),
       await talos('release', '7', '--reason', 'the scope is unclear'),
-    );
-    seven?.labels.splice(0, Infinity, 'bug', 'status/ready');
+      await talos('release', '99', '--reason', 'gone'),
+    ];
+    fake.issues.get(7)?.labels.splice(0, Infinity, 'bug', 'status/ready');
     answers.push(await talos('next', '--agent', 'thea'));
-    expect(answers.map((a) => a.code)).toEqual([1, 0, 3, 4, 0, 4]);
+    expect(answers.map((a) => a.code)).toEqual([1, 0, 3, 4, 0, 1, 4]);
     expect(
       answers.map((a) => a.json.error ?? (a.json.released === true ? 'released' : 'ok')),
-    ).toEqual(['refused', 'ok', 'claimed', 'max-claims', 'released', 'none']);
+    ).toEqual(['refused', 'ok', 'claimed', 'max-claims', 'released', 'refused', 'none']);
     for (const { json } of answers) expect(claim.safeParse(json).error).toBeUndefined();
     expect(answers[1]?.json).toMatchObject({ bodyTruncated: true, priority: 'p1' });
+    expect(answers[1]?.json.issue).toBe(answers[1]?.json.number);
+    expect(answers[2]?.json).toMatchObject({ error: 'claimed', by: 'thea' });
+    expect(answers[5]?.json).toMatchObject({ error: 'refused', reason: 'not-found' });
   });
 
   it('describes a claim through next, and a release a PR blocks', async () => {
     const taken = await talos('next', '--agent', 'thea');
-    expect(taken.json).toMatchObject({ issue: 7, branch: 'R-7', swept: [] });
+    expect(taken.json).toMatchObject({ issue: 7, number: 7, branch: 'R-7', swept: [] });
     fake.pulls.push({ number: 30, draft: true, state: 'open', updated_at: fake.now, head: 'R-7' });
     const blocked = await talos('release', '7', '--reason', 'x');
     expect(blocked.json).toMatchObject({ error: 'refused', reason: 'open-pr', pr: 30 });
@@ -129,7 +129,6 @@ describe('talos.claim/1', () => {
   it("answers Thea's hub, which appends --json to every command", async () => {
     const hub = (...argv: string[]) => asTheHub(fake, 'ticket', ...argv, '--repo', 'o/r');
     const answers = [await hub('claim', '7', '--agent', 'thea')];
-    fake.issues.get(7)?.labels.push('status/ready');
     answers.push(
       await hub('claim', '7', '--agent', 'thea'),
       await hub('claim', '8', '--agent', 'thea'),
@@ -157,6 +156,8 @@ describe('talos.claim/1', () => {
     for (const wrong of [
       { ...base, error: 'claimed' },
       { ...base, error: 'refused', reason: 'tired' },
+      { ...base, error: 'refused', reason: 'open-pr' },
+      { ...base, error: 'refused', reason: 'not-ready', pr: 30 },
       { ...base, error: 'claimed', by: 'thea', extra: 1 },
       { ...base, schema: 'talos.claim/2', error: 'claimed', by: null },
       { ...base, released: true, branch: 'r-7', deleted: true },

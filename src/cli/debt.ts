@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type Command, parse } from './io.js';
 import { currentOs } from './run.js';
@@ -8,6 +8,7 @@ import type { Engine } from '../engine/run.js';
 import { createEngine } from '../engine/session.js';
 import { compactDebt, debtCheckIds, debtReport, debtText } from '../jobs/debt-report.js';
 import { type Git, git, inWorktree, revParse, worktreeDir } from '../repo/git.js';
+import { createTalosDir, talosPath } from '../repo/talos-dir.js';
 
 /** Where the default branch is, in order: what `origin` says, then the usual name. */
 const DEFAULT_TIPS = ['refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/heads/main'];
@@ -35,10 +36,10 @@ async function exists(path: string): Promise<boolean> {
  */
 async function aloneAt(engine: Engine, repo: Git, sha: string): Promise<RunResult> {
   const os = currentOs();
-  const cacheDir = join(repo.root, '.talos', 'cache');
-  const cached = join(cacheDir, `${sha}-debt-${os}-${engine.version}.json`);
+  const name = `${sha}-debt-${os}-${engine.version}.json`;
+  const cached = talosPath(repo.root, 'cache', name);
   if (await exists(cached)) return parseRunResult(await readFile(cached, 'utf8'));
-  const directory = worktreeDir(repo, `debt-${sha}`);
+  const directory = await worktreeDir(repo, `debt-${sha}`);
   const result = await inWorktree(repo, { sha, directory }, () =>
     runAt(engine, {
       root: directory,
@@ -50,8 +51,7 @@ async function aloneAt(engine: Engine, repo: Git, sha: string): Promise<RunResul
     }),
   );
   if (engineErrors(result).length === 0) {
-    await mkdir(cacheDir, { recursive: true });
-    await writeFile(cached, JSON.stringify(result));
+    await writeFile(join(await createTalosDir(repo.root, 'cache'), name), JSON.stringify(result));
   }
   return result;
 }

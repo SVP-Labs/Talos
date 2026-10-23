@@ -10,9 +10,8 @@ import {
   type TalosIssue,
   talosIssues,
 } from './talos-issues.js';
-import { zipEntry } from './unzip.js';
 import type { GitHub } from '../github/api.js';
-import type { Download } from '../github/artifacts.js';
+import { type Download, extractFile } from '../github/artifacts.js';
 import type { Identities } from '../github/identities.js';
 import { fileAt } from '../ticket/github.js';
 import { LABEL } from '../ticket/labels.js';
@@ -146,8 +145,12 @@ async function sightings(
   let unreadable = 0;
   for (const artifact of artifacts) {
     try {
-      const entry = zipEntry(await deps.download(artifact.url), 'verdict.json', MAX_VERDICT_BYTES);
-      if (entry !== undefined) found.push(...flakyIn(entry.toString('utf8'), artifact.createdAt));
+      const text = extractFile(
+        await deps.download(artifact.url),
+        'verdict.json',
+        MAX_VERDICT_BYTES,
+      );
+      if (text !== undefined) found.push(...flakyIn(text, artifact.createdAt));
     } catch {
       unreadable += 1;
     }

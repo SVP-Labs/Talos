@@ -176,15 +176,51 @@ describe('claim and release against GitHub', () => {
     });
   });
 
-  it('answers taken, naming the claimant, when the branch exists', async () => {
+  it.each([
+    ['thea', THEA, 'sven', 'SvenPGH'],
+    ['sven', 'SvenPGH', 'thea', THEA],
+  ])(
+    'claims for %s, then answers the second claimant taken, naming the first',
+    async (first, login, second, other) => {
+      expect(await claim({ ...t, gh: fake.client(login) }, 7, first)).toMatchObject({
+        result: 'claimed',
+      });
+      const written = fake.writes().length;
+      expect(await claim({ ...t, gh: fake.client(other) }, 7, second)).toEqual({
+        result: 'taken',
+        by: first,
+      });
+      expect(fake.writes()).toHaveLength(written);
+      expect(fake.issues.get(7)?.comments.at(-1)?.body).toBe(claimLine(first, NOW));
+    },
+  );
+
+  it('answers taken while a claim is still labelling its ticket, naming no one yet', async () => {
+    fake.refs.set('T-7', 'sha-main');
+    expect(await claim(t, 7, 'thea')).toEqual({ result: 'taken', by: null });
+    fake.issues.get(7)?.labels.splice(0, Infinity, 'bug');
+    expect(await claim(t, 7, 'thea')).toEqual({ result: 'taken', by: null });
+    expect(fake.writes()).toEqual(['POST repos/o/r/git/refs']);
+  });
+
+  it('answers taken for a held ticket a ladder label has stopped', async () => {
     await claim({ ...t, gh: fake.client('SvenPGH') }, 7, 'sven');
-    fake.issues.get(7)?.labels.push('status/ready');
+    fake.issues.get(7)?.labels.push('needs-human');
     expect(await claim(t, 7, 'thea')).toEqual({ result: 'taken', by: 'sven' });
+  });
+
+  it('refuses a closed issue even while its branch is left', async () => {
+    await claim(t, 7, 'thea');
+    const seven = fake.issues.get(7);
+    if (seven !== undefined) seven.state = 'closed';
+    expect(await claim(t, 7, 'sven')).toEqual({ result: 'refused', reason: 'closed' });
   });
 
   it('refuses without touching GitHub when the issue is not claimable', async () => {
     fake.addIssue({ number: 8, labels: ['bug'] });
+    fake.addIssue({ number: 9, labels: ['status/ready', 'blocked'] });
     expect(await claim(t, 8, 'thea')).toEqual({ result: 'refused', reason: 'not-ready' });
+    expect(await claim(t, 9, 'thea')).toEqual({ result: 'refused', reason: 'blocked' });
     expect(await claim(t, 99, 'thea')).toEqual({ result: 'refused', reason: 'not-found' });
     expect(fake.writes()).toEqual([]);
   });

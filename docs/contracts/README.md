@@ -19,6 +19,13 @@ checks what the commands really print against it, so the code and the schema cha
 release that adds a field adds it here too, under the same number. A reader that validates with
 an older copy should therefore ignore fields it doesn't know rather than refuse the document.
 
+In `talos.claim/1`, a claimed answer's `issue` and `number` are always equal: `issue` names the
+ticket as every answer does, and `number` is the issue's own field; both stay, since a contract
+only grows. A claim takes `status/ready` off its ticket, so `claim` answers an open ticket
+someone holds as claimed by someone else before it refuses one for its labels: a `not-ready` or
+`blocked` refusal means nobody holds the ticket. `by` is the agent the latest claim comment a
+trusted author wrote names, and `null` when none does yet.
+
 `talos findings --repo <o/n> --pr <N>` prints the newest verdict a run of the gate's own
 workflow left on the PR's head, with that `run` added. With none it can read, its `status` is
 `unknown`, beside the `repo`, `pr` and `head` it looked at, and `error` says why when the run
@@ -35,7 +42,7 @@ document on stdout, and an exit code says which kind it is:
 | `talos check --json [--commits]`               | green                        | red                                 |                         |                        |
 | `talos findings --repo <o/n> --pr <N>`         | green, engine error, unknown | red                                 |                         |                        |
 | `talos status --repo <o/n>… --json`            | every repository read        | one wasn't; its element has `error` |                         |                        |
-| `talos ticket claim <N> --agent <id>`          | claimed                      | refused, with `reason`              | claimed by someone else |                        |
+| `talos ticket claim <N> --agent <id>`          | claimed                      | refused: any `reason` but `open-pr` | claimed by someone else |                        |
 | `talos ticket next --agent <id>`               | claimed                      |                                     |                         | `none` or `max-claims` |
 | `talos ticket release <N> --reason <one line>` | released                     | refused: `open-pr`, `not-found`     |                         |                        |
 | `talos version --enforced --json`              | the release                  |                                     |                         |                        |

@@ -99,6 +99,10 @@ describe('talos debt', () => {
       byFile: [{ file: 'src/a.ts', count: 1 }],
     });
     expect(calls).toEqual(['test/lint:alone']);
+    const status = await run('git', ['status', '--porcelain', '--untracked-files=all'], {
+      cwd: root,
+    });
+    expect(status.stdout).toBe('');
     const again = await talos(root, [counting(calls)], '--out', join(root, 'debt.json'));
     expect(calls).toHaveLength(1);
     expect(again.out).toContain('1 finding(s)');

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { prepare } from './prepare.js';
 import { type Engine, runChecks, type Side } from './run.js';
@@ -10,6 +10,7 @@ import { engineErrors, parseRunResult, type RunResult } from '../core/result.js'
 import { type ChangeSet, parseDiff } from '../repo/changes.js';
 import { repoFacts } from '../repo/facts.js';
 import { type Git, git, inWorktree, showFile, trackedFiles, worktreeDir } from '../repo/git.js';
+import { createTalosDir, talosPath } from '../repo/talos-dir.js';
 
 export type At = {
   readonly root: string;
@@ -74,21 +75,18 @@ export async function cachedRun(
   repo: Git,
   at: Omit<At, 'root'>,
 ): Promise<RunResult> {
-  const cacheDir = join(repo.root, '.talos', 'cache');
   const own = (await showFile(repo, at.sha, CONFIG_FILE)) !== undefined;
   const borrowed = own || at.config === undefined ? '' : `-${digest(JSON.stringify(at.config))}`;
   const name = `${at.sha}-${at.tiers.join('+')}-${at.os}-${engine.version}${borrowed}.json`;
-  const file = join(cacheDir, name);
   try {
-    return parseRunResult(await readFile(file, 'utf8'));
+    return parseRunResult(await readFile(talosPath(repo.root, 'cache', name), 'utf8'));
   } catch {
-    const directory = worktreeDir(repo, at.sha);
+    const directory = await worktreeDir(repo, at.sha);
     const result = await inWorktree(repo, { sha: at.sha, directory }, () =>
       runAt(engine, { ...at, root: directory }),
     );
     if (engineErrors(result).length === 0) {
-      await mkdir(cacheDir, { recursive: true });
-      await writeFile(file, JSON.stringify(result));
+      await writeFile(join(await createTalosDir(repo.root, 'cache'), name), JSON.stringify(result));
     }
     return result;
   }

@@ -80,6 +80,9 @@ export function claimantOf(
   return undefined;
 }
 
+/** Refusals about the issue itself, which hold whether or not anyone holds its branch. */
+const ISSUE_REFUSALS: ReadonlySet<string> = new Set(['not-found', 'not-an-issue', 'closed']);
+
 /** Why an issue can't be claimed, or `undefined` when it can. */
 export function claimRefusal(issue: Issue | undefined): string | undefined {
   if (issue === undefined) return 'not-found';
@@ -123,17 +126,33 @@ async function lock(t: Ticketing, branch: string): Promise<boolean> {
   }
 }
 
+/** Someone else holds the ticket: the agent a trusted claim comment names, if one does yet. */
+async function taken(t: Ticketing, n: number): Promise<ClaimResult> {
+  const by = claimantOf(await listComments(t.gh, t.repo, n), t.who)?.agent ?? null;
+  return { result: 'taken', by };
+}
+
+/**
+ * Refuses an issue, unless someone holds it. A claim takes `status/ready` off its ticket, so a
+ * held ticket would otherwise read as not ready: an open issue refused for its labels is looked
+ * up first, since who holds it is the answer then.
+ */
+async function refused(t: Ticketing, n: number, reason: string): Promise<ClaimResult> {
+  if (!ISSUE_REFUSALS.has(reason)) {
+    const held = await branchHead(t.gh, t.repo, branchFor(t.prefix, n));
+    if (held !== undefined) return await taken(t, n);
+  }
+  return { result: 'refused', reason };
+}
+
 export async function claim(t: Ticketing, n: number, agent: string): Promise<ClaimResult> {
   const issue = await getIssue(t.gh, t.repo, n);
   const refusal = claimRefusal(issue);
   if (refusal !== undefined || issue === undefined) {
-    return { result: 'refused', reason: refusal ?? 'not-found' };
+    return await refused(t, n, refusal ?? 'not-found');
   }
   const branch = branchFor(t.prefix, n);
-  if (!(await lock(t, branch))) {
-    const by = claimantOf(await listComments(t.gh, t.repo, n), t.who)?.agent ?? null;
-    return { result: 'taken', by };
-  }
+  if (!(await lock(t, branch))) return await taken(t, n);
   const add = [LABEL.inProgress, LABEL.claimed].filter((l) => !issue.labels.includes(l));
   try {
     await changeLabels(t.gh, t.repo, n, { add, remove: [LABEL.ready] });

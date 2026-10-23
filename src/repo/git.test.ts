@@ -63,7 +63,19 @@ describe('inWorktree', () => {
 describe('worktreeDir', () => {
   it("keeps two processes' checkouts of one commit apart", async () => {
     const { repo, sha } = await scratch();
-    expect(worktreeDir(repo, sha, 1)).not.toBe(worktreeDir(repo, sha, 2));
-    expect(worktreeDir(repo, sha, 7)).toBe(join(repo.root, '.talos', 'worktrees', `${sha}-7`));
+    expect(await worktreeDir(repo, sha, 1)).not.toBe(await worktreeDir(repo, sha, 2));
+    expect(await worktreeDir(repo, sha, 7)).toBe(
+      join(repo.root, '.talos', 'worktrees', `${sha}-7`),
+    );
+  });
+
+  it('keeps git from listing the checkout or anything else under .talos', async () => {
+    const { repo, sha } = await scratch();
+    const directory = await worktreeDir(repo, sha);
+    const status = await inWorktree(repo, { sha, directory }, async () => {
+      await writeFile(join(directory, 'b.txt'), 'two\n');
+      return repo.run(['status', '--porcelain', '--untracked-files=all']);
+    });
+    expect(status).toBe('');
   });
 });

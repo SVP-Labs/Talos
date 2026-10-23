@@ -82,6 +82,9 @@ describe('talos check, run', () => {
     const second = ioAt(repo.root);
     expect(await check(args, second)).toBe(1);
     expect(second.text()).toBe(first.text());
+    const status = await repo.run(['status', '--porcelain', '--untracked-files=all']);
+    expect(await readdir(join(repo.root, '.talos'))).toContain('check');
+    expect(status).not.toContain('.talos');
   });
 
   it('runs nothing for a tier the plan has no run of, and asks for a base it cannot find', async () => {

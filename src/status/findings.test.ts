@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { prFindings } from './findings.js';
-import { exec } from '../exec/exec.js';
-import { github } from '../github/api.js';
+import { github, GitHubError } from '../github/api.js';
+import { makeZip } from '../ticket/test/fake-github.js';
 
 type Suite = {
   createdAt: string;
@@ -43,7 +43,6 @@ describe('prFindings', () => {
     const deps = {
       gh,
       download: () => Promise.resolve(new Uint8Array()),
-      exec,
       talosRepo: 'SVP-Labs/Talos',
     };
     expect(await prFindings(deps, 'SVP-Labs/Thea', 5)).toEqual({
@@ -61,12 +60,72 @@ describe('prFindings', () => {
     const deps = {
       gh,
       download: () => Promise.resolve(new Uint8Array()),
-      exec,
       talosRepo: 'svp-labs/talos',
     };
     expect(await prFindings(deps, 'SVP-Labs/Thea', 5)).toMatchObject({
       status: 'unknown',
       head: 'abc',
+    });
+  });
+
+  const SHA = 'a'.repeat(40);
+  const green = {
+    schema: 'talos.verdict/1',
+    talos: '1.4.0',
+    repo: null,
+    pr: null,
+    mode: 'ready',
+    base: SHA,
+    head: SHA,
+    status: 'green',
+    counts: { blocking: 0, existing: 0, faults: 0, byRule: {} },
+    blocking: [],
+    faults: [],
+    flaky: [],
+    truncated: false,
+  };
+
+  function withArchive(archive: Uint8Array) {
+    const suites = [gate(4, '2026-10-23T10:00:00Z')];
+    const gh = github('t', { fetch: fakeFetch(suites, [{ id: 3, name: 'talos-verdict' }]) });
+    return { gh, download: () => Promise.resolve(archive), talosRepo: 'SVP-Labs/Talos' };
+  }
+
+  it('reads the verdict out of the artifact the newest gate run left, in-process', async () => {
+    const deps = withArchive(makeZip({ 'verdict.json': JSON.stringify(green) }));
+    expect(await prFindings(deps, 'SVP-Labs/Thea', 5)).toEqual({
+      ...green,
+      repo: 'SVP-Labs/Thea',
+      pr: 5,
+      head: 'abc',
+      run: 4,
+    });
+  });
+
+  it('fails, rather than answering, when the archive cannot be downloaded', async () => {
+    const deps = {
+      ...withArchive(new Uint8Array()),
+      download: () => Promise.reject(new GitHubError('GET x: 410', 410)),
+    };
+    await expect(prFindings(deps, 'SVP-Labs/Thea', 5)).rejects.toBeInstanceOf(GitHubError);
+  });
+
+  it('says unknown, with why, when the artifact is no archive it can read', async () => {
+    for (const archive of [new TextEncoder().encode('not a zip'), new Uint8Array(64)]) {
+      const answer = await prFindings(withArchive(archive), 'SVP-Labs/Thea', 5);
+      expect(answer).toEqual({
+        schema: 'talos.verdict/1',
+        status: 'unknown',
+        repo: 'SVP-Labs/Thea',
+        pr: 5,
+        head: 'abc',
+        error: 'unreadable artifact: not a zip archive',
+      });
+    }
+    const odd = withArchive(makeZip({ 'verdict.json': '{"status":"red"}' }));
+    expect(await prFindings(odd, 'SVP-Labs/Thea', 5)).toMatchObject({
+      status: 'unknown',
+      error: 'the gate run left a verdict Talos cannot read',
     });
   });
 });

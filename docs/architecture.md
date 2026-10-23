@@ -26,6 +26,7 @@ src/
   docs/               glossary, decisions, comments, links and CLAUDE.md, for checks and jobs
   tools/              tools.lock: download, verify, cache
   github/             the API client, identities, rulesets, check and workflow runs, artifacts
+                      (zip archives read in-process: no unzip or tar needed)
   version/            the launcher: which release a repository enforces, npm provenance
   jobs/               the caller workflow's jobs (talos job <event>)
   review/             talos/review and the reviewer's AI review
@@ -157,7 +158,10 @@ repository at the pin and runs `bootstrap/launch.ts`, which installs and verifie
 `talos check` does the same locally: the working tree against the base branch, or with
 `--commits` every commit against its parent. Base runs happen in git worktrees under `.talos/`
 and are cached by commit, tiers, OS and release in `.talos/cache`, since a commit's findings
-don't change; every finding goes to `.talos/check/talos.sarif`.
+don't change; every finding goes to `.talos/check/talos.sarif`. Whatever creates `.talos/` (these
+and `talos debt`) goes through `src/repo/talos-dir.ts`, which writes `.talos/.gitignore` holding
+`*`, so git lists none of it in any repository Talos judges; a `.gitignore` already there is kept
+as it is.
 
 ## Which release runs
 

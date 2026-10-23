@@ -1,13 +1,7 @@
-import { execFile } from 'node:child_process';
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { crc32 } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { listRunArtifacts, listRunJobs, listWorkflowRuns } from './actions.js';
 import { github, type GitHub, GitHubError } from './api.js';
-import { downloader, extractFile, readArtifactFile } from './artifacts.js';
+import { downloader } from './artifacts.js';
 import { createCheckRun, listCheckRuns, stateOf, updateCheckRun } from './checks.js';
 import { readFileAt } from './contents.js';
 import { pullsForCommit } from './pulls.js';
@@ -20,25 +14,9 @@ import {
   propertyOf,
 } from './repos.js';
 import { getRuleset, listRulesets, requiredWorkflows } from './rulesets.js';
-import { type Exec, ExecError } from '../exec/exec.js';
+import type { Exec } from '../exec/exec.js';
 
 type Call = { method: string; path: string; body?: unknown };
-
-/** The system's programs, without writing to their stdin; tests only. */
-const exec: Exec = async (command, args, options) => {
-  try {
-    const { stdout, stderr } = await promisify(execFile)(command, [...args], {
-      cwd: options.cwd,
-      encoding: 'utf8',
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    const failure = error as { code?: unknown; stdout?: string; stderr?: string };
-    if (typeof failure.code === 'string') throw new ExecError(`${command} could not start`);
-    const code = typeof failure.code === 'number' ? failure.code : 1;
-    return { code, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
-  }
-};
 
 /** A GitHub whose answers are keyed by `METHOD path`; anything else fails the test. */
 function fakeGitHub(answers: Record<string, unknown>, calls: Call[] = []): GitHub {
@@ -450,97 +428,10 @@ describe('workflow runs, jobs and artifacts', () => {
   });
 });
 
-/** A zip archive of stored (uncompressed) files, enough for unzip and bsdtar. */
-function storedZip(files: Record<string, string>): Buffer {
-  const locals: Buffer[] = [];
-  const centrals: Buffer[] = [];
-  let offset = 0;
-  for (const [name, text] of Object.entries(files)) {
-    const data = Buffer.from(text);
-    const nameBytes = Buffer.from(name);
-    const crc = crc32(data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04_03_4b_50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(nameBytes.length, 26);
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02_01_4b_50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(data.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(nameBytes.length, 28);
-    central.writeUInt32LE(offset, 42);
-    locals.push(local, nameBytes, data);
-    centrals.push(central, nameBytes);
-    offset += 30 + nameBytes.length + data.length;
-  }
-  const directory = Buffer.concat(centrals);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06_05_4b_50, 0);
-  end.writeUInt16LE(Object.keys(files).length, 8);
-  end.writeUInt16LE(Object.keys(files).length, 10);
-  end.writeUInt32LE(directory.length, 12);
-  end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, directory, end]);
-}
-
-async function zipFile(files: Record<string, string>): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'talos-zip-test-'));
-  const path = join(directory, 'a.zip');
-  await writeFile(path, storedZip(files));
-  return path;
-}
-
-const ARCHIVE = join(tmpdir(), 'talos-never-read.zip');
-
 function urlOf(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === 'string') return input;
   return input instanceof URL ? input.href : input.url;
 }
-
-describe('extractFile', () => {
-  it('reads one member of an archive', async () => {
-    const archive = await zipFile({ 'verdict.json': '{"status":"red"}', 'talos.sarif': '{}' });
-    expect(await extractFile(exec, archive, 'verdict.json')).toBe('{"status":"red"}');
-  });
-
-  it('is undefined for a member the archive lacks', async () => {
-    const archive = await zipFile({ 'other.json': '{}' });
-    expect(await extractFile(exec, archive, 'verdict.json')).toBeUndefined();
-  });
-
-  it('refuses names that could be options, patterns or paths out', async () => {
-    for (const name of ['-p', '*.json', '../x', 'a/../../b', '']) {
-      await expect(extractFile(exec, ARCHIVE, name)).rejects.toBeInstanceOf(TypeError);
-    }
-  });
-
-  it('falls back to tar when unzip is missing', async () => {
-    const tar =
-      (code: number, stdout: string, stderr: string): Exec =>
-      (command) =>
-        command === 'unzip'
-          ? Promise.reject(new ExecError('unzip could not start: ENOENT'))
-          : Promise.resolve({ code, stdout, stderr });
-    expect(await extractFile(tar(0, 'from tar', ''), ARCHIVE, 'verdict.json')).toBe('from tar');
-    const missing = tar(1, '', 'verdict.json: Not found in archive');
-    expect(await extractFile(missing, ARCHIVE, 'verdict.json')).toBeUndefined();
-    const damaged = tar(2, '', 'damaged');
-    await expect(extractFile(damaged, ARCHIVE, 'verdict.json')).rejects.toThrow('tar exited 2');
-  });
-
-  it('fails when unzip fails for another reason', async () => {
-    const timedOut: Exec = () => Promise.reject(new Error('unzip timed out'));
-    await expect(extractFile(timedOut, ARCHIVE, 'verdict.json')).rejects.toThrow('timed out');
-    const unzipFails: Exec = () => Promise.resolve({ code: 9, stdout: '', stderr: '' });
-    await expect(extractFile(unzipFails, ARCHIVE, 'v.json')).rejects.toThrow('unzip exited 9');
-  });
-});
 
 describe('downloader', () => {
   it('follows the redirect by hand, without the token', async () => {
@@ -573,47 +464,6 @@ describe('downloader', () => {
     expect([...(await downloader('t', { fetch: ok })('https://api.github.com/x'))]).toEqual([9]);
     const gone: typeof fetch = () => Promise.resolve(new Response(null, { status: 410 }));
     await expect(downloader('t', { fetch: gone })('x')).rejects.toThrow('GET x: 410');
-  });
-});
-
-describe('readArtifactFile', () => {
-  const artifact = {
-    id: 2,
-    name: 'talos-verdict',
-    size_in_bytes: 100,
-    expired: false,
-    archive_download_url: 'u',
-  };
-
-  it('downloads the named artifact and extracts the file', async () => {
-    const gh = fakeGitHub({ 'GET repos/o/r/actions/runs/11/artifacts': [artifact] });
-    const zip = storedZip({ 'verdict.json': '{"ok":true}' });
-    const download = (path: string) => {
-      expect(path).toBe('repos/o/r/actions/artifacts/2/zip');
-      return Promise.resolve(new Uint8Array(zip));
-    };
-    const text = await readArtifactFile(gh, download, exec, {
-      repo: 'o/r',
-      runId: 11,
-      artifact: 'talos-verdict',
-      file: 'verdict.json',
-    });
-    expect(text).toBe('{"ok":true}');
-  });
-
-  it('is undefined for a missing or expired artifact, and refuses a huge one', async () => {
-    const wanted = { repo: 'o/r', runId: 11, artifact: 'talos-verdict', file: 'verdict.json' };
-    const never = () => Promise.reject(new Error('no download expected'));
-    const expired = fakeGitHub({
-      'GET repos/o/r/actions/runs/11/artifacts': [{ ...artifact, expired: true }],
-    });
-    expect(await readArtifactFile(expired, never, exec, wanted)).toBeUndefined();
-    const huge = fakeGitHub({
-      'GET repos/o/r/actions/runs/11/artifacts': [
-        { ...artifact, size_in_bytes: 200 * 1024 * 1024 },
-      ],
-    });
-    await expect(readArtifactFile(huge, never, exec, wanted)).rejects.toBeInstanceOf(GitHubError);
   });
 });
 

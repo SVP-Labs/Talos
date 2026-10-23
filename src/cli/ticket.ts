@@ -21,11 +21,12 @@ import { ticketStatus } from '../ticket/status.js';
 /**
  * Exit codes of `talos ticket`:
  * - 0: done (claimed, released, status printed);
- * - 1: refused: the issue can't be claimed (closed, not `status/ready`, blocked, an epic…), or a
- *   PR is open from its branch so it can't be released;
+ * - 1: refused: the issue is missing, a pull request or closed, or nobody holds it and its labels
+ *   keep it from being claimed (not `status/ready`, blocked, an epic…), or a PR is open from its
+ *   branch so it can't be released;
  * - 2: an error (GitHub, configuration);
- * - 3: someone else holds the claim already (a usage error exits 3 too; the JSON tells them
- *   apart);
+ * - 3: someone else holds the claim already, whatever the open issue's labels say (a usage error
+ *   exits 3 too; the JSON tells them apart);
  * - 4: `next` claimed nothing: the open claims reach `agents.max_claims`, or no ticket in the
  *   queue could be claimed.
  */

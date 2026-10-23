@@ -40,17 +40,26 @@ Talos raises carries what the next decision needs.
 
   ```text
   0  {"issue": 170, "branch": "T-170", "agent": "thea", "title": "…", …}   claimed
-  1  {"error": "refused", "reason": "not-ready"}      closed, not ready, blocked, an epic…
+  1  {"error": "refused", "reason": "not-ready"}      closed, or unclaimed: not ready, blocked…
   3  {"error": "claimed", "by": "thea"}               someone else holds it
   4  {"error": "max-claims", "claims": 2, "max": 2}   or {"error": "none", "tried": 0}
   ```
 
   A claimed ticket carries its labels, priority, its body (clipped at 3,000 characters) and its
   last five comments (300 each), each marked `trusted` or not, with an `author` that is `null`
-  when GitHub names no user. Claimed by someone else, refused and none are answers, not
-  failures. A usage error exits 3 too, but prints nothing on stdout, which tells it apart from a
-  claim someone else holds; `--json` is accepted and changes nothing, since `talos ticket` always
-  prints JSON. `talos ticket status <N>` answers who holds a ticket (`talos.ticket/1`).
+  when GitHub names no user; its `issue` and `number` are the same. Claimed by someone else,
+  refused and none are answers, not failures. A usage error exits 3 too, but prints nothing on
+  stdout, which tells it apart from a claim someone else holds; `--json` is accepted and changes
+  nothing, since `talos ticket` always prints JSON. `talos ticket status <N>` answers who holds
+  a ticket (`talos.ticket/1`).
+
+- A claim takes `status/ready` off its ticket, so Talos asks whether someone holds an open
+  ticket before it refuses one for its labels: a held ticket answers `claimed`, whatever its
+  labels, and a refusal for its labels (`not-ready`, `blocked`, `epic`…) means nobody holds it.
+  `by` is the agent the latest claim comment by a trusted author names, and `null` when none
+  does yet, as while the holder's claim is still being written. A missing, closed or
+  pull-request issue is refused whoever holds it. `next` never answers `claimed` or `refused`:
+  it moves on to the next ticket.
 
 - The token the commands run with needs contents and issues write, and pull requests too:
   `release` lists the PRs open from the branch, and the sweep inside `next` closes an idle

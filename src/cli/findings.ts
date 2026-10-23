@@ -1,5 +1,4 @@
 import { type Command, parse, required, UsageError } from './io.js';
-import { exec } from '../exec/exec.js';
 import { github, tokenFromEnvironment } from '../github/api.js';
 import { downloader } from '../github/artifacts.js';
 import { identities } from '../github/identities.js';
@@ -24,7 +23,7 @@ export const findings: Command = async (argv, io) => {
   if (!Number.isInteger(pr) || pr < 1) throw new UsageError('--pr takes a pull request number');
   const token = await tokenFromEnvironment(io.env);
   const gh = github(token);
-  const deps = { gh, download: downloader(token), exec, talosRepo: identities(io.env).talosRepo };
+  const deps = { gh, download: downloader(token), talosRepo: identities(io.env).talosRepo };
   const verdict = await prFindings(deps, repo, pr);
   io.out(`${JSON.stringify(verdict)}\n`);
   return verdict.status === 'red' ? 1 : 0;

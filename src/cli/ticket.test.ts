@@ -48,18 +48,30 @@ describe('talos ticket', () => {
     expect(fake.refs.has('R-7')).toBe(true);
   });
 
-  it('exits 3 when someone holds the claim, naming them', async () => {
-    await talos('claim', '7', '--agent', 'thea');
-    fake.issues.get(7)?.labels.push('status/ready');
-    const { code, json } = await talos('claim', '7', '--agent', 'other');
-    expect(code).toBe(3);
-    expect(json).toMatchObject({ schema: 'talos.claim/1', error: 'claimed', by: 'thea' });
-  });
+  it.each([
+    ['thea', 'other'],
+    ['other', 'thea'],
+  ])(
+    'exits 3 to the second claimant once %s holds the claim, naming them',
+    async (first, second) => {
+      expect((await talos('claim', '7', '--agent', first)).code).toBe(0);
+      const { code, json } = await talos('claim', '7', '--agent', second);
+      expect(code).toBe(3);
+      expect(json).toEqual({
+        schema: 'talos.claim/1',
+        issue: 7,
+        error: 'claimed',
+        by: first,
+        repo: 'o/r',
+      });
+    },
+  );
 
-  it('exits 1 when the issue cannot be claimed', async () => {
+  it('exits 1 when the issue cannot be claimed and nobody holds it', async () => {
     const { code, json } = await talos('claim', '8', '--agent', 'thea');
     expect(code).toBe(1);
     expect(json).toMatchObject({ error: 'refused', reason: 'not-ready' });
+    expect(fake.writes()).toEqual([]);
   });
 
   it('takes the next ticket, then exits 4 at max_claims', async () => {
