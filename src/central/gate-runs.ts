@@ -5,9 +5,10 @@ import type { GitHub } from '../github/api.js';
 import { listInstallationRepositories, propertyOf } from '../github/repos.js';
 
 /**
- * Gate runs on canary repositories, read as `talos-release` (actions: read there). The gate is
- * the organisation's required workflow, so its runs are listed among each repository's own; the
- * gate's job names carry the release, which is how a run is told apart from the rest.
+ * Gate runs on canary repositories, read as `talos-release` with a token minted for them alone
+ * (actions: read). The gate is the organisation's required workflow, so its runs are listed
+ * among each repository's own; the gate's job names carry the release, which is how a run is told
+ * apart from the rest.
  */
 
 const GATE_EVENTS: ReadonlySet<string> = new Set(['pull_request', 'merge_group']);
@@ -15,7 +16,7 @@ const MAX_RUNS = 300;
 
 const runSchema = z.object({ id: z.number().int(), event: z.string() });
 
-/** The repositories on the canary channel that the token reaches. */
+/** The repositories on the canary channel that the token reaches, archived ones left out. */
 export async function canaryRepositories(gh: GitHub): Promise<string[]> {
   const repos = await listInstallationRepositories(gh);
   return repos

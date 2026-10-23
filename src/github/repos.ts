@@ -55,6 +55,45 @@ export async function listInstallationRepositories(gh: GitHub): Promise<Reposito
   return z.array(repositorySchema).parse(raw).map(toRepository);
 }
 
+const propertyRowSchema = z.object({
+  repository_id: z.number().int(),
+  repository_full_name: z.string(),
+  properties: propertyValuesSchema,
+});
+
+/** A repository as the organisation's custom property listing names it. */
+export type PropertyRow = {
+  readonly id: number;
+  /** `owner/name`. */
+  readonly fullName: string;
+  readonly properties: Readonly<Record<string, string | readonly string[] | null>>;
+};
+
+/**
+ * The organisation's repositories with their custom property values
+ * (`GET /orgs/{org}/properties/values`), narrowed by `query`, a repository search such as
+ * `is:private`. An organisation permission (Custom properties, read) is enough, so a token that
+ * reaches no repository can list them.
+ */
+export async function listPropertyValues(
+  gh: GitHub,
+  org: string,
+  query?: string,
+): Promise<PropertyRow[]> {
+  const search = query === undefined ? '' : `?repository_query=${encodeURIComponent(query)}`;
+  const raw = await gh.paginate<unknown>(
+    `orgs/${encodeURIComponent(org)}/properties/values${search}`,
+  );
+  return z
+    .array(propertyRowSchema)
+    .parse(raw)
+    .map((row) => ({
+      id: row.repository_id,
+      fullName: row.repository_full_name,
+      properties: Object.fromEntries(row.properties.map((p) => [p.property_name, p.value])),
+    }));
+}
+
 /** A single-valued custom property, or `undefined` when it is unset or multi-valued. */
 export function propertyOf(repository: Repository, name: string): string | undefined {
   const value = repository.properties[name];

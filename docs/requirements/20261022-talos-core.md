@@ -368,7 +368,9 @@ rerun the whole gate).
 ```text
 Thea's App (her G1)     contents: write · pull-requests: write · issues: write · checks, statuses, actions: read
 talos-reviewer[bot]     contents: read  · pull-requests: write · issues: write · checks: write
+                        organization custom properties: read (governed repositories, C28, C30)
 talos-release[bot]      organization administration: write (moving pins, C17)
+                        organization custom properties: read (finding repositories, C30)
                         administration: read, every governed repository (drift, C29)
                         actions: read, canary repositories (counting gate runs, C17)
                         contents: write, Talos only, and only with the channels.json fallback (C18)
@@ -913,8 +915,9 @@ A `runtime/security` finding blocks every PR in its repository until it is fixed
 The check runs in the gate on every PR, and also hourly, centrally from the Talos repository
 as `talos-reviewer`, across every governed repository: a new security release in the morning
 can't wait for someone to push. The sweep keeps C15's token scoping: a first step lists the
-repositories the reviewer is installed on, then a matrix job mints one token per repository,
-limited to it and to the two permissions the sweep needs:
+governed repositories through the organisation's custom properties, with a token that holds
+that organisation permission alone and reaches no repository, then a matrix job mints one token
+per repository, limited to it and to the two permissions the sweep needs:
 
 ```yaml
 - uses: actions/create-github-app-token@v2
@@ -1000,12 +1003,16 @@ run in the public Talos repository, whose runs anyone can read. So:
   pass through an expression: `echo "::add-mask::${{ matrix.repo }}"` would leak the name in the
   very line meant to hide it;
 - each job's first step looks its repository up by index inside the script (listing the
-  repositories that the App the job runs as is installed on, with a metadata-only token:
-  `talos-reviewer` for the sweep, `talos-release` for drift and promotion) and masks the name
+  governed repositories, those whose `talos` property names a channel, through the
+  organisation's custom properties, with a token that holds that organisation permission alone
+  and reaches no repository: `talos-reviewer`'s for the sweep, `talos-release`'s for drift and
+  promotion) and masks the name
   (`::add-mask::`) before printing anything. Later steps then show it masked, including
   `create-github-app-token`'s `repositories` input, which reads it from that step's output;
 - a self-test keeps it that way: a scratch repository with a unique canary name is always in
-  the matrix, and Talos's own CI fails if that name appears anywhere in a run's logs;
+  the matrix, and Talos's own CI fails if that name appears anywhere in a run's logs, and each
+  App proves it can see the canary with a token minted for the canary alone, found by the digest
+  of its name;
 - tool output is captured, never echoed: no finding, path or repository name reaches the log,
   an annotation, the job summary or an artifact, and only counts are printed;
 - errors from git and `gh` are captured and replaced by a generic line, since their messages

@@ -1,11 +1,12 @@
+import { appendFile } from 'node:fs/promises';
 import { type Command, type Io, parse, UsageError } from './io.js';
 import { runChannels } from '../central/channels-job.js';
 import { dispatchAllowed } from '../central/channels.js';
 import { expectedFromAssets, runChannelsFileDrift, runDrift } from '../central/drift-job.js';
-import { runPrivacy } from '../central/privacy.js';
+import { maskNames, type PrivacyNames, runPrivacy } from '../central/privacy.js';
 import { runtimeAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
 import { runSweep } from '../central/sweep-job.js';
-import { github, type GitHubOptions } from '../github/api.js';
+import { github, type GitHub, type GitHubOptions } from '../github/api.js';
 import { downloader } from '../github/artifacts.js';
 import { identities } from '../github/identities.js';
 import { lookupMode } from '../version/pin.js';
@@ -36,7 +37,7 @@ export type CentralOptions = GitHubOptions & {
 
 type Outcome = { readonly ok: boolean; readonly report: Readonly<Record<string, unknown>> };
 
-type Flags = { readonly channelsFile: boolean };
+type Flags = { readonly channelsFile: boolean; readonly mask: boolean };
 
 function jobOf(name: string | undefined): Job {
   const job = JOBS.find((j) => j === name);
@@ -55,6 +56,11 @@ function optionalToken(env: Env, name: string): string | undefined {
   return value === undefined || value === '' ? undefined : value;
 }
 
+function optionalGitHub(env: Env, name: string, options: CentralOptions): GitHub | undefined {
+  const value = optionalToken(env, name);
+  return value === undefined ? undefined : github(value, options);
+}
+
 async function channels(env: Env, options: CentralOptions): Promise<Outcome> {
   const who = identities(env);
   const urgent = env.GITHUB_EVENT_NAME === 'workflow_dispatch';
@@ -62,12 +68,14 @@ async function channels(env: Env, options: CentralOptions): Promise<Outcome> {
   if (urgent && !dispatchAllowed(actors, who.owner)) {
     return { ok: false, report: { refused: 'only the owner may dispatch the urgent promotion' } };
   }
+  const mirror = lookupMode(env) === 'channels';
   const report = await runChannels({
     talos: github(token(env, 'GITHUB_TOKEN'), options),
     release: github(token(env, 'TALOS_RELEASE_TOKEN'), options),
+    canary: optionalGitHub(env, 'TALOS_CANARY_TOKEN', options),
+    mirror: mirror ? github(token(env, 'TALOS_MIRROR_TOKEN'), options) : undefined,
     who,
     now: options.now?.() ?? new Date(),
-    mirror: lookupMode(env) === 'channels',
     urgent,
   });
   return { ok: report.missing === 0, report };
@@ -92,17 +100,40 @@ async function drift(env: Env, options: CentralOptions, flags: Flags): Promise<O
   return { ok: true, report };
 }
 
+/** What both privacy steps read: the organisation's names, and the canary's digest. */
+function privacyNames(io: Io, options: CentralOptions): Omit<PrivacyNames, 'current'> {
+  const { env } = io;
+  return {
+    properties: github(token(env, 'TALOS_PROPERTIES_TOKEN'), options),
+    org: identities(env).org,
+    out: (text: string) => {
+      io.out(text);
+    },
+    canary: optionalToken(env, 'TALOS_PRIVACY_CANARY_SHA256')?.toLowerCase(),
+  };
+}
+
+/** `--mask`: masks every name and hands the canary's bare name to the job's later steps. */
+async function privacyMask(io: Io, options: CentralOptions): Promise<Outcome> {
+  const target = token(io.env, 'GITHUB_OUTPUT');
+  const report = await maskNames({
+    ...privacyNames(io, options),
+    current: token(io.env, 'GITHUB_REPOSITORY'),
+    output: (key, value) => appendFile(target, `${key}=${value}\n`),
+  });
+  // The search in the last step decides; this step only prepares it.
+  return { ok: true, report };
+}
+
 async function privacy(io: Io, options: CentralOptions): Promise<Outcome> {
   const { env } = io;
-  const apps = ['TALOS_REVIEWER_TOKEN', 'TALOS_RELEASE_TOKEN']
-    .map((name) => optionalToken(env, name))
-    .filter((value) => value !== undefined)
-    .map((value) => github(value, options));
-  if (apps.length === 0) {
-    throw new UsageError('TALOS_REVIEWER_TOKEN or TALOS_RELEASE_TOKEN is required');
-  }
+  const apps = ['TALOS_REVIEWER_TOKEN', 'TALOS_RELEASE_TOKEN'].flatMap((name) => {
+    const gh = optionalGitHub(env, name, options);
+    return gh === undefined ? [] : [gh];
+  });
   const workflow = token(env, 'GITHUB_TOKEN');
   const report = await runPrivacy({
+    ...privacyNames(io, options),
     apps,
     actions: github(workflow, options),
     download: downloader(workflow, options),
@@ -112,10 +143,6 @@ async function privacy(io: Io, options: CentralOptions): Promise<Outcome> {
       attempt: env.GITHUB_RUN_ATTEMPT ?? '1',
       self: env.TALOS_PRIVACY_JOB ?? 'privacy',
     },
-    out: (text) => {
-      io.out(text);
-    },
-    canary: optionalToken(env, 'TALOS_PRIVACY_CANARY_SHA256')?.toLowerCase(),
   });
   // Without the canary watched, a clean search proves nothing: it may have watched no private name.
   return { ok: report.leaks === 0 && report.canary === true, report };
@@ -130,7 +157,7 @@ function run(job: Job, io: Io, options: CentralOptions, flags: Flags): Promise<O
     case 'drift':
       return drift(io.env, options, flags);
     case 'privacy':
-      return privacy(io, options);
+      return flags.mask ? privacyMask(io, options) : privacy(io, options);
   }
 }
 
@@ -142,6 +169,7 @@ export function centralWith(options: CentralOptions): Command {
       {
         json: { type: 'boolean', default: false },
         'channels-file': { type: 'boolean', default: false },
+        mask: { type: 'boolean', default: false },
       },
       true,
     );
@@ -150,7 +178,8 @@ export function centralWith(options: CentralOptions): Command {
       io.out(`${JSON.stringify({ schema: CENTRAL_SCHEMA, job, ...line })}\n`);
     };
     try {
-      const outcome = await run(job, io, options, { channelsFile: values['channels-file'] });
+      const flags = { channelsFile: values['channels-file'], mask: values.mask };
+      const outcome = await run(job, io, options, flags);
       print({ ok: outcome.ok, ...outcome.report });
       return outcome.ok ? 0 : 1;
     } catch (error) {
@@ -164,6 +193,7 @@ export function centralWith(options: CentralOptions): Command {
 /**
  * `talos central <channels|sweep|drift|privacy>`: the central jobs Talos's own workflows run.
  * Each prints one JSON line (`talos.central/1`) of counts, Talos's own release tags at most, and
- * never a repository's name, a path or a finding: these runs are public.
+ * never a repository's name, a path or a finding: these runs are public. `privacy --mask` is the
+ * privacy job's first step, which masks every name before the canary's tokens are minted.
  */
 export const central: Command = centralWith({});

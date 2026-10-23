@@ -22,7 +22,7 @@
   ],
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.18"
   },
   "publishConfig": {
     "access": "public",

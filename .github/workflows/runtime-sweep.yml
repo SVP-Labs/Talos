@@ -1,9 +1,10 @@
-# The hourly runtime sweep (talos central sweep): every repository the reviewer App is installed
-# on, checked against the runtime vendors' feeds, with one p0 `security` issue per vulnerable
-# runtime filed in that repository. The run is public, so no repository name passes through an
-# expression: the matrix carries indices, each job looks its repository up inside a script and
-# masks the name before anything prints, and its token reaches that repository alone. The last
-# job fails the run if any name shows up in the other jobs' logs anyway.
+# The hourly runtime sweep (talos central sweep): every repository whose `talos` property names a
+# channel, found through the organisation's custom properties, checked against the runtime
+# vendors' feeds, with one p0 `security` issue per vulnerable runtime filed in that repository.
+# The run is public, so no repository name passes through an expression: the matrix carries
+# indices, each job looks its repository up inside a script and masks the name before anything
+# prints, and its token reaches that repository alone. The last job fails the run if any name
+# shows up in the other jobs' logs anyway.
 name: runtime-sweep
 
 on:
@@ -30,26 +31,30 @@ jobs:
     outputs:
       indices: ${{ steps.count.outputs.indices }}
     steps:
-      - name: Mint a metadata-only token of talos-reviewer
+      - name: Mint talos-reviewer's token to read the organisation's custom properties
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
-          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app] metadata only: lists the installation's repositories
-          permission-metadata: read
+          owner: ${{ github.repository_owner }}
+          permission-organization-custom-properties: read
       - name: Count the repositories
         id: count
         env:
           GH_TOKEN: ${{ steps.listing.outputs.token }}
+          ORG: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           fail() {
             echo "list: $1" >&2
             exit 1
           }
-          total="$(gh api 'installation/repositories?per_page=1' 2>/dev/null |
-            jq -r '.total_count' 2>/dev/null)" || fail "cannot count the installation's repositories"
+          listing="$(gh api --paginate "orgs/$ORG/properties/values?per_page=100" 2>/dev/null)" ||
+            fail "cannot list the organisation's repositories"
+          total="$(jq -s -r 'add // [] | map(select(any(.properties[]?;
+              .property_name == "talos" and (.value | IN("evaluate", "canary", "stable")))))
+            | length' <<<"$listing" 2>/dev/null)" || fail "cannot read the listing"
           [[ "$total" =~ ^[0-9]+$ ]] || fail "the listing has no count"
           ((total <= 256)) || fail "more repositories than one matrix holds"
           printf 'indices=%s\n' "$(jq -cn --argjson n "$total" '[range(0; $n)]')" >> "$GITHUB_OUTPUT"
@@ -69,18 +74,19 @@ jobs:
       matrix:
         index: ${{ fromJSON(needs.list.outputs.indices) }}
     steps:
-      - name: Mint a metadata-only token of talos-reviewer
+      - name: Mint talos-reviewer's token to read the organisation's custom properties
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
-          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app] metadata only: lists the installation's repositories
-          permission-metadata: read
+          owner: ${{ github.repository_owner }}
+          permission-organization-custom-properties: read
       - name: Look the repository up by index and mask its name
         id: pick
         env:
           GH_TOKEN: ${{ steps.listing.outputs.token }}
+          ORG: ${{ github.repository_owner }}
           INDEX: ${{ matrix.index }}
         run: |
           set -euo pipefail
@@ -89,11 +95,13 @@ jobs:
             exit 1
           }
           [[ "${INDEX:-}" =~ ^[0-9]+$ ]] || fail "no index"
-          listing="$(gh api --paginate installation/repositories 2>/dev/null)" ||
-            fail "cannot list the installation's repositories"
-          line="$(jq -s -r --argjson i "$INDEX" \
-            '[.[].repositories[]] | sort_by(.id) | .[$i] // empty | "\(.full_name) \(.name)"' \
-            <<<"$listing" 2>/dev/null)" || fail "cannot read the listing"
+          listing="$(gh api --paginate "orgs/$ORG/properties/values?per_page=100" 2>/dev/null)" ||
+            fail "cannot list the organisation's repositories"
+          line="$(jq -s -r --argjson i "$INDEX" 'add // [] | map(select(any(.properties[]?;
+              .property_name == "talos" and (.value | IN("evaluate", "canary", "stable")))))
+            | sort_by(.repository_id) | .[$i] // empty
+            | "\(.repository_full_name) \(.repository_name)"' <<<"$listing" 2>/dev/null)" ||
+            fail "cannot read the listing"
           if [[ -z "$line" ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "pick: the listing changed and has no such index; nothing to do"
@@ -222,14 +230,14 @@ jobs:
       actions: read # this run's jobs and their logs
       contents: read # this repository's rulesets, to find the release to run
     steps:
-      - name: Mint a metadata-only token of talos-reviewer
-        id: reviewer
+      - name: Mint talos-reviewer's token to read the organisation's custom properties
+        id: properties
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
-          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app] metadata only: lists the installation's repositories
-          permission-metadata: read
+          owner: ${{ github.repository_owner }}
+          permission-organization-custom-properties: read
       - name: Find the enforced Talos release
         id: find
         env:
@@ -310,9 +318,29 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
+      - name: Mask every repository name and find the canary
+        id: canary
+        env:
+          TALOS_PROPERTIES_TOKEN: ${{ steps.properties.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
+          # The canary's name as a SHA-256 digest: the name itself would print here.
+          TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
+        run: node talos-kit/bootstrap/launch.ts central privacy --mask --json
+      - name: Mint talos-reviewer's token for the canary alone
+        id: reviewer
+        if: ${{ steps.canary.outputs.name != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.canary.outputs.name }}
+          permission-metadata: read
       - name: Search this run's logs for repository names
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          TALOS_PROPERTIES_TOKEN: ${{ steps.properties.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
           TALOS_REVIEWER_TOKEN: ${{ steps.reviewer.outputs.token }}
           TALOS_PRIVACY_JOB: privacy
           # The canary's name as a SHA-256 digest: the name itself would print here.

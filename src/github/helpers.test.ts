@@ -16,6 +16,7 @@ import {
   getRepository,
   listInstallationRepositories,
   listOrgRepositories,
+  listPropertyValues,
   propertyOf,
 } from './repos.js';
 import { getRuleset, listRulesets, requiredWorkflows } from './rulesets.js';
@@ -115,6 +116,35 @@ describe('repositories', () => {
     ]);
     expect(await listInstallationRepositories(gh)).toHaveLength(1);
     expect(calls.map((c) => c.method)).toEqual(['PAGINATE', 'PAGINATE']);
+  });
+
+  it("lists the organisation's custom property values, narrowed by a repository search", async () => {
+    const row = {
+      repository_id: 7,
+      repository_name: 'Thea',
+      repository_full_name: 'SVP-Labs/Thea',
+      properties: [
+        { property_name: 'talos', value: 'canary' },
+        { property_name: 'teams', value: ['a', 'b'] },
+      ],
+    };
+    const calls: Call[] = [];
+    const gh = fakeGitHub(
+      {
+        'GET orgs/SVP-Labs/properties/values': [row],
+        [`GET orgs/SVP-Labs/properties/values?repository_query=${encodeURIComponent('is:private')}`]:
+          [],
+      },
+      calls,
+    );
+    expect(await listPropertyValues(gh, 'SVP-Labs')).toEqual([
+      { id: 7, fullName: 'SVP-Labs/Thea', properties: { talos: 'canary', teams: ['a', 'b'] } },
+    ]);
+    expect(await listPropertyValues(gh, 'SVP-Labs', 'is:private')).toEqual([]);
+    expect(calls.map((c) => c.method)).toEqual(['PAGINATE', 'PAGINATE']);
+    await expect(
+      listPropertyValues(fakeGitHub({ 'GET orgs/o/properties/values': [{ id: 1 }] }), 'o'),
+    ).rejects.toThrow();
   });
 
   it('refuses an answer of the wrong shape', async () => {

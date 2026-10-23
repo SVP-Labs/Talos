@@ -33,7 +33,9 @@ const gateRule = (pin: string | undefined) => ({
   },
 });
 
-function setUp(scenario: Scenario): { talos: Fake; release: Fake } {
+type Fakes = { talos: Fake; release: Fake; canary: Fake };
+
+function setUp(scenario: Scenario): Fakes {
   const talos = fakeGitHub({
     'GET repos/SVP-Labs/Talos': {
       body: { id: TALOS, full_name: 'SVP-Labs/Talos', default_branch: 'main' },
@@ -70,10 +72,11 @@ function setUp(scenario: Scenario): { talos: Fake; release: Fake } {
         name: `talos-${channel}`,
       })),
     },
+  });
+  const canary = fakeGitHub({
     'GET installation/repositories': installation([
       { id: 1, name: 'SVP-Labs/Talos', private: false, talos: 'canary' },
       { id: 2, name: 'SVP-Labs/Thea', talos: 'canary' },
-      { id: 3, name: 'SVP-Labs/LoreLock', talos: 'stable' },
     ]),
   });
   for (const [index, [channel, pin]] of Object.entries(scenario.pins).entries()) {
@@ -102,8 +105,8 @@ function setUp(scenario: Scenario): { talos: Fake; release: Fake } {
     },
   };
   for (const repo of ['SVP-Labs/Talos', 'SVP-Labs/Thea']) {
-    release.on('GET', key(`repos/${repo}/actions/runs?status=completed&created=${CREATED}`), runs);
-    release.on('GET', `repos/${repo}/actions/runs/11/jobs?filter=latest`, {
+    canary.on('GET', key(`repos/${repo}/actions/runs?status=completed&created=${CREATED}`), runs);
+    canary.on('GET', `repos/${repo}/actions/runs/11/jobs?filter=latest`, {
       body: {
         total_count: 1,
         jobs: (scenario.jobs ?? []).map((job, i) => ({
@@ -116,19 +119,17 @@ function setUp(scenario: Scenario): { talos: Fake; release: Fake } {
       },
     });
   }
-  return { talos, release };
+  return { talos, release, canary };
 }
 
-function deps(
-  fakes: { talos: Fake; release: Fake },
-  extra: Partial<ChannelsDeps> = {},
-): ChannelsDeps {
+function deps(fakes: Fakes, extra: Partial<ChannelsDeps> = {}): ChannelsDeps {
   return {
     talos: fakes.talos.gh,
     release: fakes.release.gh,
+    canary: fakes.canary.gh,
+    mirror: undefined,
     who: WHO,
     now: NOW,
-    mirror: false,
     urgent: false,
     ...extra,
   };
@@ -202,6 +203,21 @@ describe('runChannels', () => {
       gateRuns: 6,
       engineErrors: 0,
     });
+    expect(fakes.release.calls.filter((c) => !c.path.startsWith('orgs/'))).toEqual([]);
+  });
+
+  it('counts no gate run when no repository is on canary', async () => {
+    const fakes = setUp({
+      tags: [V3, V2],
+      pins: { evaluate: V2.sha, canary: V3.sha, stable: V2.sha },
+      history: [{ at: '2026-10-15T00:00:00Z', sha: V3.sha }],
+      jobs: CLEAN_RUNS,
+    });
+    expect(await runChannels(deps(fakes, { canary: undefined }))).toMatchObject({
+      moved: 0,
+      gateRuns: 0,
+      engineErrors: 0,
+    });
   });
 
   it('holds a young release without counting its runs', async () => {
@@ -216,7 +232,7 @@ describe('runChannels', () => {
       promotion: 'too-young',
       gateRuns: null,
     });
-    expect(fakes.release.calls.some((c) => c.path.includes('actions'))).toBe(false);
+    expect(fakes.canary.calls).toEqual([]);
   });
 
   it('holds a release with an engine error under it', async () => {
@@ -275,17 +291,18 @@ describe('runChannels', () => {
     expect(report).toMatchObject({ missing: 1, moved: 1 });
   });
 
-  it('mirrors the pins to channels.json in the fallback lookup', async () => {
+  it("mirrors the pins to channels.json in the fallback lookup, with the mirror's token", async () => {
     const fakes = setUp({
       tags: [V2, V1],
       pins: { evaluate: V1.sha, canary: V1.sha, stable: V1.sha },
     });
-    fakes.release.on('GET', 'repos/SVP-Labs/Talos/git/ref/heads/channels', {
-      body: { object: { sha: 'x' } },
+    const mirror = fakeGitHub({
+      'GET repos/SVP-Labs/Talos/git/ref/heads/channels': { body: { object: { sha: 'x' } } },
+      'PUT repos/SVP-Labs/Talos/contents/channels.json': { body: {} },
     });
-    fakes.release.on('PUT', 'repos/SVP-Labs/Talos/contents/channels.json', { body: {} });
-    await runChannels(deps(fakes, { mirror: true }));
-    const write = fakes.release.calls.find(
+    await runChannels(deps(fakes, { mirror: mirror.gh }));
+    expect(fakes.release.calls.filter((c) => !c.path.startsWith('orgs/'))).toEqual([]);
+    const write = mirror.calls.find(
       (c) => c.path === 'repos/SVP-Labs/Talos/contents/channels.json',
     );
     const content = (write?.body as { content: string }).content;
@@ -333,13 +350,13 @@ describe('the gate runs on canary', () => {
       jobs: [{ name: 'engine (talos 1.2.0)', conclusion: 'failure' }],
     });
     const tally = await tallyGateRuns(
-      fakes.release.gh,
+      fakes.canary.gh,
       ['SVP-Labs/Talos', 'SVP-Labs/Thea'],
       '1.2.0',
       V3.date,
     );
     expect(tally).toEqual({ runs: 0, engineErrors: 1 });
-    expect(fakes.release.calls.filter((c) => c.path.endsWith('/jobs?filter=latest'))).toHaveLength(
+    expect(fakes.canary.calls.filter((c) => c.path.endsWith('/jobs?filter=latest'))).toHaveLength(
       1,
     );
   });

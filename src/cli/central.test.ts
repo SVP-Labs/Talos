@@ -1,9 +1,18 @@
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CENTRAL_SCHEMA, centralWith } from './central.js';
 import { type Io, UsageError } from './io.js';
 import { nameDigest } from '../central/privacy.js';
 import type { RuntimeAssessor } from '../central/runtime-port.js';
-import { fakeGitHub, installation } from '../central/test/fake-github.js';
+import {
+  fakeGitHub,
+  installation,
+  propertiesPath,
+  propertyValues,
+  type Route,
+} from '../central/test/fake-github.js';
 
 const BASE = 'https://api.example.test';
 
@@ -28,6 +37,12 @@ function lastJson(lines: readonly string[]): Record<string, unknown> {
   return JSON.parse(lines.at(-1) ?? '{}') as Record<string, unknown>;
 }
 
+/** The organisation's listing, every repository in it private. */
+function organisation(...names: string[]): Record<string, Route> {
+  const repos = propertyValues(names.map((name, index) => ({ id: index + 1, name })));
+  return { [propertiesPath('SVP-Labs')]: repos, [propertiesPath('SVP-Labs', 'private')]: repos };
+}
+
 describe('talos central', () => {
   it('refuses an unknown job and a missing token as usage errors', async () => {
     const central = centralWith({});
@@ -37,8 +52,11 @@ describe('talos central', () => {
     );
     await expect(central(['sweep'], io({}))).rejects.toThrow('TALOS_REVIEWER_TOKEN is not set');
     await expect(central(['privacy'], io({ GITHUB_TOKEN: 'w' }))).rejects.toThrow(
-      'TALOS_REVIEWER_TOKEN or TALOS_RELEASE_TOKEN is required',
+      'TALOS_PROPERTIES_TOKEN is not set',
     );
+    await expect(
+      central(['privacy', '--mask'], io({ TALOS_PROPERTIES_TOKEN: 'p' })),
+    ).rejects.toThrow('GITHUB_OUTPUT is not set');
   });
 
   it('prints one line of counts for a sweep', async () => {
@@ -89,9 +107,48 @@ describe('talos central', () => {
     expect(fake.calls).toEqual([]);
   });
 
+  it('needs the mirror token in the channels.json lookup, before any API call', async () => {
+    const fake = fakeGitHub();
+    const terminal = io({ GITHUB_TOKEN: 'w', TALOS_RELEASE_TOKEN: 'r', TALOS_LOOKUP: 'channels' });
+    await expect(
+      centralWith({ baseUrl: BASE, fetch: fake.fetch })(['channels'], terminal),
+    ).rejects.toThrow('TALOS_MIRROR_TOKEN is not set');
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("masks every name, then hands the canary's bare name to the next steps", async () => {
+    const canary = 'SVP-Labs/talos-scratch-canary';
+    const fake = fakeGitHub(organisation('SVP-Labs/Secret', canary));
+    const output = join(mkdtempSync(join(tmpdir(), 'talos-central-')), 'output');
+    writeFileSync(output, 'before=1\n');
+    const env = {
+      TALOS_PROPERTIES_TOKEN: 'p',
+      GITHUB_REPOSITORY: 'SVP-Labs/Talos',
+      GITHUB_OUTPUT: output,
+    };
+    const central = centralWith({ baseUrl: BASE, fetch: fake.fetch });
+    const found = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: nameDigest(canary) });
+    expect(await central(['privacy', '--mask', '--json'], found)).toBe(0);
+    expect(found.lines[0]).toMatch(/^::add-mask::SVP-Labs\/Secret\n/);
+    expect(lastJson(found.lines)).toEqual({
+      schema: CENTRAL_SCHEMA,
+      job: 'privacy',
+      ok: true,
+      names: 2,
+      canary: true,
+    });
+    expect(readFileSync(output, 'utf8')).toBe('before=1\nname=talos-scratch-canary\n');
+    const missing = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: nameDigest('SVP-Labs/Gone') });
+    expect(await central(['privacy', '--mask'], missing)).toBe(0);
+    expect(lastJson(missing.lines)).toMatchObject({ ok: true, canary: false });
+    expect(readFileSync(output, 'utf8')).toBe('before=1\nname=talos-scratch-canary\n');
+    const printed = [...found.lines, ...missing.lines].filter((l) => !l.startsWith('::add-mask::'));
+    expect(printed.join('')).not.toContain('scratch');
+  });
+
   it('fails the privacy self-test on a leak, the masks printed first', async () => {
     const fake = fakeGitHub({
-      'GET installation/repositories': installation([{ id: 1, name: 'SVP-Labs/Secret' }]),
+      ...organisation('SVP-Labs/Secret'),
       'GET repos/SVP-Labs/Talos/actions/runs/5/attempts/1/jobs': {
         body: {
           total_count: 1,
@@ -102,7 +159,7 @@ describe('talos central', () => {
     });
     const terminal = io({
       GITHUB_TOKEN: 'w',
-      TALOS_REVIEWER_TOKEN: 'r',
+      TALOS_PROPERTIES_TOKEN: 'p',
       GITHUB_REPOSITORY: 'SVP-Labs/Talos',
       GITHUB_RUN_ID: '5',
     });
@@ -121,6 +178,7 @@ describe('talos central', () => {
 
   it('fails the privacy self-test when the canary is not watched', async () => {
     const fake = fakeGitHub({
+      ...organisation('SVP-Labs/Secret'),
       'GET installation/repositories': installation([{ id: 1, name: 'SVP-Labs/Secret' }]),
       'GET repos/SVP-Labs/Talos/actions/runs/5/attempts/1/jobs': {
         body: { total_count: 0, jobs: [] },
@@ -128,6 +186,7 @@ describe('talos central', () => {
     });
     const terminal = io({
       GITHUB_TOKEN: 'w',
+      TALOS_PROPERTIES_TOKEN: 'p',
       TALOS_RELEASE_TOKEN: 'r',
       GITHUB_REPOSITORY: 'SVP-Labs/Talos',
       GITHUB_RUN_ID: '5',
@@ -140,7 +199,8 @@ describe('talos central', () => {
   it('passes the privacy self-test only with the canary watched and no name in any log', async () => {
     const canary = 'SVP-Labs/talos-scratch-canary';
     const fake = fakeGitHub({
-      'GET installation/repositories': installation([{ id: 1, name: canary }]),
+      ...organisation('SVP-Labs/Secret', canary),
+      'GET installation/repositories': installation([{ id: 2, name: canary }]),
       'GET repos/SVP-Labs/Talos/actions/runs/5/attempts/1/jobs': {
         body: {
           total_count: 1,
@@ -151,6 +211,7 @@ describe('talos central', () => {
     });
     const env = {
       GITHUB_TOKEN: 'w',
+      TALOS_PROPERTIES_TOKEN: 'p',
       TALOS_REVIEWER_TOKEN: 'r',
       GITHUB_REPOSITORY: 'SVP-Labs/Talos',
       GITHUB_RUN_ID: '5',
@@ -158,6 +219,13 @@ describe('talos central', () => {
     const watched = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: nameDigest(canary) });
     expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], watched)).toBe(0);
     expect(lastJson(watched.lines)).toMatchObject({ ok: true, leaks: 0, canary: true });
+    const noToken = io({
+      ...env,
+      TALOS_REVIEWER_TOKEN: '',
+      TALOS_PRIVACY_CANARY_SHA256: nameDigest(canary),
+    });
+    expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], noToken)).toBe(1);
+    expect(lastJson(noToken.lines)).toMatchObject({ ok: false, leaks: 0, canary: false });
     const unset = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: '' });
     expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], unset)).toBe(1);
     expect(lastJson(unset.lines)).toMatchObject({ ok: false, leaks: 0, canary: null });

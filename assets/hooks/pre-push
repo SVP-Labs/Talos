@@ -41,7 +41,7 @@ if grep -q '"name": "@svp-labs/talos"' package.json 2>/dev/null; then
   set -- env TALOS_DEV=1 node dist/bin/talos.js
 fi
 if [ "$1" = npx ] && ! command -v npx >/dev/null 2>&1; then
-  echo 'pre-push: the fast tier runs on Talos, which needs Node.js 22.12 or later with npx.' >&2
+  echo 'pre-push: the fast tier runs on Talos, which needs Node.js 22.18 or later with npx.' >&2
   exit 1
 fi
 

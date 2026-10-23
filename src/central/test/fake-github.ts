@@ -102,3 +102,23 @@ export function installation(
     },
   };
 }
+
+/** The `orgs/{org}/properties/values` answer for repositories given as `owner/name`. */
+export function propertyValues(
+  repos: readonly { readonly id: number; readonly name: string; readonly talos?: string }[],
+): Answer {
+  return {
+    body: repos.map((repo) => ({
+      repository_id: repo.id,
+      repository_name: repo.name.split('/')[1],
+      repository_full_name: repo.name,
+      properties: repo.talos === undefined ? [] : [{ property_name: 'talos', value: repo.talos }],
+    })),
+  };
+}
+
+/** The organisation listing's path, narrowed to private repositories or not. */
+export function propertiesPath(org: string, only?: 'private'): string {
+  const query = only === undefined ? '' : `?repository_query=${encodeURIComponent('is:private')}`;
+  return `GET orgs/${org}/properties/values${query}`;
+}

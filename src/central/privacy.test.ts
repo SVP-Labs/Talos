@@ -3,13 +3,31 @@ import {
   canaryWatched,
   leaksIn,
   maskCommands,
+  maskNames,
   nameDigest,
+  organisationRepositories,
   runPrivacy,
   watchedNames,
 } from './privacy.js';
-import { fakeGitHub, installation } from './test/fake-github.js';
+import { fakeGitHub, installation, propertiesPath, propertyValues } from './test/fake-github.js';
 import { GitHubError } from '../github/api.js';
 import type { Repository } from '../github/repos.js';
+
+/** The organisation's listing: Talos and Scaffold public, Thea and LoreLock private. */
+function organisation() {
+  return fakeGitHub({
+    [propertiesPath('SVP-Labs')]: propertyValues([
+      { id: 1, name: 'SVP-Labs/Talos', talos: 'canary' },
+      { id: 2, name: 'SVP-Labs/Thea', talos: 'canary' },
+      { id: 3, name: 'SVP-Labs/LoreLock', talos: 'stable' },
+      { id: 4, name: 'SVP-Labs/Scaffold' },
+    ]),
+    [propertiesPath('SVP-Labs', 'private')]: propertyValues([
+      { id: 2, name: 'SVP-Labs/Thea', talos: 'canary' },
+      { id: 3, name: 'SVP-Labs/LoreLock', talos: 'stable' },
+    ]),
+  });
+}
 
 function repo(fullName: string, isPrivate: boolean): Repository {
   return {
@@ -75,13 +93,78 @@ describe('leaksIn', () => {
   });
 });
 
+describe('organisationRepositories', () => {
+  it('lists every repository of the organisation, marking those the private search finds', async () => {
+    expect(await organisationRepositories(organisation().gh, 'SVP-Labs')).toEqual([
+      { fullName: 'SVP-Labs/Talos', private: false },
+      { fullName: 'SVP-Labs/Thea', private: true },
+      { fullName: 'SVP-Labs/LoreLock', private: true },
+      { fullName: 'SVP-Labs/Scaffold', private: false },
+    ]);
+  });
+
+  it('keeps a private repository that the first listing missed', async () => {
+    const fake = fakeGitHub({
+      [propertiesPath('o')]: propertyValues([]),
+      [propertiesPath('o', 'private')]: propertyValues([{ id: 9, name: 'o/new' }]),
+    });
+    expect(await organisationRepositories(fake.gh, 'o')).toEqual([
+      { fullName: 'o/new', private: true },
+    ]);
+  });
+});
+
+describe('maskNames', () => {
+  function setUp(canary?: string) {
+    const out: string[] = [];
+    const outputs: string[] = [];
+    const deps = {
+      properties: organisation().gh,
+      org: 'SVP-Labs',
+      current: 'SVP-Labs/Talos',
+      out: (text: string) => {
+        out.push(text);
+      },
+      canary,
+      output: (key: string, value: string) => {
+        outputs.push(`${key}=${value}`);
+        return Promise.resolve();
+      },
+    };
+    return { deps, out, outputs };
+  }
+
+  it("masks every name but the current, then hands on the canary's bare name", async () => {
+    const { deps, out, outputs } = setUp(nameDigest('SVP-Labs/LoreLock'));
+    expect(await maskNames(deps)).toEqual({ names: 3, canary: true });
+    expect(out).toEqual([
+      [
+        '::add-mask::SVP-Labs/Thea',
+        '::add-mask::SVP-Labs/LoreLock',
+        '::add-mask::SVP-Labs/Scaffold',
+        '::add-mask::Thea',
+        '::add-mask::LoreLock',
+        '',
+      ].join('\n'),
+    ]);
+    expect(outputs).toEqual(['name=LoreLock']);
+  });
+
+  it('hands on nothing without a digest, or for a public repository or none', async () => {
+    const unset = setUp();
+    expect(await maskNames(unset.deps)).toEqual({ names: 3, canary: null });
+    const publicOne = setUp(nameDigest('SVP-Labs/Scaffold'));
+    expect(await maskNames(publicOne.deps)).toEqual({ names: 3, canary: false });
+    const gone = setUp(nameDigest('SVP-Labs/Gone'));
+    expect(await maskNames(gone.deps)).toEqual({ names: 3, canary: false });
+    expect([...unset.outputs, ...publicOne.outputs, ...gone.outputs]).toEqual([]);
+  });
+});
+
 describe('runPrivacy', () => {
   function setUp(logs: Readonly<Record<number, string>>) {
-    const apps = fakeGitHub({
-      'GET installation/repositories': installation([
-        { id: 2, name: 'SVP-Labs/Thea' },
-        { id: 3, name: 'SVP-Labs/LoreLock' },
-      ]),
+    const canaryToken = fakeGitHub({
+      'GET installation/repositories': installation([{ id: 2, name: 'SVP-Labs/Thea' }]),
     });
     const actions = fakeGitHub({
       'GET repos/SVP-Labs/Talos/actions/runs/77/attempts/2/jobs': {
@@ -105,7 +188,9 @@ describe('runPrivacy', () => {
       return Promise.resolve(new TextEncoder().encode(logs[id] ?? ''));
     };
     const deps = {
-      apps: [apps.gh],
+      properties: organisation().gh,
+      org: 'SVP-Labs',
+      apps: [canaryToken.gh],
       actions: actions.gh,
       download,
       run: { repo: 'SVP-Labs/Talos', id: '77', attempt: '2', self: 'privacy' },
@@ -113,12 +198,12 @@ describe('runPrivacy', () => {
         out.push(text);
       },
     };
-    return { deps, downloaded, out };
+    return { deps, downloaded, out, canaryToken };
   }
 
   it("masks first, then searches every finished job's log but its own", async () => {
     const { deps, downloaded, out } = setUp({ 1: 'repositories: 2', 2: 'swept: 1 filed' });
-    expect(await runPrivacy(deps)).toEqual({ names: 2, jobs: 2, leaks: 0, canary: null });
+    expect(await runPrivacy(deps)).toEqual({ names: 3, jobs: 2, leaks: 0, canary: null });
     expect(out[0]).toContain('::add-mask::SVP-Labs/Thea\n');
     expect(downloaded).toEqual([
       'repos/SVP-Labs/Talos/actions/jobs/1/logs',
@@ -128,16 +213,34 @@ describe('runPrivacy', () => {
 
   it('counts a leak', async () => {
     const { deps } = setUp({ 2: 'error: GET repos/SVP-Labs/LoreLock/git/trees/main: 500' });
-    expect(await runPrivacy(deps)).toEqual({ names: 2, jobs: 2, leaks: 1, canary: null });
+    expect(await runPrivacy(deps)).toEqual({ names: 3, jobs: 2, leaks: 1, canary: null });
   });
 
-  it('confirms the canary by its digest alone', async () => {
-    const { deps } = setUp({});
+  it("confirms the canary by its digest alone, and only when each App's token reaches it alone", async () => {
+    const { deps, canaryToken } = setUp({});
     const digest = nameDigest('svp-labs/thea');
     expect(await runPrivacy({ ...deps, canary: digest })).toMatchObject({ canary: true });
     expect(await runPrivacy({ ...deps, canary: nameDigest('SVP-Labs/Gone') })).toMatchObject({
       canary: false,
     });
+    expect(await runPrivacy({ ...deps, canary: digest, apps: [] })).toMatchObject({
+      canary: false,
+    });
+    const other = fakeGitHub({
+      'GET installation/repositories': installation([{ id: 3, name: 'SVP-Labs/LoreLock' }]),
+    });
+    expect(
+      await runPrivacy({ ...deps, canary: digest, apps: [canaryToken.gh, other.gh] }),
+    ).toMatchObject({ canary: false });
+    canaryToken.on(
+      'GET',
+      'installation/repositories',
+      installation([
+        { id: 2, name: 'SVP-Labs/Thea' },
+        { id: 3, name: 'SVP-Labs/LoreLock' },
+      ]),
+    );
+    expect(await runPrivacy({ ...deps, canary: digest })).toMatchObject({ canary: false });
   });
 });
 
@@ -151,8 +254,9 @@ describe('canaryWatched', () => {
 });
 
 describe('reading a log GitHub has not stored yet', () => {
-  const apps = fakeGitHub({
-    'GET installation/repositories': installation([{ id: 2, name: 'SVP-Labs/Thea' }]),
+  const properties = fakeGitHub({
+    [propertiesPath('o')]: propertyValues([{ id: 2, name: 'SVP-Labs/Thea' }]),
+    [propertiesPath('o', 'private')]: propertyValues([{ id: 2, name: 'SVP-Labs/Thea' }]),
   });
   const actions = fakeGitHub({
     'GET repos/o/t/actions/runs/1/attempts/1/jobs': {
@@ -173,7 +277,9 @@ describe('reading a log GitHub has not stored yet', () => {
         : Promise.resolve(new TextEncoder().encode('SVP-Labs/Thea'));
     };
     const deps = {
-      apps: [apps.gh],
+      properties: properties.gh,
+      org: 'o',
+      apps: [],
       actions: actions.gh,
       download: flaky,
       run: { repo: 'o/t', id: '1', attempt: '1', self: 'privacy' },

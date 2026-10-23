@@ -7,7 +7,7 @@ about working on the kit itself.
 
 ## Setting up
 
-- Node 22.12 or later and pnpm (the version `packageManager` names), then `pnpm install`.
+- Node 22.18 or later and pnpm (the version `packageManager` names), then `pnpm install`.
 - `pnpm build` compiles to `dist/`; `pnpm talos <command>` runs that build.
 - `TALOS_DEV=1` runs the copy you built as it is. Without it, the commands that act on a
   repository first look up the release the repository enforces and run that instead, which is

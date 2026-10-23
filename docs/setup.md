@@ -16,7 +16,7 @@ Never paste a key, token or secret into a chat or an issue; keep them in your pa
   gh auth refresh -s admin:org,repo,workflow
   ```
 
-- Node 22.12 or later, npm 11.5.1 or later and pnpm, for running Talos from a clone and for the
+- Node 22.18 or later, npm 11.5.1 or later and pnpm, for running Talos from a clone and for the
   first npm publish.
 - Your commit signing key asks for a touch or a prompt on every use (a security key, or an SSH
   agent that confirms each signature), and no signing key of yours sits on the VPS. Talos counts
@@ -48,6 +48,9 @@ App**, each with:
 ### `talos-reviewer`
 
 - **Name:** `talos-reviewer`, so its bot is `talos-reviewer[bot]`.
+- **Organization permissions:** Custom properties, **Read-only**. The runtime sweep and the
+  privacy self-tests find the governed repositories by their `talos` property, with a token
+  that reaches no repository (C30).
 - **Repository permissions:**
 
   | Permission    | Access         |
@@ -66,15 +69,23 @@ App**, each with:
 ### `talos-release`
 
 - **Name:** `talos-release`, so its bot is `talos-release[bot]`.
-- **Organization permissions:** Administration, **Read and write** (it moves the pins in the org
-  rulesets, C17).
+- **Organization permissions:**
+
+  | Permission        | Access         | Why                                                   |
+  | ----------------- | -------------- | ----------------------------------------------------- |
+  | Administration    | Read and write | it moves the pins in the org rulesets (C17)           |
+  | Custom properties | Read-only      | the central jobs find the governed repositories (C30) |
+
 - **Repository permissions:**
 
   | Permission     | Access    | Why                                                     |
   | -------------- | --------- | ------------------------------------------------------- |
   | Administration | Read-only | the drift report reads each repository's settings (C29) |
   | Actions        | Read-only | promotion counts gate runs on canary repositories (C17) |
-  | Metadata       | Read-only | required                                                |
+  | Metadata       | Read-only | required with any repository permission                 |
+
+  No job holds these for every repository of the installation: each token is minted for the
+  repositories it reads, which the jobs find through the custom properties and mask first.
 
   Contents stays off unless smoke test 1 or 5 (step 6) turns on the `channels.json` fallback;
   then it is **Read and write**, and its jobs mint contents tokens for the Talos repository only.
@@ -237,11 +248,15 @@ Issues**). Do them by hand; `talos govern SVP-Labs/<scratch>` then shows every o
 **It is also the privacy canary** (C30), and stays governed for good, so the central jobs always
 have it in their matrix. Each central workflow's last job reads every log of its run and fails
 it if a private repository's name shows anywhere, and fails it too if the canary isn't among the
-repositories it watched. Both `talos-reviewer` and `talos-release` must therefore stay installed
-on it: the drift report mints a token from each for every repository in `talos-release`'s
-listing. Talos never learns the canary's name, since a variable's value is printed in the step's
-`env` block in a public log. Give the Talos repository the **variable**
-`TALOS_PRIVACY_CANARY_SHA256` instead, the SHA-256 of the lower-cased `owner/name`:
+repositories it watched. That job finds the canary among the organisation's private
+repositories by its digest, masks its name, then mints a token limited to it from each App the
+workflow runs as (`talos-release` for the channels job, `talos-reviewer` for the sweep, both for
+the drift report): a token that reaches the canary alone proves the App can name it. Both Apps
+must therefore stay installed on it, as on every governed repository, whose per-repository
+tokens the sweep and the drift report mint too. Talos never learns the canary's name, since a
+variable's value is printed in the step's `env` block in a public log. Give the Talos
+repository the **variable** `TALOS_PRIVACY_CANARY_SHA256` instead, the SHA-256 of the
+lower-cased `owner/name`:
 
 ```bash
 printf %s SVP-Labs/talos-scratch-<random> | tr A-Z a-z | sha256sum | cut -d' ' -f1

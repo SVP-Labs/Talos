@@ -34,12 +34,17 @@ import { getRepository } from '../github/repos.js';
 export type ChannelsDeps = {
   /** The workflow's token on the Talos repository: tags, `main`, issues and `channels.json`. */
   readonly talos: GitHub;
-  /** `talos-release`, organisation-wide: the rulesets, canary repositories' runs, the branch. */
+  /** `talos-release` with organisation permissions only: the channel rulesets. */
   readonly release: GitHub;
+  /** `talos-release` limited to the canary repositories, actions read; none when there are none. */
+  readonly canary: GitHub | undefined;
+  /**
+   * `talos-release` limited to the Talos repository, contents write, in the `channels` lookup,
+   * where `channels.json` mirrors the rulesets; none in the default lookup.
+   */
+  readonly mirror: GitHub | undefined;
   readonly who: Identities;
   readonly now: Date;
-  /** `channels`: `channels.json` mirrors the rulesets (the fallback lookup). */
-  readonly mirror: boolean;
   /** The owner's dispatch. */
   readonly urgent: boolean;
 };
@@ -97,6 +102,13 @@ export function mergeMoves(moves: readonly Move[]): Move[] {
 
 type Judged = { readonly promotion: Promotion; readonly tally: GateTally | undefined };
 
+/** The gate runs under canary's release; with no canary repository there are none. */
+async function canaryTally(gh: GitHub | undefined, canary: Release): Promise<GateTally> {
+  if (gh === undefined) return { runs: 0, engineErrors: 0 };
+  const repos = await canaryRepositories(gh);
+  return tallyGateRuns(gh, repos, canary.version, canary.taggedAt);
+}
+
 async function judgePromotion(deps: ChannelsDeps, known: Known): Promise<Judged> {
   const canary = releaseAt(known.releases, known.pins.canary);
   const base: PromotionInput = {
@@ -116,8 +128,7 @@ async function judgePromotion(deps: ChannelsDeps, known: Known): Promise<Judged>
   if (canary === undefined || !worthCounting(input)) {
     return { promotion: promotion(input), tally: undefined };
   }
-  const repos = await canaryRepositories(deps.release);
-  const tally = await tallyGateRuns(deps.release, repos, canary.version, canary.taggedAt);
+  const tally = await canaryTally(deps.canary, canary);
   return { promotion: promotion({ ...input, tally }), tally };
 }
 
@@ -167,9 +178,9 @@ export async function runChannels(deps: ChannelsDeps): Promise<ChannelsReport> {
       : [];
   const applied = await applyMoves(deps, known, mergeMoves([...early, ...promotions]));
   const pins = afterMoves(known.pins, applied);
-  if (deps.mirror) {
+  if (deps.mirror !== undefined) {
     const file = await readChannelsFile(deps.talos, deps.who.talosRepo);
-    await writeChannelsFile(deps.release, deps.who.talosRepo, pins, file);
+    await writeChannelsFile(deps.mirror, deps.who.talosRepo, pins, file);
   }
   return {
     pins: tagsOf(known.releases, pins),

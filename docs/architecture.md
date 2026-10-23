@@ -162,7 +162,9 @@ don't change; every finding goes to `.talos/check/talos.sarif`.
 ## Which release runs
 
 C3's lookup, in `src/version/`, mirrored for workflows by `bootstrap/find-pin.sh` and
-`bootstrap/launch.ts` (a test keeps them in step):
+`bootstrap/launch.ts` (a test keeps them in step). The launcher imports nothing but Node's
+built-ins and uses only TypeScript that erases, so Node 22.18 or later runs the file as it is,
+stripping its types, with no install step before it:
 
 - **The pin.** By default Talos lists the repository's rulesets, the org's included, skips
   disabled ones, and takes the `workflows` rule that runs the Talos repository's gate; exactly
@@ -325,7 +327,12 @@ URL-encoded; readers accept both forms.
   reviewer's prompt, fenced, and the model's answer is parsed as a verdict, never executed.
 - The central jobs in this public repository print counts only (C30): repository names pass
   through no expression, are masked before anything is printed, and errors from git and the API
-  are replaced by a generic line.
+  are replaced by a generic line. They find repositories through the organisation's custom
+  property listing (`GET /orgs/{org}/properties/values`, the `talos` property naming a channel),
+  with a token that holds organisation permissions only, and read a repository only with a
+  token minted for it alone once its name is masked: no token reaches every repository of an
+  App's installation. The privacy job proves each App can see the canary the same way, with a
+  token minted for the canary, found by its digest.
 
 ## Test projects
 

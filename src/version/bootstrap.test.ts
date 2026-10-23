@@ -1,8 +1,15 @@
-import { execFile } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFile, spawnSync } from 'node:child_process';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { auditProblems, lockedIntegrity } from './install.js';
@@ -15,28 +22,11 @@ import {
   provenanceProblems,
   SLSA_PROVENANCE_V1,
 } from './provenance.js';
+import * as bootstrap from '../../bootstrap/launch.js';
 import type { Ruleset } from '../github/rulesets.js';
 
 /** The dependency-free scripts the workflows run before Talos is installed. */
 const BOOTSTRAP = fileURLToPath(new URL('../../bootstrap/', import.meta.url));
-
-type Bootstrap = {
-  integrityHex(integrity: unknown): string | undefined;
-  packageUrl(name: string, version: string): string;
-  readStatement(response: unknown): unknown;
-  provenanceProblems(statement: unknown, expected: ExpectedBuild): string[];
-  auditProblems(code: number, stdout: string): string[];
-  lockedIntegrity(lock: unknown, version: string): string | undefined;
-  headCommit(root: string): string | undefined;
-  kitRelease(root: string): { version: string; sha: string };
-  npmCli(
-    execPath: string,
-    platform: string,
-    env: Record<string, string | undefined>,
-  ): string | undefined;
-};
-
-const bootstrap = (await import(pathToFileURL(join(BOOTSTRAP, 'launch.ts')).href)) as Bootstrap;
 
 const recorded: unknown = JSON.parse(
   readFileSync(new URL('fixtures/sigstore-core-4.0.1.attestations.json', import.meta.url), 'utf8'),
@@ -118,6 +108,14 @@ describe('bootstrap/launch.ts agrees with the engine', () => {
     [
       'a statement without a predicate',
       wrap({ ...(recordedStatement as object), predicate: {} }),
+      RECORDED,
+    ],
+    [
+      'a digest that is not a string',
+      wrap({
+        ...(recordedStatement as object),
+        subject: [{ name: packageUrl(RECORDED.name, RECORDED.version), digest: { sha512: 5 } }],
+      }),
       RECORDED,
     ],
     [
@@ -232,6 +230,11 @@ describe('bootstrap: the checkout it runs from', () => {
       '.git/HEAD': HEAD,
     });
     expect(() => bootstrap.kitRelease(other)).toThrow('not a Talos release');
+    const listed = checkout({
+      'package.json': JSON.stringify({ name: '@svp-labs/talos', version: ['1.2.0'] }),
+      '.git/HEAD': HEAD,
+    });
+    expect(() => bootstrap.kitRelease(listed)).toThrow('not a Talos release');
     const noCommit = checkout({
       'package.json': JSON.stringify({ name: '@svp-labs/talos', version: '1.2.0' }),
     });
@@ -245,6 +248,28 @@ describe('bootstrap: the checkout it runs from', () => {
     expect(bootstrap.npmCli('/nowhere/node.exe', 'win32', { npm_execpath: BOOTSTRAP })).toBe(
       BOOTSTRAP,
     );
+  });
+});
+
+describe('bootstrap/launch.ts as a workflow runs it', () => {
+  it('runs under plain node, with no loader, and refuses a checkout that is no release', () => {
+    const kit = checkout({
+      'package.json': JSON.stringify({ name: 'x', version: '1.2.0', type: 'module' }),
+      '.git/HEAD': HEAD,
+    });
+    mkdirSync(join(kit, 'bootstrap'));
+    const launcher = join(kit, 'bootstrap', 'launch.ts');
+    copyFileSync(join(BOOTSTRAP, 'launch.ts'), launcher);
+    // Plain node, as a workflow runs it: no loader, and no NODE_* setting that makes Node speak.
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('NODE_')),
+    );
+    const ran = spawnSync(process.execPath, [launcher], { cwd: kit, env, encoding: 'utf8' });
+    expect({ code: ran.status, stdout: ran.stdout, stderr: ran.stderr }).toEqual({
+      code: 2,
+      stdout: '',
+      stderr: 'talos bootstrap: refused: the checkout is not a Talos release\n',
+    });
   });
 });
 
