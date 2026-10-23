@@ -39,7 +39,11 @@ Neither Thea's App nor the reviewer gets `workflows` or `administration`, and no
 ruleset's bypass list except `talos-release` on the `channels` branch's.
 
 Create Talos's two under the org's **Settings → Developer settings → GitHub Apps → New GitHub
-App**, each with:
+App**, each with the settings below. An App's name is unique across all of GitHub, and Talos
+trusts an App by its slug: if `talos-reviewer` or `talos-release` is taken, choose another name
+and set the matching variable in step 2 (`TALOS_REVIEWER_APP`, `TALOS_RELEASE_APP`) to its slug,
+and Thea's `TALOS_REVIEWER_LOGIN` to the reviewer's bot login. For the same reason, never install
+an App you don't own on a governed repository.
 
 - **Homepage URL:** `https://github.com/SVP-Labs/Talos`.
 - **Webhook:** untick **Active**. Both run in Actions and receive nothing.
@@ -146,6 +150,14 @@ promotion, and without `TALOS_THEA_APP` or `TALOS_RELEASE_APP` a review or comme
 starts no `act` job, so a `talos-approve` review by Thea wouldn't rerun `talos/review`. The
 organisation is no variable: the workflows pass `github.repository_owner` as `TALOS_ORG`.
 
+Set every identity variable, even where its value is the default name: Talos trusts comments and
+reviews by those logins, so a variable left unset falls back to a name that only means SVP-Labs's
+App if SVP-Labs owns it.
+
+`TALOS_REVIEWER_KEY` with **All repositories** can be read by any workflow on any branch of any
+repository in the org. To narrow it, choose **Selected repositories** and add each repository as
+`talos govern` brings it in; a governed repository missing from the list can't run its caller.
+
 Then, under **Settings → Actions → General**, keep **Workflow permissions** at **Read repository
 contents and packages permissions**: every Talos workflow asks for exactly what it needs.
 
@@ -196,21 +208,29 @@ trusted publishing, so no npm token is stored anywhere (C26).
 
 ## 5. The first release and the pins
 
-1. `package.json` on `main` says `0.1.0`. Tag that commit, signed, and push the tag:
+1. Merge the branch Talos was built on into `main` with one **squash merge**, while the
+   repository still lets you (`talos govern`, step 7, leaves only rebase merges). Its history
+   holds work-in-progress commits that wouldn't pass Talos's own rules one by one; the squashed
+   tree is the one that does. Give the commit a subject Talos accepts, at most 72 characters with
+   the `(#N)` GitHub appends, such as
+   `[TL-1]: Build Talos, the kit that governs SVP-Labs repositories`, and a short body in place
+   of the list of commits GitHub proposes.
+2. `package.json` on `main` says `0.1.0`. Tag that commit, signed, and push the tag:
 
    ```bash
    git switch main && git pull
    git tag -s v0.1.0 -m v0.1.0 && git push origin v0.1.0
    ```
 
-2. The release workflow publishes `@svp-labs/talos@0.1.0`. Check that it carries provenance for
-   that commit:
+3. The release workflow publishes `@svp-labs/talos@0.1.0`, with an `npm-shrinkwrap.json` built
+   from the lockfile, so every install runs the dependency tree the release was tested with.
+   Check that it carries provenance for that commit:
 
    ```bash
    npm view @svp-labs/talos@0.1.0 version dist.attestations.provenance.predicateType
    ```
 
-3. Set up the organisation, seeding every pin with that commit:
+4. Set up the organisation, seeding every pin with that commit:
 
    ```bash
    talos org init --seed "$(git rev-parse 'v0.1.0^{commit}')" --dry-run
@@ -425,11 +445,12 @@ Two things in her repository need you or a ticket of their own:
   its end of life on 2026-08-20, so `runtime/eol` reports it. Adoption adds the components the
   checks use but keeps a channel the project already pins exactly; move it to the release
   Talos pins (`1.99.1`, the one adoption writes where there is no pin).
-- **Her pushes run the pre-push hook.** Her `prepare` script already points `core.hooksPath` at
-  `.githooks`, where adoption writes Talos's `pre-push`, so her clones run the fast tier on every
-  `git push`. Her task has already run `talos check --json` by then; her daemon either passes
-  the push the same `TALOS_VERSION` and `TALOS_SHA` the task had, or pushes with `--no-verify`,
-  which skips only that early answer: the gate runs the same checks.
+- **Her pushes skip the pre-push hook.** Her `prepare` script points `core.hooksPath` at
+  `.githooks`, where adoption writes Talos's `pre-push`, but her daemon runs every git command
+  that carries a token with hooks off, so code a task left in the worktree can never read the
+  push token. The fast tier has already run by then: the daemon runs `talos check --json` in the
+  task's worktree before every push, and the gate runs the same checks. Your own clones of her
+  repository run the hook as any other.
 
 Her daemon runs `talos check` in the task's own environment, which needs the network the gate's
 runners have ([below](#the-gates-runners)): Semgrep fetches its rule sets, and without them
