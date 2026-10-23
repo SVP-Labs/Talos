@@ -36,7 +36,7 @@ export async function runAt(engine: Engine, at: At): Promise<RunResult> {
   };
   const prepared = await prepare(engine, plan);
   try {
-    return await runChecks(engine, plan);
+    return await runChecks(engine, { ...plan, failedInstalls: prepared.failedInstalls });
   } finally {
     await prepared.release();
   }

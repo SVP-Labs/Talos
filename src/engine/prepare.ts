@@ -9,6 +9,8 @@ import { execOk } from '../exec/exec.js';
 export type Prepared = {
   /** Environment for the checks: where each declared service listens. */
   readonly env: Readonly<Record<string, string>>;
+  /** Components whose dependencies couldn't be installed, by root, with why. */
+  readonly failedInstalls: ReadonlyMap<string, string>;
   release(): Promise<void>;
 };
 
@@ -51,19 +53,27 @@ async function writeGenerated(engine: Engine, plan: RunPlan): Promise<void> {
   }
 }
 
-async function installComponents(engine: Engine, plan: RunPlan): Promise<void> {
+/** Installs every component; one that fails is an engine error for its own checks only. */
+async function installComponents(engine: Engine, plan: RunPlan): Promise<Map<string, string>> {
+  const failed = new Map<string, string>();
   for (const component of plan.config.components.filter((c) => c.os.includes(plan.os))) {
     const pack = engine.packs.find((p) => p.lang === component.lang);
-    await pack?.install?.({
-      root: plan.root,
-      component,
-      config: plan.config,
-      exec: engine.exec,
-      tools: engine.tools,
-      log: engine.log,
-      os: plan.os,
-    });
+    try {
+      await pack?.install?.({
+        root: plan.root,
+        component,
+        config: plan.config,
+        exec: engine.exec,
+        tools: engine.tools,
+        log: engine.log,
+        os: plan.os,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failed.set(component.root, `installing ${component.lang} at ${component.root}: ${reason}`);
+    }
   }
+  return failed;
 }
 
 async function portOpen(port: number): Promise<boolean> {
@@ -149,10 +159,11 @@ export async function prepare(engine: Engine, plan: RunPlan): Promise<Prepared> 
   await writeGenerated(engine, plan);
   const { env, ids } = await startServices(engine, plan);
   Object.assign(process.env, env);
-  await installComponents(engine, plan);
+  const failedInstalls = await installComponents(engine, plan);
   await runSetupScript(engine, plan, env);
   return {
     env,
+    failedInstalls,
     release: async () => {
       for (const id of ids) await engine.exec('docker', ['rm', '-f', id], { cwd: plan.root });
     },

@@ -97,15 +97,13 @@ export const selfTest: Command = async (argv, io) => {
       const sha = (
         await execOk(engine.exec, 'git', ['rev-parse', 'HEAD'], { cwd: directory })
       ).trim();
-      const result = await runAt(engine, {
-        root: directory,
-        sha,
-        tiers: ['commit', 'head'],
-        os,
-        side: 'alone',
-        only: expected.checks,
-      });
-      const problems = assess(expected, result);
+      const at = { root: directory, sha, os, side: 'alone' as const, only: expected.checks };
+      const problems = await runAt(engine, { ...at, tiers: ['commit', 'head'] }).then(
+        (result) => assess(expected, result),
+        (error: unknown) => [
+          `engine error: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      );
       failed += problems.length > 0 ? 1 : 0;
       const mark = problems.length > 0 ? 'FAIL' : 'ok  ';
       const detail = problems.map((p) => `     ${p}\n`).join('');

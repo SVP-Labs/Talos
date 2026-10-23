@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import type { TalosConfig } from '../config/schema.js';
@@ -36,6 +36,8 @@ export type RunPlan = {
   readonly changes?: ChangeSet;
   /** Runs only these check ids. */
   readonly only?: readonly string[];
+  /** Components whose install failed, by root: their checks report it as an engine error. */
+  readonly failedInstalls?: ReadonlyMap<string, string>;
   readonly concurrency?: number;
 };
 
@@ -134,6 +136,11 @@ async function runTask(shared: Shared, task: Task): Promise<Outcome> {
     ...(task.component ? { component: task.component } : {}),
     ...(plan.changes ? { changes: plan.changes } : {}),
   };
+  const failedInstall =
+    task.component === undefined ? undefined : plan.failedInstalls?.get(task.component.root);
+  if (failedInstall !== undefined) {
+    return { ...base, status: 'error', reason: failedInstall, durationMs: 0, findings: [] };
+  }
   const applicability = task.check.applies(applyContext);
   if (!applicability.applies) {
     return {
@@ -199,13 +206,19 @@ export async function runChecks(engine: Engine, plan: RunPlan): Promise<RunResul
     lines: linesReader(plan.root),
     scratchRoot,
   };
-  const tasks = tasksFor(engine.packs, plan);
-  engine.log.debug(`${tasks.length} checks at ${plan.sha.slice(0, 12)} (${plan.tiers.join(', ')})`);
-  const outcomes = await pool(tasks, plan.concurrency ?? 2, async (task) => {
-    const outcome = await runTask(shared, task);
-    const at = outcome.component === undefined ? '' : `@${outcome.component}`;
-    engine.log.debug(`${outcome.check}${at}: ${outcome.status}`);
-    return outcome;
-  });
-  return { talos: engine.version, sha: plan.sha, tiers: [...plan.tiers], os: plan.os, outcomes };
+  try {
+    const tasks = tasksFor(engine.packs, plan);
+    engine.log.debug(
+      `${tasks.length} checks at ${plan.sha.slice(0, 12)} (${plan.tiers.join(', ')})`,
+    );
+    const outcomes = await pool(tasks, plan.concurrency ?? 2, async (task) => {
+      const outcome = await runTask(shared, task);
+      const at = outcome.component === undefined ? '' : `@${outcome.component}`;
+      engine.log.debug(`${outcome.check}${at}: ${outcome.status}`);
+      return outcome;
+    });
+    return { talos: engine.version, sha: plan.sha, tiers: [...plan.tiers], os: plan.os, outcomes };
+  } finally {
+    await rm(scratchRoot, { recursive: true, force: true });
+  }
 }

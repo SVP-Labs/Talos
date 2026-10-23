@@ -88,3 +88,21 @@ describe('runChecks', () => {
     ]);
   });
 });
+
+describe('runChecks after a failed install', () => {
+  it("reports that component's checks as engine errors and leaves the others alone", async () => {
+    const root = await tempRepo({});
+    const config = parseConfig(
+      'name: T\nprefix: T\ncomponents:\n  - { lang: py, root: a }\n  - { lang: py, root: b }\n',
+    );
+    const result = await runChecks(testEngine([pack]), {
+      ...testPlan(root, [], config),
+      only: ['demo/per-component'],
+      failedInstalls: new Map([['a', 'installing py at a: no uv.lock']]),
+    });
+    expect(result.outcomes.map((o) => [o.component, o.status, o.reason])).toEqual([
+      ['a', 'error', 'installing py at a: no uv.lock'],
+      ['b', 'findings', undefined],
+    ]);
+  });
+});
