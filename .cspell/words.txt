@@ -1,0 +1,39 @@
+# Words the dictionaries don't know (cspell.config.yaml). Keep each group sorted.
+
+# Tools, products and formats
+actionlint
+basedpyright
+busted
+cobertura
+depcruise
+deptrac
+hadolint
+infection
+jscpd
+knip
+larastan
+luacheck
+luacov
+markdownlint
+mutmut
+osv
+pcov
+phpmd
+phpstan
+picomatch
+pnpm
+prettierrc
+sarif
+semgrep
+shellcheck
+smol
+stryker
+stylua
+vitest
+vulture
+zizmor
+
+# Talos's words
+dependabot
+quotepath
+talos

@@ -1,0 +1,13 @@
+# Supply-chain guards (C27), the same every governed repository gets: a release waits
+# a day before it can be installed, no dependency of a dependency comes from git or a
+# tarball URL, and a package published with less provenance than before stops the install.
+minimumReleaseAge: 1440 # nosemgrep: package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+trustPolicyExclude:
+  # The 2023 backport of a security fix to semver 6, published without the
+  # provenance the 7.x releases carry; pulled in by @babel/core.
+  - semver@6.3.1
+  # Type declarations only, never executed; the 6.x line @types/node 22 wants was
+  # published before undici's later releases gained provenance.
+  - undici-types@6.21.0

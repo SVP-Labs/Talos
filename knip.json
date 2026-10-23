@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/bin/talos.ts", "src/cli/*.ts", "bootstrap/*.mjs"],
+  "project": ["src/**/*.ts", "bootstrap/**/*.mjs"],
+  "ignore": ["test-projects/**"],
+  "ignoreDependencies": ["cspell", "jscpd", "markdownlint-cli2"]
+}

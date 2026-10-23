@@ -1,0 +1,20 @@
+# Spelling in docs, code, scripts and CI. Words the dictionaries don't know go in
+# .cspell/words.txt, grouped and sorted.
+version: '0.2'
+language: en,en-GB
+dictionaryDefinitions:
+  - name: project
+    path: ./.cspell/words.txt
+    addWords: true
+dictionaries: [project]
+ignoreRegExpList:
+  - /GHSA(-[0-9a-z]{4}){3}/g
+  - /sha256:[0-9a-f]{64}/g
+  - /\b[0-9a-f]{40}\b/g
+ignorePaths:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/coverage/**'
+  - pnpm-lock.yaml
+  - tools.lock
+  - test-projects/**

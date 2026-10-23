@@ -1,0 +1,84 @@
+{
+  "name": "@svp-labs/talos",
+  "version": "0.1.0",
+  "description": "One kit for every SVP-Labs project: the engineering standard, the check engine and the agent loop.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SVP-Labs/Talos.git"
+  },
+  "bin": {
+    "talos": "dist/bin/talos.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "assets",
+    "bootstrap",
+    "tools.lock",
+    "ENGINEERING.md"
+  ],
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || exit 0",
+    "build": "tsc -p tsconfig.build.json",
+    "talos": "node dist/bin/talos.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "deadcode": "knip",
+    "duplicates": "jscpd",
+    "typecoverage": "type-coverage -p tsconfig.json --strict --at-least 99.5 --ignore-files 'src/**/*.test.ts' --ignore-files 'test/**'",
+    "architecture": "depcruise src bootstrap --config .dependency-cruiser.cjs",
+    "markdown": "markdownlint-cli2",
+    "spelling": "cspell --no-progress --show-suggestions \"**/*.{md,ts,mjs,cjs,js,yml,yaml,json,toml,sh}\"",
+    "mutation": "stryker run",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm deadcode && pnpm duplicates && pnpm typecoverage && pnpm architecture && pnpm markdown && pnpm spelling && pnpm test:coverage",
+    "self-test": "node dist/bin/talos.js self-test test-projects"
+  },
+  "dependencies": {
+    "cspell": "^10.3.6",
+    "fast-xml-parser": "^5.11.2",
+    "jscpd": "^5.4.0",
+    "markdownlint-cli2": "^0.23.3",
+    "picomatch": "^4.0.3",
+    "semver": "^7.7.3",
+    "smol-toml": "^1.9.1",
+    "yaml": "^2.8.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
+    "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22.20.5",
+    "@types/picomatch": "^4.0.2",
+    "@types/semver": "^7.7.1",
+    "@vitest/coverage-v8": "^5.0.3",
+    "dependency-cruiser": "^18.5.0",
+    "eslint": "^10.12.0",
+    "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-sonarjs": "^4.2.2",
+    "eslint-plugin-unicorn": "^77.0.0",
+    "globals": "^17.13.0",
+    "knip": "^6.40.0",
+    "prettier": "^3.9.9",
+    "type-coverage": "^2.30.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}

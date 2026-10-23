@@ -1,0 +1,11 @@
+{
+  "path": ["src", "bootstrap"],
+  "format": ["typescript", "javascript"],
+  "ignore": ["**/*.test.ts", "**/testing/**", "**/node_modules/**", "**/dist/**"],
+  "minTokens": 50,
+  "minLines": 5,
+  "threshold": 0,
+  "reporters": ["console"],
+  "absolute": false,
+  "gitignore": true
+}
