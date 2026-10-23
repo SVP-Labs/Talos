@@ -183,7 +183,7 @@ export function claudeCodeModel(options: ClaudeCodeOptions): ReviewModel {
       if (token === undefined || token === '') {
         return failed('no CLAUDE_CODE_OAUTH_TOKEN for the model');
       }
-      const model = options.env.TALOS_REVIEW_MODEL ?? DEFAULT_MODEL;
+      const model = options.env.TALOS_REVIEW_MODEL || DEFAULT_MODEL;
       const dir = await mkdtemp(join(options.env.RUNNER_TEMP ?? tmpdir(), 'talos-review-'));
       try {
         const systemFile = join(dir, 'system.md');

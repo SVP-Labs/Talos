@@ -232,6 +232,15 @@ describe('claudeCodeModel', () => {
     expect(ran[0]?.args).toContain('claude-sonnet-5-5');
   });
 
+  it('reads an empty TALOS_REVIEW_MODEL as unset', async () => {
+    const ran: Ran[] = [];
+    const env = { CLAUDE_CODE_OAUTH_TOKEN: 'oauth', TALOS_REVIEW_MODEL: '' };
+    await claudeCodeModel({ exec: fakeExec(envelope(JSON.stringify(ANSWER)), 0, ran), env }).review(
+      PROMPT,
+    );
+    expect(ran[0]?.args).toContain(DEFAULT_MODEL);
+  });
+
   it('gives no verdict without a token, and runs nothing', async () => {
     const ran: Ran[] = [];
     const model = claudeCodeModel({ exec: fakeExec('', 0, ran), env: {} });
