@@ -135,9 +135,32 @@ export function parseSemgrep(text: string): Finding[] {
   });
 }
 
-async function scan(ctx: CheckContext): Promise<Finding[]> {
+/** How many characters of file names one scan is given, well inside any command line's limit. */
+const TARGET_CHARS = 100_000;
+
+/** The files in runs whose names fit one command line each, in order. */
+function targetBatches(files: readonly string[]): string[][] {
+  const out: string[][] = [];
+  let current: string[] = [];
+  let length = 0;
+  for (const file of files) {
+    if (current.length > 0 && length + file.length + 1 > TARGET_CHARS) {
+      out.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(file);
+    length += file.length + 1;
+  }
+  return current.length === 0 ? out : [...out, current];
+}
+
+async function scanFiles(
+  ctx: CheckContext,
+  targets: readonly string[],
+  report: string,
+): Promise<Finding[]> {
   const tool = await ctx.tools.path('semgrep');
-  const report = join(ctx.scratch, 'semgrep.json');
   const args = [
     'scan',
     '--metrics=off',
@@ -148,7 +171,7 @@ async function scan(ctx: CheckContext): Promise<Finding[]> {
     ...semgrepConfigs(ctx.facts).map((config) => `--config=${config}`),
     ...EXCLUDED_RULES.map((rule) => `--exclude-rule=${rule}`),
     ...ctx.config.exclude.map((entry) => `--exclude=/${entry.replace(/^\/+/, '')}`),
-    '.',
+    ...targets,
   ];
   const env = { SEMGREP_SEND_METRICS: 'off', SEMGREP_ENABLE_VERSION_CHECK: '0' };
   const run = await ctx.exec(tool, args, { cwd: ctx.root, env });
@@ -157,6 +180,19 @@ async function scan(ctx: CheckContext): Promise<Finding[]> {
   if (findings !== undefined && run.code === 0) return findings;
   const detail = run.stderr.trim().split('\n').at(-1) ?? '';
   throw new EngineError(`semgrep exited ${run.code}: ${detail === '' ? 'no report' : detail}`);
+}
+
+/**
+ * Semgrep is given the files the run judges, by name: given a directory it would also scan what
+ * the checkout holds beyond them, such as a tool's sandbox copy of the sources or untracked files.
+ */
+async function scan(ctx: CheckContext): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const [index, targets] of targetBatches(ctx.facts.files).entries()) {
+    const report = join(ctx.scratch, `semgrep-${index}.json`);
+    findings.push(...(await scanFiles(ctx, targets, report)));
+  }
+  return findings;
 }
 
 /**

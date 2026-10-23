@@ -222,9 +222,11 @@ trusted publishing, so no npm token is stored anywhere (C26).
    `canary` and `stable`; `talos-agents`, true or false), creates the three channel rulesets
    (`talos-evaluate` in Evaluate mode, `talos-canary` and `talos-stable` active), each requiring
    the gate at the seeded commit and `talos/review` from the reviewer, and on the Talos
-   repository the tag ruleset (only you create, move or delete `v*` tags) and the `channels`
-   branch's ruleset (only `talos-release` writes it). `org pins` shows all three channels at
-   `v0.1.0`. From now on only Talos's release jobs move the pins.
+   repository the tag ruleset (only you create, move or delete `v*` tags), the `channels`
+   branch's ruleset (only `talos-release` writes it) and `talos-self-test`, which requires the
+   self-test workflow's `check` and `self-test <os>` jobs on `main`, in the merge queue too, so
+   a PR whose own engine fails its test projects never lands. `org pins` shows all three
+   channels at `v0.1.0`. From now on only Talos's release jobs move the pins.
 
 ## 6. The scratch repository and six smoke tests
 

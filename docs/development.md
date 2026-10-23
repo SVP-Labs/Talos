@@ -84,8 +84,10 @@ Talos's PRs are gated twice, so a broken engine never judges itself (C5):
    `talos/review` judge every PR. Every PR here needs the owner's approval, whoever wrote it and
    whatever it closes (C16).
 2. **Its own engine:** a plain workflow in this repository builds the PR's engine and runs the
-   self-test with it, on every operating system the test projects list. It is how a change to a
-   check is proved before any release carries it.
+   self-test with it, on every operating system the test projects list, on the PR and in the
+   merge queue; `talos org init`'s `talos-self-test` ruleset requires its jobs on `main`, by
+   their names `check` and `self-test <os>`. It is how a change to a check is proved before any
+   release carries it.
 
 The central jobs in this repository (the runtime sweep, the drift report, promotion and
 rollback) run where anyone can read their logs, so they keep C30: matrices carry indices only,
@@ -108,7 +110,8 @@ A release is a `vX.Y.Z` tag on a commit of `main`, which only the owner can crea
 
    A pin's version is read from `package.json` at its commit, so the tag and the file must agree.
 
-3. **The release workflow** runs on the tag, builds, and publishes `@svp-labs/talos@0.4.2` through
+3. **The release workflow** runs on the tag, builds, writes `npm-shrinkwrap.json` from the
+   locked production tree (`talos shrinkwrap`), and publishes `@svp-labs/talos@0.4.2` through
    npm's trusted publishing, with provenance naming that commit (C26). No token is stored.
 4. **The channels job** (`.github/workflows/channels.yml`) runs hourly on `main`, as
    `talos-release`, at stable's pin, so a broken canary release can't stop its own rollback. It

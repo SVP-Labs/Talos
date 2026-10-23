@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { dirname, join } from 'node:path';
-import type { Engine, RunPlan } from './run.js';
+import { type Engine, installKey, type RunPlan } from './run.js';
 import type { ApplyContext, Component } from '../core/check.js';
 import type { Generated, Pack } from '../core/pack.js';
 import { execOk } from '../exec/exec.js';
@@ -70,7 +70,10 @@ async function installComponents(engine: Engine, plan: RunPlan): Promise<Map<str
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      failed.set(component.root, `installing ${component.lang} at ${component.root}: ${reason}`);
+      failed.set(
+        installKey(component),
+        `installing ${component.lang} at ${component.root}: ${reason}`,
+      );
     }
   }
   return failed;

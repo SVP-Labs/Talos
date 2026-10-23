@@ -1,13 +1,26 @@
+import { posix } from 'node:path';
 import { z } from 'zod';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A path as every check compares it, by prefix: `./apps/web/` and `apps//web` are `apps/web`,
+ * and the root is `.`.
+ */
+function canonical(path: string): string {
+  const normal = posix.normalize(path);
+  const trimmed = normal.endsWith('/') ? normal.slice(0, -1) : normal;
+  return trimmed === '' ? '.' : trimmed;
+}
+
 const relativePath = z
   .string()
   .min(1)
+  .refine((path) => !path.includes('\\'), { message: 'must use / between directories' })
   .refine((path) => !path.startsWith('/') && !path.split('/').includes('..'), {
     message: 'must be a path inside the repository',
-  });
+  })
+  .transform(canonical);
 
 const exception = z.strictObject({
   reason: z.string().min(1),

@@ -21,7 +21,7 @@ import { PACKS } from '../core/registry.js';
 import { exec } from '../exec/exec.js';
 import { type GitHub, GitHubError } from '../github/api.js';
 import { createCheckRun } from '../github/checks.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import type { JobContext, JobOutcome } from '../jobs/context.js';
 import { getIssue } from '../ticket/github.js';
 import { isTrusted } from '../ticket/trust.js';
@@ -113,7 +113,7 @@ export function routeEvent(event: string, payload: unknown, who: Identities): Ro
     if (!parsed.success) return { skip: 'unreadable pull_request_review payload' };
     const { review, pull_request: pull } = parsed.data;
     const login = review.user?.login;
-    if (login === who.reviewer) return { skip: "the reviewer's own review" };
+    if (sameLogin(login, who.reviewer)) return { skip: "the reviewer's own review" };
     if (!isTrusted({ login, association: review.author_association }, who)) {
       return { skip: 'review author not trusted' };
     }

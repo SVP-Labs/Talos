@@ -14,7 +14,7 @@ import {
   STATUS_SCHEMA,
 } from './schema.js';
 import { stateOf } from '../github/checks.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { claimantOf, issueOfBranch } from '../ticket/claim.js';
 import type { Comment } from '../ticket/schemas.js';
 import { asChannel, type Pin } from '../version/pin.js';
@@ -94,7 +94,9 @@ function stageOf(pr: PullRequestNode): PullRequestStatus['stage'] {
 function pullRequestStatus(pr: PullRequestNode, input: StatusInput): PullRequestStatus {
   const suites = pr.commits.nodes[0]?.commit.checkSuites.nodes ?? [];
   const { who } = input;
-  const review = pr.latestReviews.nodes.find((r) => loginOf(r.author) === who.reviewer);
+  const review = pr.latestReviews.nodes.find((r) =>
+    sameLogin(loginOf(r.author) ?? undefined, who.reviewer),
+  );
   return {
     number: pr.number,
     title: clip(pr.title, MAX_TITLE),

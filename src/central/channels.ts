@@ -1,4 +1,5 @@
 import semver from 'semver';
+import { sameLogin } from '../github/identities.js';
 
 /**
  * Which release each channel's org ruleset pins, decided from the Talos repository's tags, its
@@ -76,10 +77,6 @@ export type RegressionIssue = {
   }[];
 };
 
-function lower(login: string | undefined): string {
-  return (login ?? '').toLowerCase();
-}
-
 /**
  * An issue counts when it carries the label and either a trusted actor opened it or a trusted
  * actor put the label on. Logins compare without case, as GitHub's do.
@@ -90,7 +87,7 @@ export function regressionOf(
 ): Regression | undefined {
   if (!issue.labels.includes(REGRESSION_LABEL)) return undefined;
   const isTrusted = (login: string | undefined): boolean =>
-    trusted.some((t) => lower(t) === lower(login) && login !== undefined);
+    trusted.some((t) => sameLogin(t, login));
   const byAuthor = isTrusted(issue.author);
   const times = issue.labelled
     .filter((e) => e.label === REGRESSION_LABEL && (byAuthor || isTrusted(e.actor)))
@@ -304,8 +301,7 @@ export function dispatchAllowed(
   actors: { readonly actor: string | undefined; readonly triggering: string | undefined },
   owner: string,
 ): boolean {
-  const isOwner = (login: string | undefined): boolean =>
-    login !== undefined && lower(login) === lower(owner);
+  const isOwner = (login: string | undefined): boolean => sameLogin(login, owner);
   return isOwner(actors.actor) && (actors.triggering === undefined || isOwner(actors.triggering));
 }
 

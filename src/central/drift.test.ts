@@ -20,11 +20,23 @@ const QUEUE = {
   rules: [{ type: 'deletion' }, { type: 'merge_queue', parameters: { merge_method: 'REBASE' } }],
 };
 
+const OWNER_REVIEW = {
+  name: 'talos-owner-review',
+  bypass_actors: [{ actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' }],
+  rules: [
+    {
+      type: 'pull_request',
+      parameters: { required_approving_review_count: 1, require_code_owner_review: true },
+    },
+  ],
+};
+
 const EXPECTED: Expected = {
   settings: GOVERNED_SETTINGS,
   caller: 'caller\n',
   codeowners: '* @SvenPGH\n',
   mergeQueue: QUEUE,
+  ownerReview: OWNER_REVIEW,
 };
 
 const GOOD: DriftState = {
@@ -118,8 +130,39 @@ describe('differences', () => {
     expect(differences({ ...GOOD, rulesets: {} }, EXPECTED)[0]?.actual).toBe('missing');
   });
 
+  it('finds the owner-review ruleset changed while it is the only approval gate', () => {
+    const atEvaluate = { ...GOOD, channel: 'evaluate' };
+    const weakened = [
+      {
+        ...OWNER_REVIEW,
+        id: 4,
+        rules: [
+          {
+            type: 'pull_request',
+            parameters: { required_approving_review_count: 1, require_code_owner_review: false },
+          },
+        ],
+      },
+      {
+        ...OWNER_REVIEW,
+        bypass_actors: [{ actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+      },
+    ];
+    for (const review of weakened) {
+      const rulesets = { ...GOOD.rulesets, 'talos-owner-review': review };
+      expect(differences({ ...atEvaluate, rulesets }, EXPECTED)).toEqual([
+        {
+          key: 'ruleset:talos-owner-review',
+          what: 'the `talos-owner-review` ruleset',
+          expected: 'present while at evaluate, as Talos creates it',
+          actual: 'changed',
+        },
+      ]);
+    }
+  });
+
   it('wants the owner-review ruleset at evaluate and gone on a channel', () => {
-    const review = { 'talos-owner-review': {} };
+    const review = { 'talos-owner-review': { ...OWNER_REVIEW, id: 4, _links: {} } };
     const atEvaluate = { ...GOOD, channel: 'evaluate' };
     expect(differences(atEvaluate, EXPECTED).map((d) => [d.key, d.actual])).toEqual([
       ['ruleset:talos-owner-review', 'missing'],

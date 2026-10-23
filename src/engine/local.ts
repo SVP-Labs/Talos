@@ -9,7 +9,15 @@ import type { Os, Tier } from '../core/check.js';
 import { engineErrors, parseRunResult, type RunResult } from '../core/result.js';
 import { type ChangeSet, parseDiff } from '../repo/changes.js';
 import { repoFacts } from '../repo/facts.js';
-import { type Git, git, inWorktree, showFile, trackedFiles, worktreeDir } from '../repo/git.js';
+import {
+  type Git,
+  git,
+  inWorktree,
+  showFile,
+  trackedFiles,
+  workingFiles,
+  worktreeDir,
+} from '../repo/git.js';
 import { createTalosDir, talosPath } from '../repo/talos-dir.js';
 
 export type At = {
@@ -22,12 +30,24 @@ export type At = {
   readonly only?: readonly string[];
   /** The `talos.yml` a checkout without one is judged by: the head's. */
   readonly config?: TalosConfig;
+  /** The root is a working tree judged as it stands, uncommitted files included. */
+  readonly workingTree?: boolean;
+  /** Mutation covers every component's whole tree, whatever `mutation` lists: the weekly report. */
+  readonly mutateAll?: boolean;
 };
+
+/** The configuration with every component's root as a mutation path. */
+function mutatingAll(config: TalosConfig): TalosConfig {
+  return { ...config, mutation: [...new Set(config.components.map((c) => c.root))] };
+}
 
 /** Prepares a checkout and runs the checks there: one `talos run`. */
 export async function runAt(engine: Engine, at: At): Promise<RunResult> {
-  const config = await loadConfig(at.root, at.config);
-  const facts = repoFacts(await trackedFiles(git(engine.exec, at.root)), config.exclude);
+  const loaded = await loadConfig(at.root, at.config);
+  const config = at.mutateAll === true ? mutatingAll(loaded) : loaded;
+  const repo = git(engine.exec, at.root);
+  const files = at.workingTree === true ? await workingFiles(repo) : await trackedFiles(repo);
+  const facts = repoFacts(files, config.exclude);
   const plan = {
     root: at.root,
     sha: at.sha,
@@ -38,7 +58,7 @@ export async function runAt(engine: Engine, at: At): Promise<RunResult> {
     facts,
     ...(at.changes ? { changes: at.changes } : {}),
     ...(at.only ? { only: at.only } : {}),
-    ...(at.config !== undefined && config === at.config ? { borrowed: true } : {}),
+    ...(at.config !== undefined && loaded === at.config ? { borrowed: true } : {}),
   };
   const prepared = await prepare(engine, plan);
   try {
@@ -65,19 +85,32 @@ function digest(text: string): string {
   return createHash('sha256').update(text).digest('hex').slice(0, 12);
 }
 
+export type CachedAt = Omit<At, 'root' | 'workingTree'> & {
+  /** What the running engine is, when its version doesn't say: a build under development. */
+  readonly build?: string;
+};
+
 /**
- * A base commit's results don't change; local runs keep them under `.talos/cache`, unless an
- * engine error spoilt them. A commit judged by the head's `talos.yml` is kept under that file's
- * digest too.
+ * What a run's result depends on beyond its commit, tiers, OS and engine: the checks `--only`
+ * names, the change it is judged with (mutation and the lockfile checks judge what it touches),
+ * and the day, since the vendors' feeds move.
  */
-export async function cachedRun(
-  engine: Engine,
-  repo: Git,
-  at: Omit<At, 'root'>,
-): Promise<RunResult> {
+function circumstances(at: CachedAt): string {
+  const changes = at.changes === undefined ? null : [...at.changes.files.values()];
+  const day = new Date().toISOString().slice(0, 10);
+  return digest(JSON.stringify({ only: at.only ?? null, changes, day }));
+}
+
+/**
+ * A commit's results don't change under the same circumstances; local runs keep them under
+ * `.talos/cache`, unless an engine error spoilt them. A commit judged by the head's `talos.yml` is
+ * kept under that file's digest too.
+ */
+export async function cachedRun(engine: Engine, repo: Git, at: CachedAt): Promise<RunResult> {
   const own = (await showFile(repo, at.sha, CONFIG_FILE)) !== undefined;
   const borrowed = own || at.config === undefined ? '' : `-${digest(JSON.stringify(at.config))}`;
-  const name = `${at.sha}-${at.tiers.join('+')}-${at.os}-${engine.version}${borrowed}.json`;
+  const which = `${at.os}-${at.build ?? engine.version}${borrowed}`;
+  const name = `${at.sha}-${at.tiers.join('+')}-${which}-${circumstances(at)}.json`;
   try {
     return parseRunResult(await readFile(talosPath(repo.root, 'cache', name), 'utf8'));
   } catch {

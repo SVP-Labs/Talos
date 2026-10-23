@@ -12,6 +12,7 @@ import {
 } from './talos-issues.js';
 import type { GitHub } from '../github/api.js';
 import { type Download, extractFile } from '../github/artifacts.js';
+import { queueGateRuns } from '../github/gate-runs.js';
 import type { Identities } from '../github/identities.js';
 import { fileAt } from '../ticket/github.js';
 import { LABEL } from '../ticket/labels.js';
@@ -130,17 +131,29 @@ export type FlakyDeps = {
   readonly download: Download;
 };
 
+/**
+ * The flaky tests the gate saw in the merge queue lately. Only there has review passed the code
+ * whose test names a sighting carries, and only the gate's own runs count: any workflow can
+ * upload an artifact by the gate's name.
+ */
 async function sightings(
   deps: FlakyDeps,
-  repo: string,
-  now: Date,
+  at: { readonly repo: string; readonly talosRepo: string; readonly now: Date },
 ): Promise<{ found: FlakySighting[]; unreadable: number }> {
-  const since = new Date(now.getTime() - SEEN_WITHIN_DAYS * 86_400_000);
-  const artifacts = await recentArtifacts(deps.actions, repo, {
-    name: VERDICT_ARTIFACT,
-    since,
-    max: MAX_ARTIFACTS,
-  });
+  const since = new Date(at.now.getTime() - SEEN_WITHIN_DAYS * 86_400_000);
+  const gate = new Set(
+    (await queueGateRuns(deps.actions, at.repo, { since, talosRepo: at.talosRepo })).map(
+      (r) => r.id,
+    ),
+  );
+  if (gate.size === 0) return { found: [], unreadable: 0 };
+  const artifacts = (
+    await recentArtifacts(deps.actions, at.repo, {
+      name: VERDICT_ARTIFACT,
+      since,
+      max: MAX_ARTIFACTS,
+    })
+  ).filter((artifact) => artifact.runId !== undefined && gate.has(artifact.runId));
   const found: FlakySighting[] = [];
   let unreadable = 0;
   for (const artifact of artifacts) {
@@ -159,8 +172,8 @@ async function sightings(
 }
 
 /**
- * Files one issue per flaky test the gate reported recently, for tests still on the default
- * branch, at most five a day.
+ * Files one issue per flaky test the gate reported recently in the merge queue, for tests still
+ * on the default branch, at most five a day.
  */
 export async function fileFlakyIssues(
   deps: FlakyDeps,
@@ -171,7 +184,11 @@ export async function fileFlakyIssues(
     readonly base: string;
   },
 ): Promise<{ filed: number; seen: number; unreadable: number }> {
-  const { found, unreadable } = await sightings(deps, at.repo, at.now);
+  const { found, unreadable } = await sightings(deps, {
+    repo: at.repo,
+    talosRepo: at.who.talosRepo,
+    now: at.now,
+  });
   const candidates = flakyCandidates(found);
   if (candidates.length === 0) return { filed: 0, seen: 0, unreadable };
   const fresh = unfiled(candidates, await talosIssues(deps.gh, at, LABEL.flaky, 'flaky'));

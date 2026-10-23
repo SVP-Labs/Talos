@@ -24,7 +24,7 @@ import {
 } from './launch.js';
 import { packageUrl, SLSA_PROVENANCE_V1 } from './provenance.js';
 import type { Release } from './release.js';
-import { ownInstallMarker, ownVersion, requiredNode } from './self.js';
+import { ownBuild, ownInstallMarker, ownVersion, requiredNode } from './self.js';
 import type { Exec } from '../exec/exec.js';
 
 const SHA = 'c'.repeat(40);
@@ -380,6 +380,12 @@ describe('self', () => {
   it("reads this package's version and Node range", () => {
     expect(ownVersion()).toMatch(/^\d+\.\d+\.\d+/);
     expect(requiredNode()).toMatch(/^>=\d+/);
+  });
+
+  it('names its build by a digest that stays put while the code does', async () => {
+    const build = await ownBuild();
+    expect(build).toMatch(/^[0-9a-f]{12}$/);
+    expect(await ownBuild()).toBe(build);
   });
 
   it('has no verification marker outside the cache', async () => {

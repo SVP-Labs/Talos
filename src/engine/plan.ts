@@ -34,6 +34,8 @@ export type GatePlan = {
   readonly commits: readonly string[];
   /** The PR's branch, which names its ticket. */
   readonly branch?: string | undefined;
+  /** Who opened the PR, as the event names them; the merge queue's event names nobody. */
+  readonly author?: string | undefined;
   readonly runs: readonly RunSpec[];
 };
 
@@ -42,6 +44,7 @@ const pullRequestEvent = z.object({
     draft: z.boolean().default(false),
     base: z.object({ sha: z.string() }),
     head: z.object({ sha: z.string(), ref: z.string() }),
+    user: z.object({ login: z.string() }).nullish(),
   }),
 });
 
@@ -158,6 +161,7 @@ export async function planFromEvent(
   let tipOfBase: string;
   let head: string;
   let branch: string | undefined;
+  let author: string | undefined;
   if (eventName === 'merge_group') {
     const event = mergeGroupEvent.parse(payload).merge_group;
     mode = 'merge-group';
@@ -169,10 +173,17 @@ export async function planFromEvent(
     tipOfBase = event.base.sha;
     head = event.head.sha;
     branch = event.head.ref;
+    author = event.user?.login;
   } else {
     throw new Error(`the gate runs on pull_request and merge_group, not ${eventName}`);
   }
-  return planRange(repo, config, { mode, tipOfBase, head, ...(branch ? { branch } : {}) });
+  const plan = await planRange(repo, config, {
+    mode,
+    tipOfBase,
+    head,
+    ...(branch ? { branch } : {}),
+  });
+  return author === undefined ? plan : { ...plan, author };
 }
 
 /**
@@ -203,6 +214,7 @@ export const gatePlanSchema = z.object({
   head: z.string(),
   commits: z.array(z.string()),
   branch: z.string().optional(),
+  author: z.string().optional(),
   runs: z.array(
     z.object({
       sha: z.string(),

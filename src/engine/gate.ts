@@ -8,6 +8,7 @@ import type { TalosConfig } from '../config/schema.js';
 import type { Reported } from '../core/finding.js';
 import { fingerprint, identity } from '../core/fingerprint.js';
 import { parseGlossary } from '../docs/glossary.js';
+import { DEPENDABOT, sameLogin } from '../github/identities.js';
 import { type Git, parentOf } from '../repo/git.js';
 
 /** The comparisons a plan implies: head against base, and each commit against its parent. */
@@ -49,21 +50,21 @@ export async function commitFindings(
 ): Promise<(Reported & { readonly sha: string })[]> {
   const glossary = await glossaryAt(repo.root, config);
   const ticket = ticketOf(plan.branch, config.prefix);
+  const dependabotVouched = plan.mode === 'merge-group' || sameLogin(plan.author, DEPENDABOT);
   const shas = plan.mode === 'draft' ? [plan.head] : plan.commits;
   const findings = await Promise.all(
     shas.map(async (sha) => {
       const [subject = '', authorEmail = ''] = (
         await repo.run(['log', '-1', '--format=%s%n%ae', sha])
       ).split('\n');
-      return subjectFindings({ sha, subject, authorEmail }, config.prefix, ticket, glossary).map(
-        (f) => ({
-          ...f,
-          sha,
-          check: 'process/commits',
-          policy: f.policy ?? 'always',
-          fingerprint: fingerprint(f.rule, identity(f, undefined)),
-        }),
-      );
+      const facts = { sha, subject, authorEmail, dependabotVouched };
+      return subjectFindings(facts, config.prefix, ticket, glossary).map((f) => ({
+        ...f,
+        sha,
+        check: 'process/commits',
+        policy: f.policy ?? 'always',
+        fingerprint: fingerprint(f.rule, identity(f, undefined)),
+      }));
     }),
   );
   return findings.flat();

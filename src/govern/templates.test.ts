@@ -97,6 +97,27 @@ describe('the ruleset templates', () => {
     ]);
   });
 
+  it("require the Talos repository's own engine, from GitHub Actions, on main and in the queue", async () => {
+    const { selfTest } = await templates();
+    expect(selfTest.name).toBe('talos-self-test');
+    expect(selfTest.bypass_actors).toEqual([]);
+    expect(selfTest.conditions.ref_name.include).toEqual(['~DEFAULT_BRANCH']);
+    expect(selfTest.rules).toEqual([
+      {
+        type: 'required_status_checks',
+        parameters: {
+          strict_required_status_checks_policy: false,
+          required_status_checks: [
+            'check',
+            'self-test linux',
+            'self-test windows',
+            'self-test macos',
+          ].map((context) => ({ context, integration_id: 15368 })),
+        },
+      },
+    ]);
+  });
+
   it('refuse a template that is not a ruleset', () => {
     expect(() => parseTemplate('x', '{"name":"x"}')).toThrow(/assets\/rulesets\/x\.json/);
   });

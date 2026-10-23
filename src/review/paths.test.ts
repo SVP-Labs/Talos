@@ -4,6 +4,7 @@ import { extensionFiles, guardedPaths, isGuarded, protectedPaths } from './guard
 import { labelSetter, outsideScope, touchedPaths, typeOf } from './scope.js';
 import { isTestOf, isTestPath } from './testfiles.js';
 import type { IssueEvent, PullFile } from './types.js';
+import { isDeclaringFile } from '../checks/runtime/declarations.js';
 import { PACKS } from '../core/registry.js';
 
 const GUARD = {
@@ -45,6 +46,14 @@ describe('the guard list', () => {
     'docker/api.Dockerfile',
     'Dockerfile.dev',
     'Containerfile',
+    'dockerfile',
+    'app.dockerfile',
+    'docker/api.dockerfile',
+    'build/Containerfile.dev',
+    'prod.containerfile',
+    'x/app.Containerfile',
+    'deptrac.project.yaml',
+    'packages/a/deptrac.project.yaml',
     '.nvmrc',
     '.node-version',
     '.python-version',
@@ -72,6 +81,22 @@ describe('the guard list', () => {
     'notes/glossary.md',
   ])('leaves %s to the issue', (path) => {
     expect(isGuarded(path, GUARD)).toBe(false);
+  });
+
+  it('guards every file that declares a runtime', () => {
+    const paths = [
+      'Dockerfile',
+      'services/web/dockerfile',
+      'build/Containerfile.dev',
+      'x/app.Containerfile',
+      'apps/api/.python-version',
+      'rust-toolchain',
+      'tools.lock',
+      'src/dockerfile.ts',
+    ];
+    for (const path of paths.filter((p) => isDeclaringFile(p))) {
+      expect(isGuarded(path, GUARD)).toBe(true);
+    }
   });
 
   it('follows talos.yml for the briefs and the glossary', () => {
@@ -216,6 +241,9 @@ describe('the issue', () => {
   it('knows who last set its type label', () => {
     const reviewer = 'talos-reviewer[bot]';
     expect(labelSetter([event({})], 'chore', reviewer)).toBe('person');
+    expect(
+      labelSetter([event({ actor: reviewer, actorType: 'Bot' })], 'chore', 'Talos-Reviewer[bot]'),
+    ).toBe('reviewer');
     expect(labelSetter([event({ actor: reviewer, actorType: 'Bot' })], 'chore', reviewer)).toBe(
       'reviewer',
     );

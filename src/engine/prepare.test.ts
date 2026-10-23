@@ -162,7 +162,7 @@ describe('prepare: setup and installs', () => {
     const prepared = await prepare(engine, testPlan(root, [], config));
     expect(installed).toEqual(['ts@app', 'ts@broken']);
     expect([...prepared.failedInstalls]).toEqual([
-      ['broken', 'installing ts at broken: npm ci failed'],
+      ['ts@broken', 'installing ts at broken: npm ci failed'],
     ]);
   });
 });

@@ -18,7 +18,7 @@ const TOOLS_LOCK = 'tools.lock';
 const CONFIG = 'talos.yml';
 
 /** At most this many files are read from one repository per sweep. */
-export const MAX_FILES = 60;
+const MAX_FILES = 60;
 
 /**
  * Whether the sweep reads a path: every file the gate's runtime check reads, and the root
@@ -26,6 +26,25 @@ export const MAX_FILES = 60;
  */
 export function isRuntimeFile(path: string): boolean {
   return path === CONFIG || isDeclaringFile(path);
+}
+
+/** The rank a path is read in: the configuration, then what pins a runtime, then the floors. */
+function rank(path: string): number {
+  if (path === CONFIG) return 0;
+  return path.split('/').at(-1) === 'composer.json' ? 2 : 1;
+}
+
+/**
+ * The paths a sweep reads, at most {@link MAX_FILES}: `talos.yml` first, then the files that pin
+ * a runtime (Dockerfiles, version files, `tools.lock`), and `composer.json`, whose platform PHP
+ * is only a floor, last; `skipped` counts the ones left over.
+ */
+export function sweepPaths(paths: readonly string[]): { read: string[]; skipped: number } {
+  const ordered = paths
+    .map((path, index) => ({ path, index }))
+    .sort((a, b) => rank(a.path) - rank(b.path) || a.index - b.index)
+    .map((entry) => entry.path);
+  return { read: ordered.slice(0, MAX_FILES), skipped: Math.max(0, ordered.length - MAX_FILES) };
 }
 
 export type RuntimeAlert = {

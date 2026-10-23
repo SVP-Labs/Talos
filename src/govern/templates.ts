@@ -61,6 +61,11 @@ export type Templates = {
   readonly releaseTags: RulesetBody;
   /** The Talos repository's `channels` branch, written by `talos-release` alone. */
   readonly channelsBranch: RulesetBody;
+  /**
+   * The Talos repository's second gating layer: its own engine's checks and self-test, run by
+   * GitHub Actions (app 15368), required on the default branch and so in the merge queue.
+   */
+  readonly selfTest: RulesetBody;
 };
 
 export function parseTemplate(name: string, text: string): RulesetBody {
@@ -75,14 +80,16 @@ export function parseTemplate(name: string, text: string): RulesetBody {
 export async function loadTemplates(dir: URL = assetsDir()): Promise<Templates> {
   const load = async (name: string): Promise<RulesetBody> =>
     parseTemplate(name, await readFile(new URL(`rulesets/${name}.json`, dir), 'utf8'));
-  const [mergeQueue, ownerReview, channel, releaseTags, channelsBranch] = await Promise.all([
-    load('merge-queue'),
-    load('owner-review'),
-    load('channel'),
-    load('release-tags'),
-    load('channels-branch'),
-  ]);
-  return { mergeQueue, ownerReview, channel, releaseTags, channelsBranch };
+  const [mergeQueue, ownerReview, channel, releaseTags, channelsBranch, selfTest] =
+    await Promise.all([
+      load('merge-queue'),
+      load('owner-review'),
+      load('channel'),
+      load('release-tags'),
+      load('channels-branch'),
+      load('self-test'),
+    ]);
+  return { mergeQueue, ownerReview, channel, releaseTags, channelsBranch, selfTest };
 }
 
 /** The channels a governed repository's `talos` property names, each with its org ruleset. */

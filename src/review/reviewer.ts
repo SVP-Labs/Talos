@@ -7,7 +7,7 @@ import { buildPrompt, LIMITS, oversize, type PromptInput, readable } from './pro
 import type { Pull, PullFile, Review } from './types.js';
 import { type GitHub, GitHubError } from '../github/api.js';
 import { readFileAt } from '../github/contents.js';
-import { DEPENDABOT, type Identities } from '../github/identities.js';
+import { DEPENDABOT, type Identities, sameLogin } from '../github/identities.js';
 import { addLabels } from '../ticket/github.js';
 import { clip } from '../ticket/payload.js';
 import type { Issue } from '../ticket/schemas.js';
@@ -51,7 +51,7 @@ export type ReviewerDeps = {
 };
 
 function byReviewer(reviews: readonly Review[], reviewer: string): Review[] {
-  return reviews.filter((r) => r.author === reviewer && r.state !== 'PENDING');
+  return reviews.filter((r) => sameLogin(r.author, reviewer) && r.state !== 'PENDING');
 }
 
 /** The reviewer's latest review of the head commit. */

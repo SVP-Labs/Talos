@@ -29,6 +29,13 @@ describe('isTrusted', () => {
     expect(isTrusted({ login: 'alice', association: undefined }, custom)).toBe(true);
   });
 
+  it('compares logins without case, as GitHub does', () => {
+    const custom = identities({ TALOS_OWNER: 'Alice', TALOS_REVIEWER_APP: 'Talos-Reviewer' });
+    expect(isTrusted({ login: 'alice', association: 'NONE' }, custom)).toBe(true);
+    expect(isTalos('talos-reviewer[bot]', custom)).toBe(true);
+    expect(isTalos('TALOS-RELEASE[bot]', who)).toBe(true);
+  });
+
   it('does not trust an author it knows nothing about', () => {
     expect(isTrusted({ login: undefined, association: undefined }, who)).toBe(false);
   });

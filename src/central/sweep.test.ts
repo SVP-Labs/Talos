@@ -8,6 +8,7 @@ import {
   type RuntimeAlert,
   securityIssue,
   securityLine,
+  sweepPaths,
   unfiled,
 } from './sweep.js';
 import type { Reported } from '../core/finding.js';
@@ -57,6 +58,27 @@ describe('isRuntimeFile', () => {
     ];
     expect(yes.filter((p) => !isRuntimeFile(p))).toEqual([]);
     expect(no.filter((p) => isRuntimeFile(p))).toEqual([]);
+  });
+});
+
+describe('sweepPaths', () => {
+  it('reads the files that pin a runtime first, composer.json last, and counts what it leaves', () => {
+    const composers = Array.from({ length: 70 }, (_, i) => `packages/p${i}/composer.json`);
+    const paths = [...composers, 'services/web/Dockerfile', 'talos.yml', 'tools.lock', '.nvmrc'];
+    const { read, skipped } = sweepPaths(paths);
+    expect(read).toHaveLength(60);
+    expect(read.slice(0, 4)).toEqual([
+      'talos.yml',
+      'services/web/Dockerfile',
+      'tools.lock',
+      '.nvmrc',
+    ]);
+    expect(read.at(-1)).toBe('packages/p55/composer.json');
+    expect(skipped).toBe(14);
+    expect(sweepPaths(['Dockerfile', 'composer.json'])).toEqual({
+      read: ['Dockerfile', 'composer.json'],
+      skipped: 0,
+    });
   });
 });
 

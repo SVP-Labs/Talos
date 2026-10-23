@@ -36,6 +36,8 @@ export type Expected = {
   readonly codeowners: string;
   /** The merge-queue ruleset as Talos creates it. */
   readonly mergeQueue: unknown;
+  /** The owner-review ruleset as Talos creates it, the one approval gate while at `evaluate`. */
+  readonly ownerReview: unknown;
 };
 
 export type DriftState = {
@@ -116,13 +118,21 @@ function rulesetDifferences(state: DriftState, expected: Expected): Difference[]
     });
   }
   const wantsOwnerReview = state.channel === 'evaluate';
-  const hasOwnerReview = state.rulesets[OWNER_REVIEW_RULESET] !== undefined;
-  if (wantsOwnerReview !== hasOwnerReview) {
+  const review = state.rulesets[OWNER_REVIEW_RULESET];
+  const what = `the \`${OWNER_REVIEW_RULESET}\` ruleset`;
+  if (wantsOwnerReview !== (review !== undefined)) {
     diffs.push({
       key: `ruleset:${OWNER_REVIEW_RULESET}`,
-      what: `the \`${OWNER_REVIEW_RULESET}\` ruleset`,
+      what,
       expected: wantsOwnerReview ? 'present while at evaluate' : 'gone once on a channel',
-      actual: hasOwnerReview ? 'present' : 'missing',
+      actual: review === undefined ? 'missing' : 'present',
+    });
+  } else if (wantsOwnerReview && !holds(review, expected.ownerReview)) {
+    diffs.push({
+      key: `ruleset:${OWNER_REVIEW_RULESET}`,
+      what,
+      expected: 'present while at evaluate, as Talos creates it',
+      actual: 'changed',
     });
   }
   return diffs;

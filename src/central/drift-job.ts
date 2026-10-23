@@ -49,16 +49,18 @@ function parsedJson(text: string): unknown {
 /** What `talos govern` writes, read from the assets this release ships. */
 export async function expectedFromAssets(owner: string, dir: URL = assetsDir()): Promise<Expected> {
   const text = (path: string): Promise<string> => readFile(new URL(path, dir), 'utf8');
-  const [caller, codeowners, mergeQueue] = await Promise.all([
+  const [caller, codeowners, mergeQueue, ownerReview] = await Promise.all([
     text('workflows/talos.yml'),
     text('codeowners'),
     text('rulesets/merge-queue.json'),
+    text('rulesets/owner-review.json'),
   ]);
   return {
     settings: GOVERNED_SETTINGS,
     caller,
     codeowners: codeowners.replaceAll('@OWNER', `@${owner}`),
     mergeQueue: parsedJson(mergeQueue),
+    ownerReview: parsedJson(ownerReview),
   };
 }
 

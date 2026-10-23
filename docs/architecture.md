@@ -155,10 +155,13 @@ repository at the pin and runs `bootstrap/launch.ts`, which installs and verifie
    it never ran: a missing result never passes as clean. The channels job counts gate runs and
    engine errors under a release by these two jobs' names.
 
-`talos check` does the same locally: the working tree against the base branch, or with
-`--commits` every commit against its parent. Base runs happen in git worktrees under `.talos/`
-and are cached by commit, tiers, OS and release in `.talos/cache`, since a commit's findings
-don't change; every finding goes to `.talos/check/talos.sarif`. Whatever creates `.talos/` (these
+`talos check` does the same locally: the working tree as it stands (deleted files gone, new
+files git doesn't ignore in) against the base branch, or with `--commits` every commit against
+its parent. Every run judges with the change from the base to the working tree, as the gate's
+judge with the PR's range. Base runs happen in git worktrees under `.talos/` and are cached in
+`.talos/cache` by commit, tiers, OS, release (under `TALOS_DEV`, a digest of the build), the
+checks `--only` names, the change and the day, which together decide a run's findings; every
+finding goes to `.talos/check/talos.sarif`. Whatever creates `.talos/` (these
 and `talos debt`) goes through `src/repo/talos-dir.ts`, which writes `.talos/.gitignore` holding
 `*`, so git lists none of it in any repository Talos judges; a `.gitignore` already there is kept
 as it is.
@@ -177,7 +180,11 @@ stripping its types, with no install step before it:
 - **The version** is `package.json`'s at the pinned commit.
 - **Verification.** The launcher installs `@svp-labs/talos@<version>` with npm (no install
   scripts) into its cache, has `npm audit signatures` check it, and refuses it unless its SLSA
-  provenance names `SVP-Labs/Talos`, the pinned commit and the installed tarball. A verified
+  provenance names `SVP-Labs/Talos`, the pinned commit and the installed tarball. The package
+  ships `npm-shrinkwrap.json`, which `talos shrinkwrap` writes in the release job from a hoisted
+  install of `pnpm-lock.yaml`'s production tree and checks against it, so npm installs exactly
+  the dependencies the release was built and tested with, the lockfile's overrides and release
+  age included, inside the attested tarball. A verified
   release is kept under `<cache>/engine/<version>-<sha12>/`; the cache is `TALOS_CACHE`, or the
   user cache (`~/.cache/talos`, `~/Library/Caches/talos`, `%LOCALAPPDATA%\talos\cache`).
 - **Which commands.** `check`, `run`, `plan`, `verdict`, `debt`, `configs`, `adopt`, `ticket`
@@ -207,8 +214,9 @@ says where the JUnit and coverage reports are. `src/quality/` turns that into ch
   entry covers the component, the two checks share one run of the whole suite and coverage
   reports no test findings; otherwise coverage reports only the verdicts `<lang>/tests` didn't.
 - `<lang>/mutation` (head tier): the `mutation` paths a change touches, or every declared path
-  in a run with nothing to compare (the weekly report), through the pack's `MutationRunner`;
-  each surviving mutant is a `mutation/survived` finding. Lua has no mature tool and skips it.
+  in a run with nothing to compare, through the pack's `MutationRunner`; each surviving mutant
+  is a `mutation/survived` finding. The weekly report declares every component's root, so it
+  mutates the whole codebase. Lua has no mature tool and skips it.
 
 Type coverage stays in the TypeScript and PHP packs, against one floor of 99.5%: below it each
 untyped identifier is a `standard` finding, at or above it `info`. TypeScript measures each
@@ -221,14 +229,19 @@ applies to parameters, returns, properties and constants each (`typecov/<kind>`)
 `src/jobs/dispatch.ts`:
 
 - **analyze** runs only on the schedule or a dispatch, on the default branch's checkout, with
-  no secret and with PHP set up as the gate does: the weekly debt run and mutation report, the
-  engine run once for both. It leaves `debt.json` (`talos.debt/1`) and `mutation.json`
-  (`talos.mutation/1`) for act.
+  no secret and with PHP set up as the gate does: the weekly debt run, then the mutation report
+  of the whole codebase in an engine run of its own, since mutating every root renders other
+  generated files than the debt run judges. It leaves `debt.json` (`talos.debt/1`) and
+  `mutation.json` (`talos.mutation/1`) for act.
 - **act** holds the reviewer's token and never runs repository code: issue readiness on
   `issues`; `talos/review` and the AI review on `pull_request_target`, `merge_group` and
   trusted `pull_request_review`; on the schedule, label sync, the stale-claim sweep and flaky
   tests daily, and on Mondays (UTC) the debt issues and the sync chore. A dispatch runs every
-  scheduled job. It reads `debt.json` as data.
+  scheduled job. It reads `debt.json` as data. The caller runs the phase in two jobs, so each
+  holds only the tokens it uses: `act` on events, with a workflow token that reads the rulesets
+  and no more, and `scheduled`, after analyze, with the workflow token that deletes idle ticket
+  branches and reads the gate's artifacts, and no model. Flaky tests come only from the gate's
+  own runs in the merge queue, whose code review has passed.
 
 Both print one `talos.job/1` line and exit 1 when any job failed.
 
@@ -289,9 +302,11 @@ talos.adopt/1     talos adopt --json; also talos.govern/1, talos.new/1, talos.or
 ```
 
 - `talos findings` prints the newest `talos-verdict` artifact of a gate run on the PR's head,
-  taken only from a run of the gate's own workflow file, with `head` and `run` added; with none,
-  `{ schema, status: "unknown", repo, pr, head }`, and that with `error` when the verdict the run
-  left can't be read. It exits 1 when red and 0 for every other answer.
+  taken only from a run of the gate's own workflow file, with `head` and `run` added, or the
+  artifact of the gate's newer run on one of the PR's merge groups (`mode: merge-group`), which
+  is why the queue dropped it; with none, `{ schema, status: "unknown", repo, pr, head }`, and
+  that with `error` when the verdict the run left can't be read. It exits 1 when red and 0 for
+  every other answer.
 - `talos status` exits 1 when a repository couldn't be read; that element is
   `{ schema, repo, error }`. Thea's hub adds `cards` to each element; Talos never sets it.
 - `talos.claim/1` is the claimed ticket's fields at the top level, or `error`: `claimed` (exit

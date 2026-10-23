@@ -19,8 +19,9 @@ import type { Identities } from '../github/identities.js';
 
 /**
  * The organisation's side of Talos: the two custom properties every governed repository carries,
- * the three channel rulesets that run the gate, and the Talos repository's own two rulesets (only
- * the owner tags a release; only `talos-release` writes the `channels` branch).
+ * the three channel rulesets that run the gate, and the Talos repository's own three rulesets
+ * (only the owner tags a release; only `talos-release` writes the `channels` branch; nothing
+ * lands on `main` until the PR's own engine passed its checks and self-test).
  */
 export const PROPERTY_DEFINITIONS: Readonly<Record<string, Record<string, unknown>>> = {
   talos: {
@@ -68,7 +69,11 @@ export async function channelRulesets(gh: GitHub, org: string): Promise<LiveRule
 
 export async function readOrgState(gh: GitHub, who: Identities, templates: Templates) {
   const org = encodeURIComponent(who.org);
-  const tagNames = [templates.releaseTags.name, templates.channelsBranch.name];
+  const tagNames = [
+    templates.releaseTags.name,
+    templates.channelsBranch.name,
+    templates.selfTest.name,
+  ];
   const [talos, reviewer, release, definitions, channels, talosRulesets, releases] =
     await Promise.all([
       gh.request<unknown>('GET', `repos/${who.talosRepo}`),
@@ -147,6 +152,7 @@ export function orgPlan(state: OrgState, templates: Templates, seed?: string): S
     ...CHANNELS.map((channel) => channelStep(state, templates, channel, seed)),
     rulesetStep(talos, find(templates.releaseTags.name), templates.releaseTags),
     rulesetStep(talos, find(channelsBranch.name), channelsBranch),
+    rulesetStep(talos, find(templates.selfTest.name), templates.selfTest),
   ];
 }
 

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { GitHub } from '../github/api.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { addLabels } from '../ticket/github.js';
 import { clip } from '../ticket/payload.js';
 import { type Issue, parseIssue, parseIssues } from '../ticket/schemas.js';
@@ -90,7 +90,7 @@ export async function talosIssues(
     `repos/${at.repo}/issues?state=all&labels=${encodeURIComponent(label)}`,
   );
   return parseIssues(data).flatMap((issue) => {
-    if (issue.isPull || issue.author !== at.who.reviewer) return [];
+    if (issue.isPull || !sameLogin(issue.author, at.who.reviewer)) return [];
     const fields = readMarker(issue.body, kind);
     return fields === undefined ? [] : [{ ...issue, fields }];
   });

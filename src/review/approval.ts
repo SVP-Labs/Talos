@@ -1,4 +1,5 @@
 import type { PullCommit, Review } from './types.js';
+import { sameLogin } from '../github/identities.js';
 
 /**
  * The owner's approval of a pull request's head, which can come three ways: an APPROVE from a
@@ -44,7 +45,9 @@ export function current(review: Review, headSha: string, lastPushAt: string | un
 /** A code owner's latest deciding review is an APPROVE of the head, after the last push. */
 function codeOwnerApproval(facts: ApprovalFacts): string | undefined {
   for (const owner of facts.owners) {
-    const latest = facts.reviews.filter((r) => r.author === owner && DECIDING.has(r.state)).at(-1);
+    const latest = facts.reviews
+      .filter((r) => sameLogin(r.author, owner) && DECIDING.has(r.state))
+      .at(-1);
     if (latest?.state === 'APPROVED' && current(latest, facts.headSha, facts.lastPushAt)) {
       return owner;
     }
@@ -55,16 +58,18 @@ function codeOwnerApproval(facts: ApprovalFacts): string | undefined {
 /** The owner opened it, and every commit is signed and both authored and committed by them. */
 function authoredByOwner(facts: ApprovalFacts): boolean {
   const owner = facts.author;
-  if (owner === undefined || !facts.owners.includes(owner)) return false;
+  if (owner === undefined || !facts.owners.some((o) => sameLogin(o, owner))) return false;
   if (facts.commitCount === 0 || facts.commits.length !== facts.commitCount) return false;
-  return facts.commits.every((c) => c.verified && c.author === owner && c.committer === owner);
+  return facts.commits.every(
+    (c) => c.verified && sameLogin(c.author, owner) && sameLogin(c.committer, owner),
+  );
 }
 
 const APPROVE_BODY = /^talos-approve (\S+) ([0-9a-f]{40})$/;
 
 /** The card id of a `talos-approve` review that counts: Thea's, on the head, after the push. */
 export function theaCard(review: Review, facts: ApprovalFacts): string | undefined {
-  if (review.author !== facts.thea || review.state !== 'COMMENTED') return undefined;
+  if (!sameLogin(review.author, facts.thea) || review.state !== 'COMMENTED') return undefined;
   const match = APPROVE_BODY.exec(review.body.trim());
   if (match?.[2] !== facts.headSha) return undefined;
   return current(review, facts.headSha, facts.lastPushAt) ? match[1] : undefined;

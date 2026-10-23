@@ -18,7 +18,8 @@
     "bootstrap",
     "tools.lock",
     "tools",
-    "ENGINEERING.md"
+    "ENGINEERING.md",
+    "npm-shrinkwrap.json"
   ],
   "packageManager": "pnpm@10.28.0",
   "engines": {

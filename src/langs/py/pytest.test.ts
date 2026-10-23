@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverageRc, pytestArgs } from './pytest.js';
+import { coverageRc, pytestArgs, suiteExit } from './pytest.js';
 
 const BASE = [
   '-p',
@@ -33,6 +33,16 @@ describe('pytestArgs', () => {
         ctx,
       ),
     ).toEqual([...BASE, 'tests/test_a.py']);
+  });
+});
+
+describe('suiteExit', () => {
+  it('passes a suite that collected no test, as every other runner does', () => {
+    expect(suiteExit(5)).toBe(0);
+  });
+
+  it('keeps every other exit as pytest gave it', () => {
+    expect([0, 1, 2, 3, 4].map((code) => suiteExit(code))).toEqual([0, 1, 2, 3, 4]);
   });
 });
 

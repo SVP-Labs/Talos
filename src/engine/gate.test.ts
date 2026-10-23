@@ -47,6 +47,7 @@ function planOf(h: History, overrides: Partial<GatePlan> = {}): GatePlan {
 }
 
 const CONFIG = parseConfig('name: A\nprefix: A\n');
+const DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com';
 
 describe('comparisonsFor', () => {
   let h: History;
@@ -96,6 +97,31 @@ describe('commitFindings', () => {
       [h.second, 'commit/subject', 'process/commits', 'always'],
     ]);
     expect(findings.every((f) => /^[0-9a-f]+$/.test(f.fingerprint))).toBe(true);
+  });
+
+  it("exempts Dependabot's commits on its own PRs and in the merge queue, never by email alone", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'talos-gate-bot-'));
+    const repo = git(exec, cwd);
+    const as = ['-c', 'user.name=dependabot[bot]', '-c', `user.email=${DEPENDABOT_EMAIL}`];
+    await repo.run(['init', '-q']);
+    await writeFile(join(cwd, 'a.txt'), 'a\n');
+    await repo.run(['add', '-A']);
+    await repo.run([...COMMIT, ...as, 'commit', '-q', '-m', 'Bump x from 1 to 2']);
+    const sha = (await repo.run(['rev-parse', 'HEAD'])).trim();
+    const plan = (overrides: Partial<GatePlan>): GatePlan => ({
+      mode: 'ready',
+      base: sha,
+      head: sha,
+      commits: [sha],
+      runs: [],
+      ...overrides,
+    });
+    const rules = async (overrides: Partial<GatePlan>): Promise<string[]> =>
+      (await commitFindings(repo, plan(overrides), CONFIG)).map((f) => f.rule);
+    expect(await rules({ author: 'dependabot[bot]' })).toEqual([]);
+    expect(await rules({ mode: 'merge-group' })).toEqual([]);
+    expect(await rules({ author: 'someone' })).toEqual(['commit/subject']);
+    expect(await rules({})).toEqual(['commit/subject']);
   });
 
   it('judges only the head commit of a draft', async () => {

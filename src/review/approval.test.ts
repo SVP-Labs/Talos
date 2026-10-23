@@ -84,6 +84,22 @@ describe('the owner approving on GitHub', () => {
     expect(ownerApproval(facts({ reviews: [review(), comment] })).approved).toBe(true);
   });
 
+  it("compares logins without case, as GitHub's CODEOWNERS does", () => {
+    expect(
+      ownerApproval(facts({ owners: [OWNER.toLowerCase()], reviews: [review()] })).approved,
+    ).toBe(true);
+    expect(
+      ownerApproval(
+        facts({
+          owners: [OWNER.toLowerCase()],
+          author: OWNER,
+          commits: [signed({ author: OWNER.toUpperCase() })],
+        }),
+      ).approved,
+    ).toBe(true);
+    expect(theaCard(card(), facts({ thea: 'Thea-SVP[bot]' }))).toBe('card-7');
+  });
+
   it('counts any of several code owners', () => {
     const reviews = [review({ author: 'other-owner' })];
     expect(ownerApproval(facts({ reviews, owners: [OWNER, 'other-owner'] })).line).toBe(

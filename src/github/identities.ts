@@ -39,3 +39,12 @@ export function identities(env: Readonly<Record<string, string | undefined>>): I
 }
 
 export const DEPENDABOT = 'dependabot[bot]';
+
+/**
+ * Whether two logins name the same account. GitHub matches logins without case, in CODEOWNERS
+ * too, so a configured identity written in another case than the API returns is still that one.
+ */
+export function sameLogin(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return a.toLowerCase() === b.toLowerCase();
+}

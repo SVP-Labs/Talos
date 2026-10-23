@@ -9,7 +9,7 @@ import {
   type BootstrapText,
 } from './texts.js';
 import { type GitHub, GitHubError } from '../github/api.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { shippedLabels, syncLabels } from '../jobs/label-sync.js';
 import { branchFor, claimantOf, claimLine } from '../ticket/claim.js';
 import {
@@ -38,7 +38,7 @@ export function findBootstrap(issues: readonly Issue[], who: Identities): Issue 
     (issue) =>
       !issue.isPull &&
       issue.body.includes(ADOPT_MARKER) &&
-      (issue.author === who.owner || issue.author === who.thea),
+      (sameLogin(issue.author, who.owner) || sameLogin(issue.author, who.thea)),
   );
 }
 

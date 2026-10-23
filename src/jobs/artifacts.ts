@@ -10,6 +10,7 @@ const artifactList = z.object({
       expired: z.boolean(),
       created_at: z.string().nullable().optional(),
       archive_download_url: z.string(),
+      workflow_run: z.object({ id: z.number().int() }).nullable().optional(),
     }),
   ),
 });
@@ -18,6 +19,8 @@ export type Artifact = {
   readonly id: number;
   readonly createdAt: string;
   readonly url: string;
+  /** The workflow run that uploaded it, when GitHub says. */
+  readonly runId: number | undefined;
 };
 
 /** Artifacts above this size are skipped: a verdict is a few kilobytes. */
@@ -42,7 +45,8 @@ export async function recentArtifacts(
       const created = a.created_at ?? undefined;
       if (a.expired || a.name !== query.name || a.size_in_bytes > MAX_ARTIFACT) return [];
       if (created === undefined || Date.parse(created) < query.since.getTime()) return [];
-      return [{ id: a.id, createdAt: created, url: a.archive_download_url }];
+      const runId = a.workflow_run?.id;
+      return [{ id: a.id, createdAt: created, url: a.archive_download_url, runId }];
     })
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, query.max);

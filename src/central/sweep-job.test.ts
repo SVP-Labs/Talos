@@ -65,7 +65,15 @@ describe('runSweep', () => {
   it('files one p0 security issue per vulnerable runtime, reading only declaring files', async () => {
     const fake = repo('stable');
     const report = await runSweep({ gh: fake.gh, who: WHO, assess: alerts });
-    expect(report).toEqual({ governed: 1, files: 2, alerts: 2, filed: 2, open: 0, errors: 0 });
+    expect(report).toEqual({
+      governed: 1,
+      files: 2,
+      alerts: 2,
+      filed: 2,
+      open: 0,
+      errors: 0,
+      skipped: 0,
+    });
     const filed = fake.calls
       .filter((c) => c.method === 'POST')
       .map((c) => c.body as { body: string; labels: string[] });
@@ -106,8 +114,18 @@ describe('runSweep', () => {
       filed: 0,
       open: 0,
       errors: 0,
+      skipped: 0,
     });
     expect(fake.calls).toHaveLength(1);
+  });
+
+  it('says when it could not read every file: a truncated tree is an error', async () => {
+    const fake = repo('stable');
+    fake.on('GET', 'repos/SVP-Labs/Secret/git/trees/main?recursive=1', {
+      body: { truncated: true, tree: [{ path: 'Dockerfile', type: 'blob' }] },
+    });
+    const report = await runSweep({ gh: fake.gh, who: WHO, assess: alerts });
+    expect(report).toMatchObject({ files: 1, errors: 1, skipped: 0 });
   });
 
   it('refuses a token that reaches more than one repository', async () => {

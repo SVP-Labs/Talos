@@ -11,7 +11,7 @@ import {
 } from './readiness.js';
 import { readMarker } from './talos-issues.js';
 import type { GitHub } from '../github/api.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import {
   addComment,
   changeLabels,
@@ -54,7 +54,7 @@ async function keepComment(
 ): Promise<void> {
   const comments = await listComments(gh, at.repo, at.issue);
   const mine = comments.find(
-    (c) => c.author === at.who.reviewer && readMarker(c.body, 'readiness') !== undefined,
+    (c) => sameLogin(c.author, at.who.reviewer) && readMarker(c.body, 'readiness') !== undefined,
   );
   if (mine === undefined) {
     if (!ready) await addComment(gh, at.repo, at.issue, text);
@@ -83,7 +83,7 @@ type IssuesEvent = z.infer<typeof issuesEvent>;
 /** Why an event is not judged, from the payload alone, before the token is used. */
 export function eventSkip(event: IssuesEvent, who: Identities): string | undefined {
   if (!ACTIONS.has(event.action)) return `nothing to judge on ${event.action}`;
-  if (event.sender?.login === who.reviewer) return "the reviewer's own change";
+  if (sameLogin(event.sender?.login, who.reviewer)) return "the reviewer's own change";
   const author = { login: event.issue.user?.login, association: event.issue.author_association };
   if (!isTrusted(author, who)) return 'author not trusted';
   return isTalos(author.login, who) ? 'filed by Talos' : undefined;

@@ -1,4 +1,4 @@
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 
 /**
  * The `author_association` values of people who may steer an agent. Strangers can comment on a
@@ -20,14 +20,12 @@ export function isTrusted(author: Author, who: Identities): boolean {
   if (author.association !== undefined && TRUSTED_ASSOCIATIONS.has(author.association)) {
     return true;
   }
-  const login = author.login;
-  if (login === undefined) return false;
-  return [who.owner, who.thea, who.reviewer, who.release].includes(login);
+  return [who.owner, who.thea, who.reviewer, who.release].some((id) => sameLogin(author.login, id));
 }
 
 /** Whether Talos's own Apps wrote it: issues and comments Talos files itself. */
 export function isTalos(login: string | undefined, who: Identities): boolean {
-  return login === who.reviewer || login === who.release;
+  return sameLogin(login, who.reviewer) || sameLogin(login, who.release);
 }
 
 /**

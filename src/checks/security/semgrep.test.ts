@@ -32,4 +32,45 @@ describe('the scan', () => {
       '--exclude-rule=package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown',
     ]);
   });
+
+  it('scans the tracked files the run judges, never what else lies in the checkout', async () => {
+    const { exec, calls } = recording(async ({ args }) => {
+      const output = args.find((arg) => arg.startsWith('--output='))?.slice('--output='.length);
+      if (output !== undefined) await writeFile(output, '{"results": []}');
+      return ok('');
+    });
+    const ctx = await infraContext({ 'src/a.ts': 'x\n', 'README.md': '# A\n' }, exec);
+    await semgrepCheck().run(ctx);
+    const args = calls[0]?.args ?? [];
+    expect(args).not.toContain('.');
+    expect(args.slice(-2).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'README.md',
+      'src/a.ts',
+    ]);
+  });
+
+  it('splits a long list of files over several scans and keeps every finding', async () => {
+    const { exec, calls } = recording(async ({ args }) => {
+      const output = args.find((arg) => arg.startsWith('--output='))?.slice('--output='.length);
+      const target = args.at(-1) ?? '';
+      const found = {
+        check_id: 'r',
+        path: target,
+        start: { line: 1 },
+        end: { line: 1 },
+        extra: {},
+      };
+      if (output !== undefined) await writeFile(output, JSON.stringify({ results: [found] }));
+      return ok('');
+    });
+    const files = Object.fromEntries(
+      Array.from({ length: 600 }, (_, i) => [`src/${'d'.repeat(200)}/file-${i}.ts`, 'x\n']),
+    );
+    const ctx = await infraContext(files, exec);
+    const findings = await semgrepCheck().run(ctx);
+    expect(calls.length).toBeGreaterThan(1);
+    expect(findings).toHaveLength(calls.length);
+    const scanned = calls.flatMap((call) => call.args.filter((arg) => arg.startsWith('src/')));
+    expect(new Set(scanned).size).toBe(600);
+  });
 });

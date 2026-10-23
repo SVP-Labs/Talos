@@ -34,6 +34,14 @@ export function pytestArgs(
   ];
 }
 
+/** pytest's exit when it collects no test. */
+const NO_TESTS_COLLECTED = 5;
+
+/** The exit a suite counts as: one that collected no test passed, as every other runner's does. */
+export function suiteExit(code: number): number {
+  return code === NO_TESTS_COLLECTED ? 0 : code;
+}
+
 /**
  * Coverage of every Python file in the component that isn't a test, with lines that can never
  * run (type-checking imports, overload stubs) left out. The project's own coverage settings
@@ -84,7 +92,7 @@ async function run(context: CheckContext, request: TestRequest): Promise<RawTest
   if (!(await fileExists(junit))) throw failed('pytest, which wrote no JUnit report,', result);
   const base = componentDir(ctx);
   return {
-    exitCode: result.code,
+    exitCode: suiteExit(result.code),
     output: `${result.stdout}${result.stderr}`,
     junit: [{ path: junit, base }],
     ...(request.coverage

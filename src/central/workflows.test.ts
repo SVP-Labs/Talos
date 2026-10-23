@@ -198,7 +198,7 @@ describe('the inlined pin lookup', () => {
         copies += 1;
       }
     }
-    expect(copies).toBe(9);
+    expect(copies).toBe(10);
   });
 });
 
@@ -344,29 +344,39 @@ describe('the caller', () => {
   });
 
   it("acts with the reviewer's token for this repository, never checking out the PR", () => {
-    const act = caller.jobs.act!;
-    for (const step of act.steps.filter((s) => s.uses?.startsWith('actions/checkout@') === true)) {
-      expect(step.with?.repository).toBe('SVP-Labs/Talos');
+    for (const act of [caller.jobs.act!, caller.jobs.scheduled!]) {
+      for (const step of act.steps.filter(
+        (s) => s.uses?.startsWith('actions/checkout@') === true,
+      )) {
+        expect(step.with?.repository).toBe('SVP-Labs/Talos');
+      }
+      const [token] = tokenSteps(act);
+      expect(token?.with?.owner).toBeUndefined();
+      expect(token?.with?.repositories).toBeUndefined();
+      const run = act.steps.at(-1);
+      expect(run?.run).toContain('job "$EVENT" --phase act');
+      expect(run?.env?.TALOS_REVIEWER_TOKEN).toBe('${{ steps.token.outputs.token }}');
     }
-    const [token] = tokenSteps(act);
-    expect(token?.with?.owner).toBeUndefined();
-    expect(token?.with?.repositories).toBeUndefined();
-    expect(act.if).toMatch(/OWNER.*MEMBER.*COLLABORATOR/s);
-    const run = act.steps.at(-1);
-    expect(run?.run).toContain('job "$EVENT" --phase act');
-    expect(run?.env?.TALOS_REVIEWER_TOKEN).toBe('${{ steps.token.outputs.token }}');
+    expect(caller.jobs.act?.if).toMatch(/OWNER.*MEMBER.*COLLABORATOR/s);
   });
 
   it('carries the generated marker, so governed repositories never judge it as their own', () => {
     expect(carriesGeneratedMarker(text(FILES.caller))).toBe(true);
   });
 
-  it('acts after analyze, on what it left, with the model only in the act phase', () => {
-    const { analyze, act } = caller.jobs;
-    expect(needsOf(act!)).toEqual(['analyze']);
-    expect(act?.if).toMatch(/^\$\{\{ !cancelled\(\) && \(/);
+  it('acts on the schedule after analyze, on what it left, with the model only on events', () => {
+    const { analyze, act, scheduled } = caller.jobs;
+    expect(needsOf(scheduled!)).toEqual(['analyze']);
+    expect(scheduled?.if).toBe(
+      "${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}",
+    );
+    expect(act?.if).toMatch(
+      /^\$\{\{ github\.event_name != 'schedule' && github\.event_name != 'workflow_dispatch' && \(/,
+    );
+    expect(needsOf(act!)).toEqual([]);
+    expect(JSON.stringify(scheduled)).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN|REVIEW_MODEL/);
     const upload = stepIn(analyze, using('actions/upload-artifact'), 'uploading');
-    const download = stepIn(act, using('actions/download-artifact'), 'downloading');
+    const download = stepIn(scheduled, using('actions/download-artifact'), 'downloading');
     expect(upload.with?.name).toBe('talos-analyze');
     expect(download.with).toEqual({ name: 'talos-analyze', path: upload.with?.path });
     const checkout = stepIn(analyze, (s) => s.with?.path === 'repo', 'checking the branch out');
@@ -399,7 +409,24 @@ describe('the caller', () => {
         'github.event.pull_request.number || github.event.issue.number || github.run_id }}',
       'cancel-in-progress': false,
     });
-    expect(caller.jobs.act?.permissions).toEqual({ actions: 'read', contents: 'write' });
+    expect(caller.jobs.scheduled?.concurrency).toEqual({
+      group: 'talos-scheduled',
+      'cancel-in-progress': false,
+    });
+  });
+
+  it('gives each job only the workflow token it uses, and the event-driven one none', () => {
+    const { act, scheduled } = caller.jobs;
+    expect(act?.permissions).toEqual({ contents: 'read' });
+    expect(stepIn(act, named('Act'), 'Act').env?.GITHUB_TOKEN).toBeUndefined();
+    expect(scheduled?.permissions).toEqual({ actions: 'read', contents: 'write' });
+    expect(stepIn(scheduled, named('Act'), 'Act').env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    const [token] = tokenSteps(scheduled!);
+    expect(token?.with).toMatchObject({
+      'permission-contents': 'read',
+      'permission-issues': 'write',
+    });
+    expect(token?.with?.['permission-checks']).toBeUndefined();
   });
 });
 
@@ -478,6 +505,26 @@ describe('the central jobs in this public repository', () => {
             asked.every((k) => k.startsWith('permission-organization-')),
             `${path} ${id} ${step.name ?? ''}`,
           ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('look repositories up with a token that reads custom properties and nothing more', () => {
+    for (const path of CENTRAL) {
+      for (const [id, job] of jobsOf(path)) {
+        for (const pick of job.steps.filter((s) =>
+          / central (?:pick|privacy --mask)\b/.test(s.run ?? ''),
+        )) {
+          const from = /^\$\{\{ steps\.(\w+)\.outputs\.token \}\}$/.exec(
+            typeof pick.env?.TALOS_PROPERTIES_TOKEN === 'string'
+              ? pick.env.TALOS_PROPERTIES_TOKEN
+              : '',
+          );
+          const minted = job.steps.find((s) => s.id === from?.[1]);
+          const asked = Object.keys(minted?.with ?? {}).filter((k) => k.startsWith('permission-'));
+          expect(asked, `${path} ${id}`).toEqual(['permission-organization-custom-properties']);
+          expect(minted?.with?.['permission-organization-custom-properties']).toBe('read');
         }
       }
     }
@@ -579,6 +626,21 @@ describe('the release and channel workflows', () => {
     );
   });
 
+  it('ship the locked dependency tree as npm-shrinkwrap.json inside the package', () => {
+    const pkg = z.object({ files: z.array(z.string()) }).parse(JSON.parse(text('package.json')));
+    expect(pkg.files).toContain('npm-shrinkwrap.json');
+    const build = workflow(FILES.release).jobs.build;
+    const script = stepIn(build, named('Build and pack'), 'that builds and packs').run ?? '';
+    const tree = script.indexOf('pnpm install --prod --frozen-lockfile --ignore-scripts');
+    const wrap = script.indexOf('node dist/bin/talos.js shrinkwrap');
+    const pack = script.indexOf('npm pack');
+    expect(tree).toBeGreaterThan(-1);
+    expect(wrap).toBeGreaterThan(tree);
+    expect(pack).toBeGreaterThan(wrap);
+    expect(script).toContain('nodeLinker: hoisted');
+    expect(script).toContain('package/npm-shrinkwrap.json');
+  });
+
   it('move pins hourly, on a regression and on the owner’s dispatch, from main only', () => {
     const channels = workflow(FILES.channels);
     expect(channels.on).toEqual({
@@ -597,7 +659,14 @@ describe('the release and channel workflows', () => {
 
   it('test the PR’s own engine on every OS', () => {
     const selfTest = workflow(FILES.selfTest);
-    expect(selfTest.on).toEqual({ pull_request: null, push: { branches: ['main'] } });
+    expect(selfTest.on).toEqual({
+      pull_request: null,
+      merge_group: null,
+      push: { branches: ['main'] },
+    });
+    expect(Object.keys(selfTest.jobs)).toEqual(['check', 'self-test']);
+    expect(selfTest.jobs.check?.name).toBe('check');
+    expect(selfTest.jobs['self-test']?.name).toBe('self-test ${{ matrix.os }}');
     const runs = stepsOf(FILES.selfTest).map((s) => s.run ?? '');
     expect(runs).toContain('pnpm check');
     expect(runs).toContain('node dist/bin/talos.js self-test test-projects');

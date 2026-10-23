@@ -72,6 +72,10 @@ const COMMANDS: Readonly<Record<string, Entry>> = {
     summary: "the organisation's rulesets and pins",
     load: async () => (await import('./org.js')).org,
   },
+  shrinkwrap: {
+    summary: "a release's npm-shrinkwrap.json, from its locked install",
+    load: async () => (await import('./shrinkwrap.js')).shrinkwrap,
+  },
   'self-test': {
     summary: "every check against Talos's test projects",
     load: async () => (await import('./self-test.js')).selfTest,

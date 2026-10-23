@@ -149,11 +149,45 @@ describe('sweepStaleClaims', () => {
     expect(fake.issues.get(1)?.comments).toEqual([]);
   });
 
-  it('counts a claim it could not release, and goes on', async () => {
+  it("releases with a token that can't write pull requests: deleting the branch closes the draft", async () => {
+    claimed(1, 6);
+    fake.pulls.push({
+      number: 20,
+      draft: true,
+      state: 'open',
+      updated_at: hoursAgo(7),
+      head: 'T-1',
+    });
+    fake.failures.set('PATCH repos/o/r/pulls/20', 403);
+    fake.failures.set('POST repos/o/r/issues/20/comments', 403);
+    expect(await sweep()).toEqual({ released: [1], kept: 0, failed: 0 });
+    expect(fake.refs.has('T-1')).toBe(false);
+    expect(fake.pulls[0]?.state).toBe('closed');
+    expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
+    expect(fake.issues.get(1)?.comments.at(-1)?.body).toMatch(/^🔓 released/);
+  });
+
+  it('counts a claim it could not release, goes on, and finishes it on the next sweep', async () => {
     claimed(1, 10);
     claimed(2, 10);
     fake.failures.set('DELETE repos/o/r/git/refs/heads/T-1', 403);
     expect(await sweep()).toEqual({ released: [2], kept: 0, failed: 1 });
+    expect(fake.refs.has('T-1')).toBe(true);
+    expect(fake.issues.get(1)?.comments).toEqual([]);
+    fake.failures.clear();
+    expect(await sweep()).toEqual({ released: [1], kept: 0, failed: 0 });
+    expect(fake.refs.has('T-1')).toBe(false);
+    expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
+    expect(fake.issues.get(1)?.comments.map((c) => c.body)).toEqual([
+      expect.stringMatching(/^🔓 released/),
+    ]);
+  });
+
+  it('leaves the claim whole when it cannot change the labels', async () => {
+    claimed(1, 10);
+    fake.failures.set('DELETE repos/o/r/issues/1/labels/status/in-progress', 403);
+    expect(await sweep()).toEqual({ released: [], kept: 0, failed: 1 });
+    expect(fake.refs.has('T-1')).toBe(true);
     expect(fake.issues.get(1)?.labels).toContain('ai/claimed');
   });
 });

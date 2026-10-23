@@ -105,7 +105,7 @@ async function activityOf(
 }
 
 export type SweepClients = {
-  /** Issues and pull requests: labels, comments, closing a draft. */
+  /** Issues: labels and comments, on the issue and on the draft. */
   readonly gh: GitHub;
   /** Deleting a branch needs `contents: write`, which the reviewer App doesn't hold. */
   readonly refs: GitHub;
@@ -118,22 +118,16 @@ type Stale = {
   readonly idleHours: number;
 };
 
+/**
+ * Releases a claim labels first and branch last, so that a step refused part-way leaves the
+ * branch, which the next sweep finds and finishes; a deleted branch with the claim's labels still
+ * on its issue would be stranded, since every sweep starts from the branches. Deleting the branch
+ * closes its draft, so no pull request needs writing.
+ */
 async function releaseStale(c: SweepClients, repo: string, stale: Stale): Promise<void> {
+  await changeLabels(c.gh, repo, stale.issue.number, releasedLabels(stale.issue));
   await deleteBranch(c.refs, repo, stale.branch);
   const idle = `${stale.idleHours} h (limit ${STALE_HOURS} h)`;
-  if (stale.draft !== undefined) {
-    await c.gh.request('PATCH', `repos/${repo}/pulls/${stale.draft.number}`, {
-      body: { state: 'closed' },
-    });
-    await addComment(
-      c.gh,
-      repo,
-      stale.draft.number,
-      `Closed by Talos: the claim on #${stale.issue.number} was idle for ${idle}. ` +
-        'The commits stay on this pull request.',
-    );
-  }
-  await changeLabels(c.gh, repo, stale.issue.number, releasedLabels(stale.issue));
   if (stale.issue.state === 'open') {
     await addComment(
       c.gh,
@@ -142,6 +136,15 @@ async function releaseStale(c: SweepClients, repo: string, stale: Stale): Promis
       `🔓 released: the claim was idle for ${idle}; branch \`${stale.branch}\` is deleted ` +
         'and the ticket is open to claim again.',
     );
+  }
+  if (stale.draft !== undefined) {
+    await addComment(
+      c.gh,
+      repo,
+      stale.draft.number,
+      `Closed by Talos: the claim on #${stale.issue.number} was idle for ${idle}. ` +
+        'The commits stay on this pull request.',
+    ).catch(() => undefined);
   }
 }
 

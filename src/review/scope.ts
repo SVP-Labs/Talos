@@ -1,5 +1,6 @@
 import { isTestOf } from './testfiles.js';
 import type { IssueEvent, PullFile } from './types.js';
+import { sameLogin } from '../github/identities.js';
 import { LABEL, typeLabelsOf } from '../ticket/labels.js';
 import { affectedPaths } from '../ticket/sections.js';
 
@@ -29,7 +30,7 @@ export function labelSetter(
 ): LabelSetter {
   const last = events.filter((e) => e.event === 'labeled' && e.label === label).at(-1);
   if (last?.actor === undefined) return 'unknown';
-  if (last.actor === reviewer) return 'reviewer';
+  if (sameLogin(last.actor, reviewer)) return 'reviewer';
   return last.actorType === 'User' ? 'person' : 'other';
 }
 

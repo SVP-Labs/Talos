@@ -27,9 +27,10 @@ someone holds as claimed by someone else before it refuses one for its labels: a
 trusted author wrote names, and `null` when none does yet.
 
 `talos findings --repo <o/n> --pr <N>` prints the newest verdict a run of the gate's own
-workflow left on the PR's head, with that `run` added. With none it can read, its `status` is
-`unknown`, beside the `repo`, `pr` and `head` it looked at, and `error` says why when the run
-left a verdict Talos can't read.
+workflow left on the PR's head, with that `run` added, or, when the gate judged one of the PR's
+merge groups since, that run's verdict (`mode` `merge-group`, `head` still the PR's). With none
+it can read, its `status` is `unknown`, beside the `repo`, `pr` and `head` it looked at, and
+`error` says why when the run left a verdict Talos can't read.
 
 ## Flags and exit codes
 

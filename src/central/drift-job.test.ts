@@ -78,6 +78,7 @@ describe('expectedFromAssets', () => {
     expect(expected.codeowners).toContain('* @SvenPGH');
     expect(expected.codeowners).not.toContain('@OWNER');
     expect(expected.mergeQueue).toMatchObject({ name: 'talos-merge-queue' });
+    expect(expected.ownerReview).toMatchObject({ name: 'talos-owner-review' });
     expect(expected.settings).toBe(GOVERNED_SETTINGS);
   });
 });

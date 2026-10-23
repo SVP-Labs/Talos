@@ -93,7 +93,7 @@ async function sweep(env: Env, options: CentralOptions): Promise<Outcome> {
     who: identities(env),
     assess: options.assess ?? runtimeAssessor(),
   });
-  return { ok: report.errors === 0, report };
+  return { ok: report.errors === 0 && report.skipped === 0, report };
 }
 
 async function drift(env: Env, options: CentralOptions, flags: Flags): Promise<Outcome> {

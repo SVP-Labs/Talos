@@ -5,3 +5,4 @@ reports/
 .stryker-tmp/
 .talos/
 *.tsbuildinfo
+npm-shrinkwrap.json

@@ -147,11 +147,17 @@ describe('planFromEvent', () => {
     const head = await commit({ 'src/a.ts': 'export {};\n' });
     const config = parseConfig(talos(TS));
     const pr = (draft: boolean) => ({
-      pull_request: { draft, base: { sha: base }, head: { sha: head, ref: 'TL-3' } },
+      pull_request: {
+        draft,
+        base: { sha: base },
+        head: { sha: head, ref: 'TL-3' },
+        user: { login: 'dependabot[bot]' },
+      },
     });
     expect(await planFromEvent('pull_request', pr(true), repo, config)).toMatchObject({
       mode: 'draft',
       branch: 'TL-3',
+      author: 'dependabot[bot]',
       commits: [],
     });
     expect(await planFromEvent('pull_request_target', pr(false), repo, config)).toMatchObject({
@@ -166,6 +172,7 @@ describe('planFromEvent', () => {
     );
     expect(queued).toMatchObject({ mode: 'merge-group', base, head });
     expect(queued).not.toHaveProperty('branch');
+    expect(queued).not.toHaveProperty('author');
     await expect(planFromEvent('push', {}, repo, config)).rejects.toThrow(
       'the gate runs on pull_request and merge_group, not push',
     );

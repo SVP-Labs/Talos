@@ -1,5 +1,5 @@
 import type { GitHub } from '../github/api.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { listInstallationRepositories, propertyOf, type Repository } from '../github/repos.js';
 import { parseIssues, type Issue } from '../ticket/schemas.js';
 
@@ -37,7 +37,9 @@ export async function openTalosIssues(
   const raw = await gh.paginate<unknown>(
     `repos/${at.repo}/issues?state=open&labels=${encodeURIComponent(label)}`,
   );
-  return parseIssues(raw).filter((issue) => !issue.isPull && issue.author === at.who.reviewer);
+  return parseIssues(raw).filter(
+    (issue) => !issue.isPull && sameLogin(issue.author, at.who.reviewer),
+  );
 }
 
 /** Closes an issue Talos filed, as done: what it reported is gone. */

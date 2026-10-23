@@ -6,7 +6,6 @@ import { currentOs } from './run.js';
 import { loadConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
 import { consoleLogger, type Logger } from '../core/log.js';
-import type { RunResult } from '../core/result.js';
 import { runAt } from '../engine/local.js';
 import { createEngine } from '../engine/session.js';
 import { github, type GitHub, type GitHubOptions } from '../github/api.js';
@@ -50,30 +49,27 @@ function eventOf(event: string | undefined, env: Env): string {
 }
 
 /**
- * The engine at the default branch's checkout, run once for both weekly analyze jobs, so the
- * project's dependencies and services start once.
+ * The engine at the default branch's checkout, for the weekly debt run and, apart from it, the
+ * mutation report, which mutates the whole codebase whatever `talos.yml`'s `mutation` lists: its
+ * configuration renders other generated files than the repository's, which the debt run judges.
  */
 function analyzeDeps(io: Io, log: Logger, verbose: boolean): AnalyzeDeps {
   const engine = createEngine(verbose, log);
   const checks = { debt: debtCheckIds(engine.packs), mutation: mutationCheckIds(engine.packs) };
-  let full: Promise<RunResult> | undefined;
-  const runAll = async (): Promise<RunResult> => {
-    const sha = await revParse(git(engine.exec, io.cwd), 'HEAD');
-    return runAt(engine, {
-      root: io.cwd,
-      sha,
-      tiers: ['commit', 'head'],
-      os: currentOs(),
-      side: 'alone',
-      only: [...checks.debt, ...checks.mutation],
-    });
-  };
   return {
     checks,
     run: async (only) => {
-      full ??= runAll();
-      const result = await full;
-      return { ...result, outcomes: result.outcomes.filter((o) => only.includes(o.check)) };
+      const sha = await revParse(git(engine.exec, io.cwd), 'HEAD');
+      const mutating = only.length > 0 && only.every((id) => checks.mutation.includes(id));
+      return runAt(engine, {
+        root: io.cwd,
+        sha,
+        tiers: ['commit', 'head'],
+        os: currentOs(),
+        side: 'alone',
+        only: [...only],
+        ...(mutating ? { mutateAll: true } : {}),
+      });
     },
     summary: async (markdown) => {
       if (io.env.GITHUB_STEP_SUMMARY !== undefined) {

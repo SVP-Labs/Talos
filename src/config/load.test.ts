@@ -27,3 +27,35 @@ describe('loadConfig', () => {
     await expect(loadConfig(await checkout('name: [\n'), HEAD)).rejects.toThrow(ConfigError);
   });
 });
+
+describe('paths in talos.yml', () => {
+  const yml = (lines: readonly string[]): string =>
+    ['name: A', 'prefix: A', ...lines, ''].join('\n');
+
+  it('reads every path in one form: no leading ./, no trailing /, no doubled /', () => {
+    const config = parseConfig(
+      yml([
+        'components:',
+        '  - { lang: ts, root: ./apps/web/ }',
+        '  - { lang: py, root: ./ }',
+        'exclude: [./apps/web/dist, apps//web/generated/]',
+        'tests: { full: [./tests/e2e] }',
+        'mutation: [./apps/web/src/risk/**]',
+        'docs: { glossary: ./docs/glossary.md, briefs: docs/requirements/ }',
+      ]),
+    );
+    expect(config.components.map((c) => c.root)).toEqual(['apps/web', '.']);
+    expect(config.exclude).toEqual(['apps/web/dist', 'apps/web/generated']);
+    expect(config.tests.full).toEqual(['tests/e2e']);
+    expect(config.mutation).toEqual(['apps/web/src/risk/**']);
+    expect(config.docs).toEqual({ glossary: 'docs/glossary.md', briefs: 'docs/requirements' });
+  });
+
+  it('refuses a path outside the repository or written with backslashes', () => {
+    for (const root of ['/srv/app', '../app', 'apps\\web', 'apps/../..']) {
+      expect(() => parseConfig(yml(['components:', `  - { lang: ts, root: '${root}' }`]))).toThrow(
+        ConfigError,
+      );
+    }
+  });
+});

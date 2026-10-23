@@ -123,6 +123,14 @@ describe('reviewerState', () => {
   });
 });
 
+describe('the reviewer by login', () => {
+  it('finds its reviews whatever case its login is configured in', () => {
+    const upper = REVIEWER.toUpperCase();
+    expect(requestedRounds([changes(1)], upper)).toBe(1);
+    expect(reviewOfHead([review()], upper, HEAD)).toBeDefined();
+  });
+});
+
 describe('requestedRounds', () => {
   it("counts the reviewer's requests on every commit, dismissed ones included", () => {
     expect(

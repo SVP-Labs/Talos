@@ -76,7 +76,7 @@ describe('talos central', () => {
     );
     expect(code).toBe(0);
     expect(terminal.lines).toEqual([
-      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'sweep', ok: true, governed: 0, files: 0, alerts: 0, filed: 0, open: 0, errors: 0 })}\n`,
+      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'sweep', ok: true, governed: 0, files: 0, alerts: 0, filed: 0, open: 0, errors: 0, skipped: 0 })}\n`,
     ]);
   });
 

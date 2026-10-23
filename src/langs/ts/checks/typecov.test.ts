@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { atFloor, parseTypeCoverage, typecovArgs, typecovFindings } from './typecov.js';
+import {
+  atFloor,
+  parseTypeCoverage,
+  typecovArgs,
+  typecovFindings,
+  typecovIgnored,
+} from './typecov.js';
 import { EngineError } from '../../../core/check.js';
 
 /** Recorded from type-coverage 2.30.4 --strict --detail --json-output. */
@@ -17,10 +23,11 @@ const RECORDED = {
 };
 
 const toRepo = (file: string): string => file.replace('/repo/', '');
+const JUDGED = new Set(['src/a.ts']);
 
 describe('typecovFindings', () => {
   it('makes each untyped identifier a standard finding under the floor', () => {
-    const findings = typecovFindings(parseTypeCoverage(RECORDED), toRepo);
+    const findings = typecovFindings(parseTypeCoverage(RECORDED), toRepo, JUDGED);
     expect(findings).toEqual([
       {
         rule: 'typecov/untyped',
@@ -37,10 +44,13 @@ describe('typecovFindings', () => {
 
   it('reports the same identifiers as info at or above the floor', () => {
     const covered = { ...RECORDED, correctCount: 199, totalCount: 200 };
-    expect(typecovFindings(parseTypeCoverage(covered), toRepo).map((f) => f.policy)).toEqual([
-      'info',
-      'info',
-    ]);
+    expect(
+      typecovFindings(parseTypeCoverage(covered), toRepo, JUDGED).map((f) => f.policy),
+    ).toEqual(['info', 'info']);
+  });
+
+  it("reports nothing in a file the run doesn't judge, such as one talos.yml excludes", () => {
+    expect(typecovFindings(parseTypeCoverage(RECORDED), toRepo, new Set(['src/b.ts']))).toEqual([]);
   });
 
   it('refuses output that is not type-coverage’s JSON', () => {
@@ -63,5 +73,25 @@ describe('typecovArgs', () => {
     expect(args).toContain('--no-ignore-as-assertion');
     expect(args).toContain('--no-update');
     expect(args.slice(-2)).toEqual(['--ignore-files', 'e2e-full/**']);
+  });
+});
+
+describe('typecovIgnored', () => {
+  it("leaves out tests.full and talos.yml's exclude, relative to each tsconfig", () => {
+    const config = {
+      exclude: ['apps/web/src/generated', 'vendor', 'apps/web/src/*.gen.ts'],
+      tests: { full: ['apps/web/e2e'] },
+    };
+    expect(typecovIgnored(config, 'apps/web', 'apps/web')).toEqual([
+      'e2e/**',
+      'src/generated',
+      'src/generated/**',
+      'src/*.gen.ts',
+    ]);
+    expect(typecovIgnored(config, 'apps/web', 'apps/web/src')).toEqual([
+      'generated',
+      'generated/**',
+      '*.gen.ts',
+    ]);
   });
 });

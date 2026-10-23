@@ -84,7 +84,7 @@ describe('talos org', () => {
     expect(JSON.parse(term.stdout)).toMatchObject({
       schema: 'talos.org/1',
       ok: true,
-      steps: { total: 7 },
+      steps: { total: 8 },
     });
     expect([...org.definitions.keys()]).toEqual(['talos', 'talos-agents']);
     expect([...org.orgRulesets.values()].map((r) => r.name)).toEqual([
@@ -95,6 +95,7 @@ describe('talos org', () => {
     expect([...org.talosRulesets.values()].map((r) => r.name)).toEqual([
       'talos-release-tags',
       'talos-channels',
+      'talos-self-test',
     ]);
     const again = orgApi(org);
     expect(await orgWith({ fetch: again.fetch })(['init'], io())).toBe(0);

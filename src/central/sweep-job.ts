@@ -4,9 +4,9 @@ import type { RuntimeAssessor } from './runtime-port.js';
 import {
   groupAlerts,
   isRuntimeFile,
-  MAX_FILES,
   SECURITY_LABEL,
   securityIssue,
+  sweepPaths,
   unfiled,
 } from './sweep.js';
 import type { GitHub } from '../github/api.js';
@@ -28,7 +28,10 @@ export type SweepReport = {
   readonly alerts: number;
   readonly filed: number;
   readonly open: number;
+  /** What went wrong, a tree GitHub listed only in part included. */
   readonly errors: number;
+  /** Declaring files left unread past the cap: the sweep didn't cover them. */
+  readonly skipped: number;
 };
 
 const treeSchema = z.object({
@@ -37,19 +40,31 @@ const treeSchema = z.object({
 });
 
 /** The default branch's files that can declare a runtime, through the trees API. */
-async function runtimePaths(gh: GitHub, repo: string, branch: string): Promise<string[]> {
+async function runtimePaths(
+  gh: GitHub,
+  repo: string,
+  branch: string,
+): Promise<{ read: string[]; skipped: number; truncated: boolean }> {
   const raw = await gh.request<unknown>(
     'GET',
     `repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
   );
-  return treeSchema
-    .parse(raw)
-    .tree.filter((entry) => entry.type === 'blob' && isRuntimeFile(entry.path))
-    .map((entry) => entry.path)
-    .slice(0, MAX_FILES);
+  const tree = treeSchema.parse(raw);
+  const paths = tree.tree
+    .filter((entry) => entry.type === 'blob' && isRuntimeFile(entry.path))
+    .map((entry) => entry.path);
+  return { ...sweepPaths(paths), truncated: tree.truncated };
 }
 
-const NONE: SweepReport = { governed: 0, files: 0, alerts: 0, filed: 0, open: 0, errors: 0 };
+const NONE: SweepReport = {
+  governed: 0,
+  files: 0,
+  alerts: 0,
+  filed: 0,
+  open: 0,
+  errors: 0,
+  skipped: 0,
+};
 
 /**
  * One repository's sweep: read its runtime declarations, ask the runtime pack, and file one p0
@@ -60,7 +75,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepReport> {
   if (!isGoverned(repository)) return NONE;
   const repo = repository.fullName;
   const branch = repository.defaultBranch;
-  const paths = await runtimePaths(deps.gh, repo, branch);
+  const { read: paths, skipped, truncated } = await runtimePaths(deps.gh, repo, branch);
   const texts = await Promise.all(paths.map((path) => readFileAt(deps.gh, repo, path, branch)));
   const files = new Map<string, string>();
   for (const [index, path] of paths.entries()) {
@@ -78,6 +93,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepReport> {
     alerts: groups.length,
     filed: fresh.length,
     open: open.length,
-    errors: assessment.errors,
+    errors: assessment.errors + (truncated ? 1 : 0),
+    skipped,
   };
 }

@@ -77,6 +77,21 @@ describe('rendering for a component', () => {
     expect(render('vitest.config.ts')).toContain("'generated/**',");
   });
 
+  it('measures every source file for coverage, loaded by a test or not', () => {
+    const vitest = render('vitest.config.ts');
+    const coverage = vitest.slice(vitest.indexOf('coverage: {'));
+    expect(coverage).toContain("include: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'],");
+    for (const glob of [
+      '**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
+      '**/{test,tests,e2e,testing,__tests__}/**',
+      '**/*.{config,project}.{ts,mts,cts,js,mjs,cjs}',
+      '**/*.d.{ts,mts,cts}',
+      'generated/**',
+    ]) {
+      expect(coverage).toContain(`'${glob}',`);
+    }
+  });
+
   it("mutates the component's mutation paths, files as they are and directories by glob", () => {
     expect(mutateGlobs(ctx)).toEqual([
       'src/gate.ts',

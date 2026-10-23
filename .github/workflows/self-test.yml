@@ -1,10 +1,13 @@
 # Talos's second layer: the PR's own engine, built from source, runs Talos's checks and every
 # test project on each OS the project lists. The gate judges Talos with the canary release, so a
-# broken engine never judges itself.
+# broken engine never judges itself; `talos org init`'s talos-self-test ruleset requires the
+# `check` and `self-test <os>` jobs by name, so renaming one is a change to that ruleset too.
 name: self-test
 
 on:
   pull_request:
+  # The talos-self-test ruleset requires these jobs on main, so the merge queue waits for them too.
+  merge_group:
   push:
     branches: [main]
 

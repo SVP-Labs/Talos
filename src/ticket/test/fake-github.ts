@@ -53,6 +53,16 @@ export type FakeArtifact = {
   zip: Uint8Array;
 };
 
+/** A workflow run, as the runs list and a GraphQL `WorkflowRun` node describe it. */
+export type FakeRun = {
+  id: number;
+  event: string;
+  created_at: string;
+  head_branch: string;
+  /** The workflow file the run ran, as GraphQL names it. */
+  file: { path: string; repositoryName: string };
+};
+
 export type Call = {
   method: string;
   path: string;
@@ -100,6 +110,7 @@ export class FakeGitHub {
   readonly labels: FakeLabel[] = [];
   readonly files = new Map<string, string>();
   readonly artifacts: FakeArtifact[] = [];
+  readonly runs: FakeRun[] = [];
   /** `METHOD path` → status: the next such call fails with it. */
   readonly failures = new Map<string, number>();
   /** Answers GraphQL queries. */
@@ -133,6 +144,7 @@ export class FakeGitHub {
     ['PATCH', /^repos\/o\/r\/labels\/(.+)$/, (c, m) => this.editLabel(c, m)],
     ['GET', /^repos\/o\/r\/contents\/(.+)$/, (c, m) => this.contents(c, m)],
     ['GET', /^repos\/o\/r\/actions\/artifacts$/, (c) => this.listArtifacts(c)],
+    ['GET', /^repos\/o\/r\/actions\/runs$/, (c) => this.listRuns(c)],
     ['GET', /^repos\/o\/r\/actions\/runs\/(\d+)\/artifacts$/, (_c, m) => this.runArtifacts(m)],
     ['GET', /^repos\/o\/r\/actions\/artifacts\/(\d+)\/zip$/, (_c, m) => this.redirect(m)],
     ['GET', /^storage\/(\d+)$/, (c, m) => this.download(c, m)],
@@ -409,7 +421,8 @@ export class FakeGitHub {
     const pull = this.pulls.find((p) => p.number === Number(m[1]));
     if (pull === undefined) return NOT_FOUND;
     const head = { ref: pull.head, sha: this.refs.get(pull.head) ?? 'gone' };
-    return ok({ number: pull.number, draft: pull.draft, state: pull.state, head });
+    const base = { ref: this.defaultBranch, sha: this.refs.get(this.defaultBranch) ?? 'gone' };
+    return ok({ number: pull.number, draft: pull.draft, state: pull.state, head, base });
   }
 
   private editPull(call: Call, m: RegExpExecArray): Reply {
@@ -459,6 +472,37 @@ export class FakeGitHub {
   private listArtifacts(call: Call): Reply {
     const name = call.query.get('name');
     return this.artifactList(this.artifacts.filter((a) => name === null || a.name === name));
+  }
+
+  private listRuns(call: Call): Reply {
+    const event = call.query.get('event');
+    const since = /^>=(.+)$/.exec(call.query.get('created') ?? '')?.[1];
+    const listed = this.runs.filter(
+      (r) =>
+        (event === null || r.event === event) &&
+        (since === undefined || r.created_at.slice(0, 10) >= since),
+    );
+    return ok({
+      total_count: listed.length,
+      workflow_runs: listed.map((r) => ({
+        id: r.id,
+        node_id: `WFR_${r.id}`,
+        event: r.event,
+        created_at: r.created_at,
+        head_branch: r.head_branch,
+      })),
+    });
+  }
+
+  /** Answers the GraphQL `nodes` query for workflow runs from {@link runs}. */
+  runNodes(variables: Record<string, unknown>): unknown {
+    const ids = stringList.parse(variables.ids);
+    return {
+      nodes: ids.map((id) => {
+        const run = this.runs.find((r) => `WFR_${r.id}` === id);
+        return run === undefined ? null : { databaseId: run.id, file: run.file };
+      }),
+    };
   }
 
   private runArtifacts(m: RegExpExecArray): Reply {

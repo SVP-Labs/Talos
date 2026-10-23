@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runChecks } from './run.js';
 import { parseConfig } from '../config/load.js';
-import { APPLIES, EngineError, skip } from '../core/check.js';
+import { APPLIES, type Check, EngineError, skip } from '../core/check.js';
 import type { Pack } from '../core/pack.js';
 import { tempRepo, testEngine, testPlan } from '../testing/engine.js';
 
@@ -98,11 +98,38 @@ describe('runChecks after a failed install', () => {
     const result = await runChecks(testEngine([pack]), {
       ...testPlan(root, [], config),
       only: ['demo/per-component'],
-      failedInstalls: new Map([['a', 'installing py at a: no uv.lock']]),
+      failedInstalls: new Map([['py@a', 'installing py at a: no uv.lock']]),
     });
     expect(result.outcomes.map((o) => [o.component, o.status, o.reason])).toEqual([
       ['a', 'error', 'installing py at a: no uv.lock'],
       ['b', 'findings', undefined],
+    ]);
+  });
+
+  it('holds back only the language whose install failed where two share a root', async () => {
+    const root = await tempRepo({});
+    const config = parseConfig(
+      'name: T\nprefix: T\ncomponents:\n  - { lang: ts, root: . }\n  - { lang: py, root: . }\n',
+    );
+    const perLang = (lang: 'ts' | 'py'): Check => ({
+      id: `${lang}/x`,
+      tier: 'commit',
+      scope: 'component',
+      langs: [lang],
+      title: lang,
+      applies: () => APPLIES,
+      run: () => Promise.resolve([]),
+    });
+    const result = await runChecks(
+      testEngine([{ name: 'both', checks: [perLang('ts'), perLang('py')] }]),
+      {
+        ...testPlan(root, [], config),
+        failedInstalls: new Map([['py@.', 'installing py at .: uv sync failed']]),
+      },
+    );
+    expect(result.outcomes.map((o) => [o.check, o.status])).toEqual([
+      ['ts/x', 'passed'],
+      ['py/x', 'error'],
     ]);
   });
 
@@ -112,7 +139,7 @@ describe('runChecks after a failed install', () => {
     const result = await runChecks(testEngine([pack]), {
       ...testPlan(root, [], config),
       only: ['demo/per-component'],
-      failedInstalls: new Map([['a', 'installing py at a: no uv.lock']]),
+      failedInstalls: new Map([['py@a', 'installing py at a: no uv.lock']]),
       borrowed: true,
     });
     expect(result.outcomes.map((o) => [o.component, o.status, o.reason])).toEqual([

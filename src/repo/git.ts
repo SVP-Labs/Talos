@@ -39,6 +39,20 @@ export async function trackedFiles(repo: Git): Promise<string[]> {
   return out.split('\0').filter(Boolean);
 }
 
+/**
+ * The files of a working tree as they stand: the tracked ones still there, and the new ones git
+ * doesn't ignore, as the next commit of everything would hold them. A repository nested inside,
+ * which git lists as a directory, is not a file of this one.
+ */
+export async function workingFiles(repo: Git): Promise<string[]> {
+  const list = async (flag: string): Promise<string[]> =>
+    (await repo.run(['ls-files', '-z', flag, '--exclude-standard'])).split('\0').filter(Boolean);
+  const deleted = new Set(await list('--deleted'));
+  const tracked = (await list('--cached')).filter((file) => !deleted.has(file));
+  const added = (await list('--others')).filter((file) => !file.endsWith('/'));
+  return [...new Set([...tracked, ...added])];
+}
+
 /** A file's content at a commit, or undefined when it doesn't exist there. */
 export async function showFile(repo: Git, sha: string, path: string): Promise<string | undefined> {
   try {

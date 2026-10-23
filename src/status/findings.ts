@@ -2,9 +2,7 @@ import { z } from 'zod';
 import { EngineError } from '../core/check.js';
 import type { GitHub } from '../github/api.js';
 import { type Download, readArtifactFile } from '../github/artifacts.js';
-
-/** Where the gate's workflow lives: only a run of this file can speak for the gate. */
-const GATE_PATH = '.github/workflows/gate.yml';
+import { isGateFile, queueGateRuns } from '../github/gate-runs.js';
 
 const RUNS_QUERY = `
 query TalosGateRuns($owner: String!, $name: String!, $sha: GitObjectID!) {
@@ -41,7 +39,10 @@ const runsSchema = z.object({
   }),
 });
 
-const pullSchema = z.object({ head: z.object({ sha: z.string() }) });
+const pullSchema = z.object({
+  head: z.object({ sha: z.string() }),
+  base: z.object({ ref: z.string() }),
+});
 
 const MAX_LISTED = 20;
 const MAX_FAULTS = 5;
@@ -105,31 +106,38 @@ function readVerdict(text: string): z.infer<typeof verdictSchema> | undefined {
   }
 }
 
-function isGateRun(
-  file: { path: string; repositoryName: string } | null,
-  talosRepo: string,
-): boolean {
-  if (file === null) return false;
-  const repository = file.repositoryName.toLowerCase().replace(/^https:\/\/github\.com\//, '');
-  return repository === talosRepo.toLowerCase() && file.path === GATE_PATH;
-}
+type GateRun = { readonly id: number; readonly createdAt: string };
 
-/**
- * The newest gate run on a commit. A PR can add a workflow of its own that uploads an artifact
- * called `talos-verdict`, so a run counts only when its workflow file is Talos's gate.
- */
+/** The newest gate run on a commit: a run whose workflow file is Talos's gate. */
 async function gateRunOn(
   gh: GitHub,
   repo: string,
   sha: string,
   talosRepo: string,
-): Promise<number | undefined> {
+): Promise<GateRun | undefined> {
   const [owner, name] = repo.split('/');
   const data = runsSchema.parse(await gh.graphql<unknown>(RUNS_QUERY, { owner, name, sha }));
   const runs = (data.repository.object?.checkSuites.nodes ?? [])
-    .filter((suite) => isGateRun(suite.workflowRun?.file ?? null, talosRepo))
+    .filter((suite) => isGateFile(suite.workflowRun?.file ?? null, talosRepo))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return runs[0]?.workflowRun?.databaseId;
+  const id = runs[0]?.workflowRun?.databaseId;
+  return id === undefined ? undefined : { id, createdAt: runs[0]?.createdAt ?? '' };
+}
+
+/**
+ * The gate's newest run on a merge group of the PR since its head's run: the verdict that took
+ * the PR out of the queue, when one did. GitHub names a group's branch after the PR it tests.
+ */
+async function queueRunAfter(
+  deps: FindingsDeps,
+  at: { readonly repo: string; readonly pr: number; readonly base: string; readonly head: GateRun },
+): Promise<GateRun | undefined> {
+  const since = new Date(at.head.createdAt);
+  if (Number.isNaN(since.getTime())) return undefined;
+  const prefix = `gh-readonly-queue/${at.base}/pr-${at.pr}-`;
+  const runs = await queueGateRuns(deps.gh, at.repo, { since, talosRepo: deps.talosRepo });
+  const run = runs.find((r) => r.headBranch.startsWith(prefix) && r.createdAt > at.head.createdAt);
+  return run === undefined ? undefined : { id: run.id, createdAt: run.createdAt };
 }
 
 export type FindingsDeps = {
@@ -155,8 +163,9 @@ async function verdictFile(
 }
 
 /**
- * The latest gate verdict for a PR's head (`talos.verdict/1`) with the `run` that left it, or
- * status `unknown` when no gate run left one, with `error` when the one it left can't be read.
+ * The latest gate verdict for a PR (`talos.verdict/1`) with the `run` that left it: its head's,
+ * or, when the merge queue judged the PR since, the queue's (`mode: merge-group`). Status
+ * `unknown` when no gate run left one, with `error` when the one it left can't be read.
  */
 export async function prFindings(
   deps: FindingsDeps,
@@ -166,8 +175,10 @@ export async function prFindings(
   const pull = pullSchema.parse(await deps.gh.request<unknown>('GET', `repos/${repo}/pulls/${pr}`));
   const head = pull.head.sha;
   const unknown = { schema: 'talos.verdict/1', status: 'unknown', repo, pr, head };
-  const runId = await gateRunOn(deps.gh, repo, head, deps.talosRepo);
-  if (runId === undefined) return unknown;
+  const headRun = await gateRunOn(deps.gh, repo, head, deps.talosRepo);
+  if (headRun === undefined) return unknown;
+  const queued = await queueRunAfter(deps, { repo, pr, base: pull.base.ref, head: headRun });
+  const runId = (queued ?? headRun).id;
   const { text, error } = await verdictFile(deps, repo, runId);
   if (error !== undefined) return { ...unknown, error };
   if (text === undefined) return unknown;

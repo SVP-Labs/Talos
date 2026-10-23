@@ -3,11 +3,13 @@ import { subjectFindings, ticketOf } from './commits.js';
 import { parseGlossary } from '../../docs/glossary.js';
 
 const glossary = parseGlossary('**Ticket**\nAn issue.\nAvoid: task, job.\n');
-const commit = (subject: string, authorEmail = 'a@b.c') => ({
+const commit = (subject: string, authorEmail = 'a@b.c', dependabotVouched = false) => ({
   sha: 'abcdef1234567',
   subject,
   authorEmail,
+  dependabotVouched,
 });
+const DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com';
 
 describe('commit subjects', () => {
   it('accept the ticket form', () => {
@@ -43,8 +45,16 @@ describe('commit subjects', () => {
   });
 
   it("exempt Dependabot's commits from the ticket rules", () => {
-    const bot = commit('Bump x from 1 to 2', '49699333+dependabot[bot]@users.noreply.github.com');
+    const bot = commit('Bump x from 1 to 2', DEPENDABOT_EMAIL, true);
     expect(subjectFindings(bot, 'T', undefined, glossary)).toEqual([]);
+  });
+
+  it("exempt nothing for Dependabot's email alone, which anyone can write", () => {
+    const forged = commit('misc', DEPENDABOT_EMAIL, false);
+    expect(subjectFindings(forged, 'T', 12, glossary).map((f) => f.rule)).toEqual([
+      'commit/subject',
+    ]);
+    expect(subjectFindings(commit('misc', 'a@b.c', true), 'T', 12, glossary)).toHaveLength(1);
   });
 
   it('read the ticket from a ticket branch only', () => {

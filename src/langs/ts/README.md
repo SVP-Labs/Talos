@@ -18,7 +18,7 @@ ceiling.
 | `.prettierignore`             | none                                                        | lock files, the rendered files and `talos.yml`'s `exclude`, so an editor formats what the gate checks                                                      |
 | `.dependency-cruiser.cjs`     | `.dependency-cruiser.project.cjs`                           | the project's rules in the tool's own syntax; the base adds the universal ones                                                                             |
 | `knip.config.js`              | `knip.project.json`                                         | Knip's options are data, so the extension is JSON the base reads                                                                                           |
-| `vitest.config.ts`            | `vitest.project.ts`                                         | merged with `mergeConfig`; the runner sets reporters and output paths on the command line                                                                  |
+| `vitest.config.ts`            | `vitest.project.ts`                                         | merged with `mergeConfig`; coverage measures every source file, tested or not; the runner sets reporters and output paths on the command line              |
 | `stryker.config.mjs`          | `stryker.project.json`                                      | Stryker's options are data; `mutate` comes from `talos.yml`'s `mutation`                                                                                   |
 
 `talos.yml`'s `exclude` reaches every tool from the bases, so no project lists it twice.

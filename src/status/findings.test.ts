@@ -14,19 +14,44 @@ function json(body: unknown): Promise<Response> {
   );
 }
 
-function fakeFetch(suites: Suite[], artifacts: { id: number; name: string }[]): typeof fetch {
-  return (input) => {
+type QueueRun = { id: number; created_at: string; head_branch: string; gate: boolean };
+
+function queueFiles(queue: readonly QueueRun[]) {
+  return queue.map((run) => ({
+    databaseId: run.id,
+    file: {
+      path: '.github/workflows/gate.yml',
+      repositoryName: run.gate ? 'SVP-Labs/Talos' : 'SVP-Labs/Thea',
+    },
+  }));
+}
+
+function fakeFetch(
+  suites: Suite[],
+  artifacts: { id: number; name: string; run?: number }[],
+  queue: readonly QueueRun[] = [],
+): typeof fetch {
+  return (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url.endsWith('/graphql')) {
+      const query = typeof init?.body === 'string' ? init.body : '';
+      if (query.includes('TalosRunFiles')) return json({ data: { nodes: queueFiles(queue) } });
       return json({ data: { repository: { object: { checkSuites: { nodes: suites } } } } });
     }
-    if (url.endsWith('/pulls/5')) return json({ head: { sha: 'abc' } });
-    const listed = artifacts.map((a) => ({
-      ...a,
-      size_in_bytes: 10,
-      expired: false,
-      archive_download_url: '',
-    }));
+    if (url.endsWith('/pulls/5')) return json({ head: { sha: 'abc' }, base: { ref: 'main' } });
+    if (url.includes('/actions/runs?')) {
+      const runs = queue.map(({ gate: _gate, ...run }) => ({ ...run, node_id: `WFR_${run.id}` }));
+      return json({ total_count: runs.length, workflow_runs: runs });
+    }
+    const run = /\/actions\/runs\/(\d+)\/artifacts/.exec(url)?.[1];
+    const listed = artifacts
+      .filter((a) => run === undefined || a.run === undefined || a.run === Number(run))
+      .map(({ run: _run, ...a }) => ({
+        ...a,
+        size_in_bytes: 10,
+        expired: false,
+        archive_download_url: `https://api.example/${a.id}`,
+      }));
     return json({ total_count: listed.length, artifacts: listed });
   };
 }
@@ -126,6 +151,58 @@ describe('prFindings', () => {
     expect(await prFindings(odd, 'SVP-Labs/Thea', 5)).toMatchObject({
       status: 'unknown',
       error: 'the gate run left a verdict Talos cannot read',
+    });
+  });
+
+  it("answers with the merge queue's verdict when the queue judged the PR after its head", async () => {
+    const red = {
+      ...green,
+      mode: 'merge-group',
+      status: 'red',
+      counts: { blocking: 1, existing: 0, faults: 0, byRule: { 'tsc/TS2322': 1 } },
+      blocking: [
+        { sha: SHA, rule: 'tsc/TS2322', why: 'new', file: 'src/a.ts', line: 3, message: 'No.' },
+      ],
+    };
+    const branch = (pr: number): string => `gh-readonly-queue/main/pr-${pr}-${'b'.repeat(40)}`;
+    const queue = [
+      { id: 7, created_at: '2026-10-23T11:00:00Z', head_branch: branch(5), gate: true },
+      { id: 8, created_at: '2026-10-23T12:00:00Z', head_branch: branch(55), gate: true },
+      { id: 9, created_at: '2026-10-23T13:00:00Z', head_branch: branch(5), gate: false },
+      { id: 6, created_at: '2026-10-23T09:00:00Z', head_branch: branch(5), gate: true },
+    ];
+    const artifacts = [
+      { id: 3, name: 'talos-verdict', run: 4 },
+      { id: 30, name: 'talos-verdict', run: 7 },
+    ];
+    const zips: Readonly<Record<string, Uint8Array>> = {
+      'repos/SVP-Labs/Thea/actions/artifacts/3/zip': makeZip({
+        'verdict.json': JSON.stringify(green),
+      }),
+      'repos/SVP-Labs/Thea/actions/artifacts/30/zip': makeZip({
+        'verdict.json': JSON.stringify(red),
+      }),
+    };
+    const deps = {
+      gh: github('t', { fetch: fakeFetch([gate(4, '2026-10-23T10:00:00Z')], artifacts, queue) }),
+      download: (path: string) => Promise.resolve(zips[path] ?? new Uint8Array()),
+      talosRepo: 'SVP-Labs/Talos',
+    };
+    expect(await prFindings(deps, 'SVP-Labs/Thea', 5)).toEqual({
+      ...red,
+      repo: 'SVP-Labs/Thea',
+      pr: 5,
+      head: 'abc',
+      run: 7,
+    });
+    const before = queue.map((run) => ({ ...run, created_at: '2026-10-23T09:30:00Z' }));
+    const headFirst = {
+      ...deps,
+      gh: github('t', { fetch: fakeFetch([gate(4, '2026-10-23T10:00:00Z')], artifacts, before) }),
+    };
+    expect(await prFindings(headFirst, 'SVP-Labs/Thea', 5)).toMatchObject({
+      run: 4,
+      status: 'green',
     });
   });
 });

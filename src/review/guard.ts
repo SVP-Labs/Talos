@@ -1,5 +1,7 @@
 import picomatch from 'picomatch';
+import { isDeclaringFile } from '../checks/runtime/declarations.js';
 import type { Pack } from '../core/pack.js';
+import { DEPTRAC_PROJECT } from '../langs/php/deptrac-config.js';
 
 /**
  * The guard list: files a debt or chore PR may never touch to land without the owner, because
@@ -47,21 +49,22 @@ const MANIFESTS: ReadonlySet<string> = new Set([
   'luarocks.lock',
 ]);
 
-/** Runtime version files and the files that set a runtime's version, by file name. */
-const RUNTIMES: ReadonlySet<string> = new Set([
-  '.nvmrc',
-  '.node-version',
-  '.python-version',
-  '.ruby-version',
-  '.tool-versions',
-  'rust-toolchain',
-  'rust-toolchain.toml',
-  'go.mod',
-  'Containerfile',
-]);
+/**
+ * Version files the runtime check doesn't read, by file name; every file it reads (Dockerfiles,
+ * `.nvmrc` and the rest) is guarded through the same predicate the check uses.
+ */
+const RUNTIMES: ReadonlySet<string> = new Set(['.ruby-version', '.tool-versions']);
 
-/** Agent instructions and decision records, by file name, wherever they sit. */
-const INSTRUCTIONS: ReadonlySet<string> = new Set(['CLAUDE.md', 'DECISIONS.md', 'CODEOWNERS']);
+/**
+ * Agent instructions, decision records and the project's architecture rules that a tool runs as
+ * written rather than through a generated base, by file name, wherever they sit.
+ */
+const INSTRUCTIONS: ReadonlySet<string> = new Set([
+  'CLAUDE.md',
+  'DECISIONS.md',
+  'CODEOWNERS',
+  DEPTRAC_PROJECT,
+]);
 
 const PATTERNS: readonly RegExp[] = [
   /^\.github\//,
@@ -70,7 +73,6 @@ const PATTERNS: readonly RegExp[] = [
   /(?:^|\/)requirements\/[^/]+\.(?:txt|in)$/,
   /(?:^|\/)constraints[^/]*\.txt$/,
   /\.(?:rockspec|gemspec|csproj|fsproj|vbproj)$/,
-  /(?:^|\/)(?:Dockerfile|[^/]+\.Dockerfile|Dockerfile\.[^/]+)$/,
 ];
 
 export type GuardContext = {
@@ -114,6 +116,7 @@ export function isGuarded(path: string, ctx: GuardContext): boolean {
   const name = basename(path);
   if (path === 'talos.yml' || path === ctx.glossary || under(path, ctx.briefs)) return true;
   if (MANIFESTS.has(name) || RUNTIMES.has(name) || INSTRUCTIONS.has(name)) return true;
+  if (isDeclaringFile(path)) return true;
   if (ctx.extensions.some((ext) => path === ext || path.endsWith(`/${ext}`))) return true;
   return PATTERNS.some((pattern) => pattern.test(path));
 }

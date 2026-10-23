@@ -124,12 +124,20 @@ describe('flakyIssue', () => {
   });
 });
 
+const GATE = { path: '.github/workflows/gate.yml', repositoryName: 'SVP-Labs/Talos' };
+
 describe('fileFlakyIssues', () => {
   function setUp(): FakeGitHub {
     const fake = new FakeGitHub();
-    const add = (id: number, created: string, body: string): void => {
+    fake.graphql = (_query, variables) => fake.runNodes(variables);
+    const queued = (id: number, created: string, file = GATE, event = 'merge_group'): number => {
+      fake.runs.push({ id: id * 100, event, created_at: created, head_branch: 'q', file });
+      return id * 100;
+    };
+    const add = (id: number, created: string, body: string, run = queued(id, created)): void => {
       fake.artifacts.push({
         id,
+        run,
         name: 'talos-verdict',
         created_at: created,
         expired: false,
@@ -137,6 +145,16 @@ describe('fileFlakyIssues', () => {
         zip: makeZip({ 'verdict.json': body }),
       });
     };
+    const forged = verdict([{ id: 'forged', file: 'test/a.test.ts' }]);
+    const mine = { path: '.github/workflows/gate.yml', repositoryName: 'o/r' };
+    add(5, '2026-10-25T03:00:00Z', forged, queued(5, '2026-10-25T03:00:00Z', mine));
+    const unreviewed = verdict([{ id: 'unreviewed', file: 'test/a.test.ts' }]);
+    add(
+      6,
+      '2026-10-25T04:00:00Z',
+      unreviewed,
+      queued(6, '2026-10-25T04:00:00Z', GATE, 'pull_request'),
+    );
     add(
       1,
       '2026-10-25T00:00:00Z',
@@ -151,6 +169,20 @@ describe('fileFlakyIssues', () => {
     fake.files.set('test/a.test.ts', 'it()');
     return fake;
   }
+
+  it("reads only the gate's merge-queue runs, never a PR's own workflow or unreviewed code", async () => {
+    const fake = setUp();
+    const deps = {
+      gh: fake.client(),
+      actions: fake.client('github-actions[bot]'),
+      download: downloader('w', { fetch: fake.fetch }),
+    };
+    const at = { repo: 'o/r', who, now: new Date('2026-10-26T03:17:00Z'), base: 'main' };
+    await fileFlakyIssues(deps, at);
+    const titles = [...fake.issues.values()].map((i) => i.title);
+    expect(titles).not.toContain('Flaky test: forged');
+    expect(titles).not.toContain('Flaky test: unreviewed');
+  });
 
   it('files one issue per flaky test still on the default branch, once', async () => {
     const fake = setUp();

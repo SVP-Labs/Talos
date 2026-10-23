@@ -45,7 +45,7 @@ export type RunPlan = {
   readonly changes?: ChangeSet;
   /** Runs only these check ids. */
   readonly only?: readonly string[];
-  /** Components whose install failed, by root: their checks report it as an engine error. */
+  /** Components whose install failed, by {@link installKey}: an engine error for their checks. */
   readonly failedInstalls?: ReadonlyMap<string, string>;
   /**
    * The commit has no `talos.yml` and is judged by the head's: it predates adopting Talos, so a
@@ -135,13 +135,18 @@ type Shared = {
 };
 
 /** Why a task doesn't run: its component failed to install, or the check doesn't apply. */
+/** The key a component's install is known by: a root may hold one component per language. */
+export function installKey(component: Pick<Component, 'lang' | 'root'>): string {
+  return `${component.lang}@${component.root}`;
+}
+
 function heldBack(
   plan: RunPlan,
   task: Task,
   applyContext: ApplyContext,
 ): { readonly status: 'error' | 'skipped'; readonly reason: string } | undefined {
   const failed =
-    task.component === undefined ? undefined : plan.failedInstalls?.get(task.component.root);
+    task.component === undefined ? undefined : plan.failedInstalls?.get(installKey(task.component));
   if (failed !== undefined) {
     return plan.borrowed === true
       ? { status: 'skipped', reason: `the component predates talos.yml here: ${failed}` }

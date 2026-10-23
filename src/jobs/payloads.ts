@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { isTrusted } from '../ticket/trust.js';
 
 /** The parts of the caller's event payloads the jobs read, validated before use. */
@@ -46,7 +46,7 @@ function judgeAuthor(
   author: { login: string | undefined; association: string | undefined },
   who: Identities,
 ): Admission {
-  if (author.login !== undefined && author.login === who.reviewer) {
+  if (sameLogin(author.login, who.reviewer)) {
     return { admit: false, reason: "the reviewer's own event" };
   }
   return isTrusted(author, who) ? ADMIT : { admit: false, reason: 'author not trusted' };

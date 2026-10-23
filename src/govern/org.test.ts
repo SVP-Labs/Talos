@@ -67,6 +67,7 @@ function setUp(): OrgState {
     talosRulesets: [
       live(templates.releaseTags, 10),
       live(channelsBranchRuleset(templates.channelsBranch, 700), 11),
+      live(templates.selfTest, 12),
     ],
   });
 }
@@ -86,6 +87,7 @@ describe('orgPlan', () => {
       'change ruleset:talos-stable',
       'change ruleset:talos-release-tags',
       'change ruleset:talos-channels',
+      'change ruleset:talos-self-test',
     ]);
     const canary = steps[3];
     expect(canary?.status === 'change' ? canary.effect : undefined).toMatchObject({

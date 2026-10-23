@@ -6,7 +6,7 @@ import { readRepoState } from './state.js';
 import { applySteps, planned, scopeHint, type StepResult } from './steps.js';
 import { loadTemplates } from './templates.js';
 import type { GitHub } from '../github/api.js';
-import type { Identities } from '../github/identities.js';
+import { type Identities, sameLogin } from '../github/identities.js';
 import { assetsDir } from '../version/self.js';
 
 const GOVERN_SCHEMA = 'talos.govern/1';
@@ -39,7 +39,7 @@ const userSchema = z.object({ login: z.string() });
 export async function assertOwner(gh: GitHub, who: Identities): Promise<void> {
   const user = await gh.request<unknown>('GET', 'user').catch(() => undefined);
   const login = userSchema.safeParse(user).data?.login;
-  if (login?.toLowerCase() !== who.owner.toLowerCase()) {
+  if (!sameLogin(login, who.owner)) {
     throw new GovernRefusal(
       `talos govern runs as the owner (${who.owner}) with their own login (gh auth login); ` +
         `this token is ${login ?? 'not a user'}`,

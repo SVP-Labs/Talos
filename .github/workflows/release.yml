@@ -49,12 +49,27 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
+      # The package ships npm-shrinkwrap.json, the tree pnpm-lock.yaml locked (overrides and the
+      # release-age wait included), so npm installs exactly that tree wherever the release runs.
+      # It comes from a hoisted install of the production dependencies, every platform's
+      # optional packages included, which `talos shrinkwrap` checks against the lockfile.
       - name: Build and pack
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+          tree="$RUNNER_TEMP/tree"
+          mkdir -p "$tree"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$tree/"
+          cp -R patches "$tree/"
+          printf '%s\n' '' 'nodeLinker: hoisted' 'supportedArchitectures:' \
+            '  os: [linux, darwin, win32]' '  cpu: [x64, arm64]' '  libc: [glibc, musl]' \
+            >> "$tree/pnpm-workspace.yaml"
+          (cd "$tree" && pnpm install --prod --frozen-lockfile --ignore-scripts)
+          TALOS_DEV=1 node dist/bin/talos.js shrinkwrap "$tree" --out npm-shrinkwrap.json
           mkdir -p "$RUNNER_TEMP/package"
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
+          tar -tzf "$RUNNER_TEMP"/package/*.tgz | grep -qx 'package/npm-shrinkwrap.json' ||
+            { echo "release: the package has no npm-shrinkwrap.json" >&2; exit 1; }
       - name: Keep the package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

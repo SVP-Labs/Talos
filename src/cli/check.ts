@@ -16,6 +16,7 @@ import { decide, exitCode } from '../engine/verdict.js';
 import { type Git, git, revParse } from '../repo/git.js';
 import { createTalosDir } from '../repo/talos-dir.js';
 import { toSarif } from '../sarif/sarif.js';
+import { ownBuild } from '../version/self.js';
 
 async function defaultBase(repo: Git): Promise<string> {
   for (const ref of ['origin/HEAD', 'origin/main', 'main']) {
@@ -28,22 +29,38 @@ async function defaultBase(repo: Git): Promise<string> {
   throw new Error('no base to compare with: pass --base <ref>');
 }
 
-async function runAll(
-  engine: Engine,
-  repo: Git,
-  scope: { readonly plan: GatePlan; readonly config: TalosConfig; readonly only?: string[] },
-): Promise<RunResult[]> {
-  const { plan, config, only } = scope;
+type Scope = {
+  readonly plan: GatePlan;
+  readonly config: TalosConfig;
+  readonly only?: string[];
+  /** Set while Talos itself is developed, when the version doesn't tell builds apart. */
+  readonly build?: string;
+};
+
+/**
+ * Every run judges with the change from the base to the working tree, as the gate's runs judge
+ * with the PR's range: base-side mutation and the lockfile checks read what the change touches.
+ */
+async function runAll(engine: Engine, repo: Git, scope: Scope): Promise<RunResult[]> {
+  const { plan, config, only, build } = scope;
   const os = currentOs();
+  const changes = await changesBetween(repo, plan.base);
   const results: RunResult[] = [];
   for (const spec of plan.runs.filter((r) => r.os === os)) {
-    const common = { sha: spec.sha, tiers: spec.tiers, os, config, ...(only ? { only } : {}) };
+    const common = {
+      sha: spec.sha,
+      tiers: spec.tiers,
+      os,
+      config,
+      changes,
+      ...(only ? { only } : {}),
+    };
     if (spec.sha === plan.head) {
-      const changes = await changesBetween(repo, plan.base);
-      results.push(await runAt(engine, { ...common, root: repo.root, side: 'head', changes }));
+      const head = { ...common, root: repo.root, side: 'head' as const, workingTree: true };
+      results.push(await runAt(engine, head));
     } else {
       const side = spec.sha === plan.base ? 'base' : 'head';
-      results.push(await cachedRun(engine, repo, { ...common, side }));
+      results.push(await cachedRun(engine, repo, { ...common, side, ...(build ? { build } : {}) }));
     }
   }
   return results;
@@ -90,7 +107,13 @@ export const check: Command = async (argv, io) => {
   });
   const plan = values.tiers === undefined ? planned : scopeToTiers(planned, tiersOf(values.tiers));
   const only = values.only?.split(',');
-  const results = await runAll(engine, repo, { plan, config, ...(only ? { only } : {}) });
+  const build = io.env.TALOS_DEV === '1' ? await ownBuild() : undefined;
+  const results = await runAll(engine, repo, {
+    plan,
+    config,
+    ...(only ? { only } : {}),
+    ...(build ? { build } : {}),
+  });
   const comparisons = (await comparisonsFor(repo, plan)).map(async (c) =>
     c.sha === plan.head && c.against === plan.base
       ? { ...c, changes: await changesBetween(repo, plan.base) }

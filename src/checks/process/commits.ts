@@ -5,13 +5,19 @@ export type CommitFacts = {
   readonly sha: string;
   readonly subject: string;
   readonly authorEmail: string;
+  /**
+   * Whether GitHub vouches that a commit in Dependabot's name is Dependabot's: on a PR Dependabot
+   * opened, or in the merge queue, which takes a PR only once its own gate passed. Anyone can
+   * write the email, so without this it exempts nothing.
+   */
+  readonly dependabotVouched: boolean;
 };
 
 const MAX_SUBJECT = 72;
 const DEPENDABOT = /^\d+\+dependabot\[bot\]@users\.noreply\.github\.com$|^support@dependabot\.com$/;
 
 function isDependabot(commit: CommitFacts): boolean {
-  return DEPENDABOT.test(commit.authorEmail);
+  return commit.dependabotVouched && DEPENDABOT.test(commit.authorEmail);
 }
 
 /** The number `rest` reads where `text` goes on after starting with `lead`. */
