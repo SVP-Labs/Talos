@@ -22,7 +22,8 @@ The one person whose approval `talos/review` accepts: the org's owner, `TALOS_OW
 
 **Gate**
 The workflow an org ruleset runs on every pull request and in the merge queue, at a pinned
-release. It runs the PR's code, holds no secrets and only produces findings (C3).
+release: `.github/workflows/gate.yml` in the Talos repository. It runs the PR's code, holds no
+secrets and only produces findings (C3).
 Avoid: gates workflow
 
 **Caller**
@@ -62,8 +63,8 @@ An issue labelled `regression` on the Talos repository, opened or labelled by th
 or a Talos App. It moves canary's pin back to the previous release and holds promotion (C17).
 
 **Engine error**
-A Talos bug: a check that couldn't run or whose tool output couldn't be read. Reported apart
-from findings, exit code 2, and it blocks promotion (C17).
+A Talos bug: a check that couldn't run, a component that couldn't be installed, or tool output
+that couldn't be read. Reported apart from findings, exit code 2, and it blocks promotion (C17).
 Avoid: tool crash
 
 **Central jobs**
@@ -73,6 +74,11 @@ runtime sweep, the drift report, promotion and rollback. They print counts only 
 **Drift report**
 The weekly central job that compares each governed repository's settings with what
 `talos govern` sets, and files a `drift` issue for each difference (C29).
+
+**Privacy canary**
+A private scratch repository that stays governed, so every central job has it in its matrix.
+Each central workflow fails when a private repository's name shows in its logs, or when the
+canary wasn't watched; Talos knows the canary only by the SHA-256 of its name (C30).
 
 ## Checks and findings
 
@@ -95,7 +101,7 @@ merge group; the head tier runs on the PR's head (C8).
 **Applicability**
 Whether a check runs at all: when the repository has what it checks, or declares it in
 `talos.yml`. Strictness never varies (C8).
-Avoid: profile
+Avoid: strictness profile
 
 **Finding**
 One thing a check reports: a rule `<tool>/<rule>`, a place or a key, a message and a policy
@@ -108,7 +114,7 @@ moved code keeps it. The gate compares counts of fingerprints (C9).
 **Base commit**
 The commit a PR is compared with. The gate runs the same checks there, at the same release,
 and fails only on findings new at head (C9).
-Avoid: baseline file
+Avoid: baseline commit
 
 **Changed-line rule**
 A pre-existing finding on a line a PR changes must be fixed in that PR (C9).
@@ -125,12 +131,13 @@ also be at least 90% covered (C8).
 A mutation of a declared critical path that no test catches: a finding (C8).
 
 **Type coverage**
-The share of a package's shipped identifiers that are typed. The floor is 99.5%; below it,
-each new untyped identifier is a finding (C8).
+The share of a package's shipped identifiers that are typed. The floor is 99.5%, in PHP for
+parameters, returns, properties and constants each; below it, each new untyped identifier is a
+finding (C8).
 
 **Flaky test**
-A test that fails and then passes on one immediate rerun. The gate stays green, and Talos
-files an issue to fix it (C8).
+A test that fails and then passes on one immediate rerun: a `tests/flaky` finding that never
+blocks. The gate stays green, and Talos files an issue to fix it (C8).
 
 **Security finding**
 A `runtime/security` finding or a high or critical dependency advisory. It fails every PR in
@@ -138,7 +145,8 @@ the repository, whatever the base commit had, until it is fixed or an exception 
 
 **Exception**
 An entry under `supply_chain.exceptions` in `talos.yml` that excuses one advisory, with a
-reason and an expiry date (C27).
+reason and an expiry date (C27). One named `<runtime> <version>`, such as `php 8.4.26`, excuses
+that runtime's `runtime/security` finding. When it expires, the finding fails again.
 
 **Fast lane**
 A release younger than a day that may still be installed because it fixes an advisory against
@@ -246,7 +254,7 @@ debt-and-chore exception holds (C16).
 
 **Review round**
 One REQUEST_CHANGES from the reviewer and the answer to it. A PR gets at most two; a third
-would-be request labels it `needs-human` (C20).
+would-be request labels its issue `needs-human` (C20).
 
 **Debt-and-chore exception**
 The conditions under which a PR lands without the owner: it closes a `chore`, `debt/dead-code`

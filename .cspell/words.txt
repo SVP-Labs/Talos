@@ -119,6 +119,7 @@ luasystem
 memoizer
 metapath
 mhit
+mikefarah
 MSVC
 mypy
 Ncss
@@ -133,8 +134,10 @@ nosemgrep
 nosonar
 npmjs
 ntfx
+nullglob
 OPTOUT
 outputjson
+packagist
 PATHEXT
 pcall
 PCRE
@@ -146,6 +149,7 @@ phpunit
 pipefail
 Pipfile
 pluggy
+powershellgallery
 preg
 Procfile
 prost
@@ -165,6 +169,7 @@ pyproject
 pypy
 pyrightconfig
 pytest
+pythonhosted
 pythonpath
 Rakefile
 rcfile
@@ -187,6 +192,8 @@ serde
 setmetatable
 setuptools
 shipmonk
+shivammathur
+shopt
 shortlink
 sigstore
 skipif
@@ -204,6 +211,7 @@ talosyml
 tomasvotruba
 toolpins
 topo
+tostring
 typecov
 typecoverage
 uninlined

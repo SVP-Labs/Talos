@@ -10,30 +10,38 @@ src/
   bin/talos.ts        the npm bin: the version launcher, then the CLI
   cli/                one file per command (main.ts dispatches, io.ts parses)
   core/               findings, fingerprints, checks, packs, comparison, run results, registry
+  core/component.ts   what component checks share: the component's paths, its tools' runs
+                      (tail of output, failures as engine errors), the check scaffolding
+  core/pool.ts        running work a few at a time, results kept in order
   config/             talos.yml: schema and loader
   repo/               git helpers, diff parsing (ChangeSet), repository facts
   exec/               running programs, no shell, Windows .cmd shims resolved
   engine/             prepare, run, plan, verdict, reports, local runs
   sarif/              SARIF 2.1.0 output
-  quality/            shared test, flaky, coverage, type-coverage and mutation logic
+  quality/            the shared test, flaky, coverage, type-coverage and mutation logic
   langs/<lang>/       one pack per language: its checks, its runners, its generated configs
   checks/<area>/      language-independent packs: common, security, supply, runtime, docs, infra
-  checks/process/     commit subjects and the other commit-level rules
-  configs/            generated-file drift and the shared rendering helpers
-  docs/               glossary, decisions and brief parsing shared by checks and jobs
+  checks/process/     commit subjects
+  configs/            generated-file drift, talos configs, and the shared rendering helpers
+  docs/               glossary, decisions, comments, links and CLAUDE.md, for checks and jobs
   tools/              tools.lock: download, verify, cache
-  github/             the API client, identities, rulesets, check runs, artifacts
-  version/            the launcher: which version a repository enforces, npm provenance
+  github/             the API client, identities, rulesets, check and workflow runs, artifacts
+  version/            the launcher: which release a repository enforces, npm provenance
   jobs/               the caller workflow's jobs (talos job <event>)
   review/             talos/review and the reviewer's AI review
   ticket/             the claim protocol
-  status/             talos status (talos.status/1)
-  adopt/ govern/      bringing a repository in
+  status/             talos status, findings, why and doctor
+  adopt/ govern/      bringing a repository in; govern also holds the org rulesets and talos new
   central/            channels, runtime sweep, drift, privacy self-test
-assets/               what Talos writes into repositories: workflows, forms, labels, templates
-bootstrap/            dependency-free scripts the workflows run before Talos is installed
+  testing/            helpers for tests; never built into dist
+assets/               what Talos writes into repositories: the caller, forms, labels, rulesets
+bootstrap/            find-pin.sh and launch.mjs, which workflows run before Talos is installed
+docs/contracts/       the JSON schemas of talos.verdict/1 and talos.status/1
 test-projects/        a project per check that it must fail on, and clean projects
 ```
+
+Each pack under `src/langs/` and several under `src/checks/` have a README with their checks,
+rules and configs.
 
 ## Findings
 
@@ -75,7 +83,8 @@ and `run()`:
   output that can't be read, or a missing tool, throws `EngineError`: an engine error, which the
   gate reports apart from findings and which blocks promotion (C17).
 - **Sharing work.** `ctx.memo(key, compute)` shares one computation between checks of a run,
-  such as the test run the coverage check reads.
+  such as the test run the coverage check reads, or one Clippy or PHPStan run that lint, types
+  and dead code each read their part of.
 - **Sides.** `ctx.side` is `head` or `base` in a comparison, `alone` otherwise (`talos debt`).
   `ctx.changes` is always base → head, on both sides.
 
@@ -87,32 +96,79 @@ language, `install()`, which installs a component's dependencies before any chec
 
 A `Generated` file is a tool's base config (C10). `prepare()` renders each applicable one into
 the checkout before the checks run, so the gate never trusts the repository's copy. Every
-rendered file starts with a header naming it generated and the extension file to edit. The
-extension file is the project's; `talos adopt` writes it once. Each language pack adds a
-`<lang>/config-strength` check that reads the tool's effective config (`eslint --print-config`,
-`tsc --showConfig`, `ruff check --show-settings`) and reports `config/weaker` for any rule
-weaker than the base. `configs/drift` compares the committed copy with the rendering: a stale
-copy is a `standard` finding, so a release that changes a base is debt (a sync chore), while a
-hand edit in a PR is new.
+rendered file starts with a header naming it generated and the extension file to edit; checks
+that judge the project's own text skip files carrying that header. The extension file is the
+project's; `talos adopt` and `talos configs` write it once and never again. Each language pack
+adds a `<lang>/config-strength` check that reads the tool's effective config
+(`eslint --print-config`, `tsc --showConfig`, `ruff check --show-settings`) and reports
+`config/weaker` for any rule weaker than the base. Where no repository file can weaken what the
+gate runs (the docs and infra packs pass their settings themselves), there is no such check.
+`configs/drift` compares the committed copy with the rendering: a stale copy is a `standard`
+finding, so a release that changes a base is debt (a sync chore), while a hand edit in a PR is
+new.
 
 ## Running
 
-`talos run` is one job: `prepare()` (generated files, declared services, each component's
-`install()`, the setup script), then `runChecks()`, which writes a `RunResult` as JSON.
+`talos run` is one job: `prepare()`, then `runChecks()`, which writes a `RunResult` as JSON.
 
-The gate (`assets/workflows/gate.yml`) is three steps:
+`prepare()` renders the generated files, starts the services `talos.yml` declares (Linux only;
+each one's address reaches the checks as `TALOS_SERVICE_<NAME>_HOST` and `_PORT`), installs each
+component through its pack's `install()`, and runs the `setup` script. A component whose install
+fails is an engine error for that component's checks alone; the rest of the run goes on.
+`runChecks()` runs the checks two at a time.
 
-1. `talos plan` reads the event and decides the runs: base and head with both tiers, every other
-   commit with the commit tier, on every OS the components declare (draft PRs: base and head
-   only).
-2. One job per run, in a matrix, each on a checkout of its commit.
-3. `talos verdict` judges each commit against its parent (commit tier) and head against base
-   (head tier), adds the commit-subject findings, and writes `talos.sarif`, `verdict.json`
-   (`talos.verdict/1`), annotations and the job summary. It exits 0 (green), 1 (findings) or 2
-   (engine error).
+The gate is `.github/workflows/gate.yml` in the Talos repository, the path the channel rulesets
+name; it holds no secret and never cancels a run. Each job that runs Talos checks out the Talos
+repository at the pin and runs `bootstrap/launch.mjs`, which installs and verifies that release
+(below):
 
-`talos check` does the same locally: the working tree against the base branch, base runs in git
-worktrees under `.talos/` and cached by commit.
+1. `pin` finds the pin with the inlined `bootstrap/find-pin.sh`, using the workflow token to
+   list the repository's rulesets.
+2. `plan` (`talos plan`) reads the event and decides the runs: base and head with both tiers,
+   every other commit with the commit tier, on every OS the components declare (draft PRs: base
+   and head only). `bootstrap/php.sh` reads `talos.yml` and `composer.json` at base and head and
+   says which systems need PHP, and which minor.
+3. `run` is one job per run, in a matrix, each on a checkout of its commit (`talos run`), with
+   PHP, pcov and Composer set up where a PHP component needs them. On a PR, the base run's
+   result is cached, keyed by the release, OS, tiers, base commit, head tree and day, so a new
+   push or leaving draft doesn't run it again; the merge queue never uses the cache.
+4. `verdict (talos <version>)` (`talos verdict`) judges each commit against its parent (commit
+   tier) and head against base (head tier), adds the commit-subject findings, and writes
+   `talos.sarif`, `verdict.json` (`talos.verdict/1`), annotations and the job summary. It
+   uploads both files as the artifact `talos-verdict`, even when red. `talos verdict` exits 0
+   (green), 1 (findings) or 2 (engine error).
+5. `engine (talos <version>)` fails when the verdict exited anything but 0 or 1, including when
+   it never ran: a missing result never passes as clean. The channels job counts gate runs and
+   engine errors under a release by these two jobs' names.
+
+`talos check` does the same locally: the working tree against the base branch, or with
+`--commits` every commit against its parent. Base runs happen in git worktrees under `.talos/`
+and are cached by commit, tiers, OS and release in `.talos/cache`, since a commit's findings
+don't change; every finding goes to `.talos/check/talos.sarif`.
+
+## Which release runs
+
+C3's lookup, in `src/version/`, mirrored for workflows by `bootstrap/find-pin.sh` and
+`bootstrap/launch.mjs` (a test keeps them in step):
+
+- **The pin.** By default Talos lists the repository's rulesets, the org's included, skips
+  disabled ones, and takes the `workflows` rule that runs the Talos repository's gate; exactly
+  one must match. With `TALOS_LOOKUP=channels` it reads the repository's `talos` property and
+  that channel's commit from `channels.json` on Talos's `channels` branch instead.
+- **The version** is `package.json`'s at the pinned commit.
+- **Verification.** The launcher installs `@svp-labs/talos@<version>` with npm (no install
+  scripts) into its cache, has `npm audit signatures` check it, and refuses it unless its SLSA
+  provenance names `SVP-Labs/Talos`, the pinned commit and the installed tarball. A verified
+  release is kept under `<cache>/engine/<version>-<sha12>/`; the cache is `TALOS_CACHE`, or the
+  user cache (`~/.cache/talos`, `~/Library/Caches/talos`, `%LOCALAPPDATA%\talos\cache`).
+- **Which commands.** `check`, `run`, `plan`, `verdict`, `debt`, `configs`, `adopt`, `ticket`
+  and `job` run at the enforced release; the rest run as they are. `talos doctor` explains a pin
+  that can't be found or a release that doesn't match.
+- **The environment.** `TALOS_VERSION` and `TALOS_SHA` name the release and skip the lookup,
+  never the verification: Thea's hub hands them to tasks, which hold no credentials. The
+  launcher sets `TALOS_LAUNCHED` for the release it starts, so that one runs as it is; Thea's
+  daemon sets it too once it has verified a release itself. `TALOS_DEV=1` runs the copy at hand
+  without any of this, for working on Talos.
 
 ## Quality protocol
 
@@ -121,26 +177,92 @@ Tests, flaky tests, coverage and mutation work the same in every language
 for a `TestRequest` (`suite: commit | all`, `coverage`, optional `files` for the rerun) and
 says where the JUnit and coverage reports are. `src/quality/` turns that into checks:
 
-- `<lang>/tests` (commit tier): the suite outside `tests.full`; failures rerun once; a test that
-  then passes is a `flaky` finding (`info`); one that fails twice is a `tests/failed` finding.
-- `<lang>/coverage` (head tier): every test, with coverage; each uncovered executable line is a
-  `coverage/uncovered` finding (`lost`); on the head side, changed executable lines under 90%
-  covered are one `coverage/changed-lines` finding (`always`).
-- `<lang>/mutation` (head tier): the `mutation` paths a change touches, through the pack's
-  `MutationRunner`; each surviving mutant is a `mutation/survived` finding.
+- `<lang>/tests` (commit tier): the suite outside `tests.full`. A failing test reruns once,
+  only its files when every failing test names one, else the whole suite. Failed then passed,
+  or passed then failed on the rerun, is `tests/flaky` (`info`); failed twice, or failed then
+  missing, is `tests/failed`. A run that exits non-zero with no failing test is an engine error.
+- `<lang>/coverage` (head tier): every test, with coverage; coverage is the union of the run
+  and its rerun. Each uncovered executable line is a `coverage/uncovered` finding (`lost`); on
+  the head side, changed executable lines under 90% covered are one `coverage/changed-lines`
+  finding (`always`). A test is never reported twice: when both tiers run and no `tests.full`
+  entry covers the component, the two checks share one run of the whole suite and coverage
+  reports no test findings; otherwise coverage reports only the verdicts `<lang>/tests` didn't.
+- `<lang>/mutation` (head tier): the `mutation` paths a change touches, or every declared path
+  in a run with nothing to compare (the weekly report), through the pack's `MutationRunner`;
+  each surviving mutant is a `mutation/survived` finding. Lua has no mature tool and skips it.
 
-Type coverage stays in the TypeScript and PHP packs: below the 99.5% floor each untyped
-identifier is a `standard` finding, at or above it `info`.
+Type coverage stays in the TypeScript and PHP packs, against one floor of 99.5%: below it each
+untyped identifier is a `standard` finding, at or above it `info`. TypeScript measures each
+`tsconfig.json`'s shipped code (`typecov/untyped`); PHP's tool counts per kind, so the floor
+applies to parameters, returns, properties and constants each (`typecov/<kind>`).
+
+## The caller's jobs
+
+`talos job <event> --phase analyze|act` is everything the caller does (C25), routed in
+`src/jobs/dispatch.ts`:
+
+- **analyze** runs only on the schedule or a dispatch, on the default branch's checkout, with
+  no secret: the weekly debt run and mutation report, the engine run once for both. It leaves
+  `debt.json` (`talos.debt/1`) and `mutation.json` (`talos.mutation/1`) for act.
+- **act** holds the reviewer's token and never runs repository code: issue readiness on
+  `issues`; `talos/review` and the AI review on `pull_request_target`, `merge_group` and
+  trusted `pull_request_review`; on the schedule, label sync, the stale-claim sweep and flaky
+  tests daily, and on Mondays (UTC) the debt issues and the sync chore. A dispatch runs every
+  scheduled job. It reads `debt.json` as data.
+
+Both print one `talos.job/1` line and exit 1 when any job failed.
 
 ## Output for agents
 
 Everything an agent runs has a `--json` form that prints capped JSON (C33): at most 20 items per
-list with a total, messages clipped to 200 characters, never a tool's raw output. The contracts:
+list with a total, messages clipped to 200 characters, never a tool's raw output. Each document
+names its contract in `schema`, and a change to one follows [X1](../DECISIONS.md):
 
-- `talos.verdict/1`: `talos check --json` and the gate's `verdict.json`;
-- `talos.status/1`: `talos status --json`;
-- `talos-review/1` and `talos-security/1`: the first line of a reviewer review and of a security
-  issue, which Thea's hub turns into events (C32).
+```text
+talos.verdict/1   talos check --json; the gate's verdict.json; talos findings --repo --pr
+talos.status/1    talos status --json: an array, one object per repository
+talos.claim/1     talos ticket claim | next | release
+talos.ticket/1    talos ticket status
+talos.version/1   talos version --enforced --json
+talos.why/1       talos why <path> --json
+talos.doctor/1    talos doctor --json
+talos.debt/1      talos debt --json (capped) or --out (complete); analyze's debt.json
+talos.mutation/1  analyze's mutation.json
+talos.job/1       talos job <event>
+talos.central/1   talos central <channels|sweep|drift|privacy>
+talos.adopt/1     talos adopt --json; also talos.govern/1, talos.new/1, talos.org/1
+```
+
+- `talos findings` prints the newest `talos-verdict` artifact of a gate run on the PR's head,
+  taken only from a run of the gate's own workflow file, with `head` and `run` added; with none,
+  `{ schema, status: "unknown", repo, pr, head }`. It exits 1 when red.
+- `talos status` exits 1 when a repository couldn't be read; that element is
+  `{ schema, repo, error }`. Thea's hub adds `cards` to each element; Talos never sets it.
+- `talos.claim/1` is the claimed ticket's fields at the top level, or `error`: `claimed` (exit
+  3, with `by`), `none` and `max-claims` (exit 4), `refused` (exit 1, with `reason`). A release
+  prints `released: true`; `next` adds `swept`, the claims it released first.
+
+[agents.md](agents.md) shows the ones an agent reads, with examples;
+`docs/contracts/` holds the JSON schemas of the first two, which tests keep equal to the code.
+
+### Marker lines
+
+A body's first line in the grammar `talos-<kind>/<n> key=value…` is a contract too. It counts
+only when the App that writes it wrote it; from anyone else it is text.
+
+```text
+talos-review/1     visible   every reviewer review: verdict=, round=, findings=
+talos-security/1   visible   the runtime sweep's issues: kind=runtime runtime= version= fixed=
+                             priority=p0
+talos-debt/1       hidden    weekly debt issues: file=, kind=dead-code|other, count=, findings=
+talos-flaky/1      hidden    flaky-test issues: test=, file=
+talos-sync/1       hidden    the sync chore: files=
+talos-readiness/1  hidden    the readiness comment: ready=yes|no, problems=
+talos-drift/1      hidden    drift issues: key=
+```
+
+A hidden line sits inside an HTML comment, since people read these issues, and its values are
+URL-encoded; readers accept both forms.
 
 ## Security rules every part keeps
 
@@ -165,5 +287,7 @@ must pass (C5): `test-projects/<pack>/<case>/` holds the project's files, its `t
 
 `"clean": true` instead of `rules` means no finding at all. `talos self-test test-projects`
 copies each case into a fresh git repository, runs its checks, and fails on a missing rule, an
-unexpected finding in a clean project, or an engine error. CI runs it on every OS a case lists,
-with the PR's own engine, so a broken engine never judges itself.
+unexpected finding in a clean project, or an engine error. It reads the runtime feeds recorded
+in `test-projects/runtime/feeds/` (`TALOS_RUNTIME_FEEDS`), so its expectations don't move when a
+vendor ships a release. CI runs it on every OS a case lists, with the PR's own engine, so a
+broken engine never judges itself.

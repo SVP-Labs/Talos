@@ -9,9 +9,9 @@ import { z } from 'zod';
 
 /**
  * The workflows Talos runs and ships, read as data: the rules every one keeps (pinned actions,
- * least privilege, no expression in a script), the gate's and the caller's shape, and C30's
- * rules for the central jobs in this public repository. The inline scripts that look a
- * repository up are run against a fake `gh`.
+ * least privilege, no expression in a script), the gate's and the caller's shape, and the rules
+ * that keep repository names out of the central jobs' public logs. The inline scripts that look a
+ * repository up are run against a fake `gh`, and `bootstrap/php.sh` against a scratch repository.
  */
 
 const ROOT = new URL('../../', import.meta.url);
@@ -117,6 +117,24 @@ describe('every workflow', () => {
     }
   });
 
+  it('takes identities from the organisation variables, repeating no default', () => {
+    for (const path of paths) {
+      expect(text(path), path).not.toMatch(/vars\.TALOS_\w+ \|\|/);
+    }
+  });
+
+  it('sets PHP up with pcov and composer, from one pinned action', () => {
+    const setups = paths.flatMap((path) =>
+      stepsOf(path).filter((s) => s.uses?.startsWith('shivammathur/setup-php@') === true),
+    );
+    expect(setups.length).toBeGreaterThan(0);
+    expect(new Set(setups.map((s) => s.uses)).size).toBe(1);
+    for (const step of setups) {
+      expect(step.with).toMatchObject({ coverage: 'pcov', tools: 'composer' });
+      expect(step.env).toEqual({ 'fail-fast': true });
+    }
+  });
+
   it('runs Talos through the launcher, which verifies the release first', () => {
     for (const path of paths.filter((p) => p !== FILES.selfTest && p !== FILES.release)) {
       const runs = stepsOf(path).flatMap((s) =>
@@ -208,6 +226,54 @@ describe('the gate', () => {
       const kit = job.steps.find((s) => s.with?.path === 'talos-kit');
       expect(kit?.with?.repository, id).toBe('SVP-Labs/Talos');
     }
+  });
+
+  it('checks every run out with its full history, which the secrets scan reads', () => {
+    for (const [id, job] of Object.entries(jobs)) {
+      for (const step of job.steps.filter(
+        (s) => s.uses?.startsWith('actions/checkout@') === true && s.with?.path === 'repo',
+      )) {
+        expect(step.with?.['fetch-depth'], id).toBe(0);
+      }
+    }
+  });
+
+  it('sets PHP up only on the runs whose OS a PHP component lists', () => {
+    const find = jobs.plan?.steps.find((s) => s.id === 'php');
+    expect(find?.run).toBe('bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"');
+    expect(jobs.plan?.outputs).toMatchObject({
+      'php-oses': '${{ steps.php.outputs.oses }}',
+      'php-version': '${{ steps.php.outputs.version }}',
+    });
+    const steps = jobs.run?.steps ?? [];
+    const php = steps.findIndex((s) => s.uses?.startsWith('shivammathur/setup-php@') === true);
+    expect(steps[php]?.if).toContain('contains(fromJSON(needs.plan.outputs.php-oses), matrix.os)');
+    expect(steps[php]?.with?.['php-version']).toBe('${{ needs.plan.outputs.php-version }}');
+    expect(php).toBeLessThan(steps.findIndex((s) => s.name === 'Run the checks'));
+  });
+
+  it("caches a PR's base run by everything its result depends on, and never in the queue", () => {
+    const steps = jobs.run?.steps ?? [];
+    const key = steps.find((s) => s.id === 'key');
+    expect(key?.if).toBe(
+      "${{ github.event_name == 'pull_request' && matrix.sha == needs.plan.outputs.base }}",
+    );
+    expect(Object.keys(key?.env ?? {})).toEqual(['VERSION', 'RUN_OS', 'TIERS', 'RUN_SHA', 'TREE']);
+    expect(key?.run).toContain('date -u +%F');
+    const caches = steps.filter((s) => s.uses?.startsWith('actions/cache/') === true);
+    expect(caches.map((s) => s.uses?.split('@')[0])).toEqual([
+      'actions/cache/restore',
+      'actions/cache/save',
+    ]);
+    for (const step of caches) expect(step.with?.key).toBe('${{ steps.key.outputs.key }}');
+    expect(caches[1]?.if).toBe("${{ steps.aside.outputs.keep == 'true' }}");
+    expect(steps.find((s) => s.id === 'aside')?.run).toContain('.status != "error"');
+    for (const name of ['Check out the commit', 'Set up Node', 'Run the checks']) {
+      expect(steps.find((s) => s.name === name)?.if, name).toContain(
+        "steps.cached.outputs.cache-hit != 'true'",
+      );
+    }
+    expect(text(FILES.gate)).not.toMatch(/restore-keys/);
   });
 });
 

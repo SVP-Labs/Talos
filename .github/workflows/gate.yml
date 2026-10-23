@@ -47,18 +47,16 @@ jobs:
               exit 1
             }
 
-            api() {
-              gh api "$@" 2>/dev/null
-            }
-
             by_rulesets() {
               local talos_id ids id detail shas count=0 pin=""
-              talos_id="$(api "repos/$talos" | jq -r '.id')" || fail "cannot read the Talos repository"
-              ids="$(api --paginate "repos/$repo/rulesets?includes_parents=true" |
+              talos_id="$(gh api "repos/$talos" 2>/dev/null | jq -r '.id')" ||
+                fail "cannot read the Talos repository"
+              ids="$(gh api --paginate "repos/$repo/rulesets?includes_parents=true" 2>/dev/null |
                 jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
                 fail "cannot list the repository's rulesets"
               for id in $ids; do
-                detail="$(api "repos/$repo/rulesets/$id?includes_parents=true")" || fail "cannot read a ruleset"
+                detail="$(gh api "repos/$repo/rulesets/$id?includes_parents=true" 2>/dev/null)" ||
+                  fail "cannot read a ruleset"
                 shas="$(jq -r --argjson talos "$talos_id" '
                   [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
                     | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
@@ -76,13 +74,13 @@ jobs:
 
             by_channels() {
               local channel sha
-              channel="$(api "repos/$repo" | jq -r '.custom_properties.talos // empty')" ||
+              channel="$(gh api "repos/$repo" 2>/dev/null | jq -r '.custom_properties.talos // empty')" ||
                 fail "cannot read the repository"
               case "$channel" in
                 evaluate | canary | stable) ;;
                 *) fail "the talos property names no channel" ;;
               esac
-              sha="$(api "repos/$talos/contents/channels.json?ref=channels" |
+              sha="$(gh api "repos/$talos/contents/channels.json?ref=channels" 2>/dev/null |
                 jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
                 fail "cannot read channels.json"
               [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"
@@ -128,6 +126,9 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       base: ${{ steps.plan.outputs.base }}
       head: ${{ steps.plan.outputs.head }}
+      tree: ${{ steps.plan.outputs.tree }}
+      php-oses: ${{ steps.php.outputs.oses }}
+      php-version: ${{ steps.php.outputs.version }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,6 +155,16 @@ jobs:
         run: |
           node ../talos-kit/bootstrap/launch.mjs plan --out "$RUNNER_TEMP/talos-plan.json"
           jq -r '"base=\(.base)", "head=\(.head)"' "$RUNNER_TEMP/talos-plan.json" >> "$GITHUB_OUTPUT"
+          head="$(jq -r '.head' "$RUNNER_TEMP/talos-plan.json")"
+          tree="$(git rev-parse "$head^{tree}")"
+          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
+      - name: Find the runs that need PHP
+        id: php
+        working-directory: repo
+        env:
+          BASE: ${{ steps.plan.outputs.base }}
+          HEAD: ${{ steps.plan.outputs.head }}
+        run: bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
       - name: Keep the plan for the verdict
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -173,7 +184,36 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
+      # A PR's base run is cached, so its next push and its leaving draft don't run it again. Its
+      # result depends on the base commit, on the change it is compared with (the head's tree:
+      # mutation and the lockfile checks judge what the change touches), on the tiers, the OS and
+      # the release, and on the vendors' feeds, which is why the day is in the key too. Only PR runs
+      # read or write it, never the merge queue. An entry a PR run saves stays in that PR's cache
+      # scope, which no other PR and no run on main reads, and the job that saves it ran only the
+      # base commit, which is main's code. The PR's own code, on the head's runners, could write to
+      # that scope too, but it could as well forge its head run's result, so caching adds nothing.
+      - name: Name the base run's cache entry
+        id: key
+        if: ${{ github.event_name == 'pull_request' && matrix.sha == needs.plan.outputs.base }}
+        env:
+          VERSION: ${{ needs.pin.outputs.version }}
+          RUN_OS: ${{ matrix.os }}
+          TIERS: ${{ matrix.tiers }}
+          RUN_SHA: ${{ matrix.sha }}
+          TREE: ${{ needs.plan.outputs.tree }}
+        run: |
+          day="$(date -u +%F)"
+          printf 'key=talos-base-%s-%s-%s-%s-%s-%s\n' \
+            "$VERSION" "$RUN_OS" "$TIERS" "$RUN_SHA" "$TREE" "$day" >> "$GITHUB_OUTPUT"
+      - name: Look for the base run in the cache
+        id: cached
+        if: ${{ steps.key.outputs.key != '' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/talos-base
+          key: ${{ steps.key.outputs.key }}
       - name: Check out the commit
+        if: ${{ steps.cached.outputs.cache-hit != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ matrix.sha }}
@@ -181,6 +221,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Check out Talos at the pin
+        if: ${{ steps.cached.outputs.cache-hit != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: SVP-Labs/Talos
@@ -188,11 +229,24 @@ jobs:
           path: talos-kit
           persist-credentials: false
       - name: Set up Node
+        if: ${{ steps.cached.outputs.cache-hit != 'true' }}
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           package-manager-cache: false
+      - name: Set up PHP
+        if: >-
+          ${{ steps.cached.outputs.cache-hit != 'true' &&
+            contains(fromJSON(needs.plan.outputs.php-oses), matrix.os) }}
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # v2.35.5
+        with:
+          php-version: ${{ needs.plan.outputs.php-version }}
+          coverage: pcov
+          tools: composer
+        env:
+          fail-fast: true
       - name: Run the checks
+        if: ${{ steps.cached.outputs.cache-hit != 'true' }}
         working-directory: repo
         env:
           TIERS: ${{ matrix.tiers }}
@@ -207,6 +261,31 @@ jobs:
           mkdir -p "$RUNNER_TEMP/talos-result"
           node ../talos-kit/bootstrap/launch.mjs run --tiers "$TIERS" --os "$RUN_OS" \
             --range "$BASE..$HEAD" --side "$side" --out "$RUNNER_TEMP/talos-result/result-$INDEX.json"
+      - name: Take the base run from the cache
+        if: ${{ steps.cached.outputs.cache-hit == 'true' }}
+        env:
+          INDEX: ${{ strategy.job-index }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/talos-result"
+          cp "$RUNNER_TEMP/talos-base/result.json" "$RUNNER_TEMP/talos-result/result-$INDEX.json"
+      - name: Set the base run aside, unless an engine error spoilt it
+        id: aside
+        if: ${{ steps.key.outputs.key != '' && steps.cached.outputs.cache-hit != 'true' }}
+        env:
+          INDEX: ${{ strategy.job-index }}
+        run: |
+          result="$RUNNER_TEMP/talos-result/result-$INDEX.json"
+          if jq -e 'all(.outcomes[]; .status != "error")' "$result" >/dev/null; then
+            mkdir -p "$RUNNER_TEMP/talos-base"
+            cp "$result" "$RUNNER_TEMP/talos-base/result.json"
+            echo 'keep=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache the base run for the PR's next run
+        if: ${{ steps.aside.outputs.keep == 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/talos-base
+          key: ${{ steps.key.outputs.key }}
       - name: Keep the result
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

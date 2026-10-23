@@ -27,18 +27,16 @@ fail() {
   exit 1
 }
 
-api() {
-  gh api "$@" 2>/dev/null
-}
-
 by_rulesets() {
   local talos_id ids id detail shas count=0 pin=""
-  talos_id="$(api "repos/$talos" | jq -r '.id')" || fail "cannot read the Talos repository"
-  ids="$(api --paginate "repos/$repo/rulesets?includes_parents=true" |
+  talos_id="$(gh api "repos/$talos" 2>/dev/null | jq -r '.id')" ||
+    fail "cannot read the Talos repository"
+  ids="$(gh api --paginate "repos/$repo/rulesets?includes_parents=true" 2>/dev/null |
     jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
     fail "cannot list the repository's rulesets"
   for id in $ids; do
-    detail="$(api "repos/$repo/rulesets/$id?includes_parents=true")" || fail "cannot read a ruleset"
+    detail="$(gh api "repos/$repo/rulesets/$id?includes_parents=true" 2>/dev/null)" ||
+      fail "cannot read a ruleset"
     shas="$(jq -r --argjson talos "$talos_id" '
       [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
         | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
@@ -56,13 +54,13 @@ by_rulesets() {
 
 by_channels() {
   local channel sha
-  channel="$(api "repos/$repo" | jq -r '.custom_properties.talos // empty')" ||
+  channel="$(gh api "repos/$repo" 2>/dev/null | jq -r '.custom_properties.talos // empty')" ||
     fail "cannot read the repository"
   case "$channel" in
     evaluate | canary | stable) ;;
     *) fail "the talos property names no channel" ;;
   esac
-  sha="$(api "repos/$talos/contents/channels.json?ref=channels" |
+  sha="$(gh api "repos/$talos/contents/channels.json?ref=channels" 2>/dev/null |
     jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
     fail "cannot read channels.json"
   [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"

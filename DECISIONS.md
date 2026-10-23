@@ -48,13 +48,14 @@ _Proposed 2026-10-23; the owner's approval of the PR that adds it decides it._
 
 **Decision:** everything Talos produces for an agent to read names its contract and version:
 
-- every JSON document a command prints with `--json` carries `schema: "talos.<name>/<n>"`, such
-  as `talos.verdict/1`, `talos.status/1` and `talos.ticket/1`;
+- every JSON document a command prints carries `schema: "talos.<name>/<n>"`, such as
+  `talos.verdict/1`, `talos.status/1` and `talos.claim/1`;
 - every machine-readable line Talos writes into a review, an issue or a comment is the body's
   first line and reads `talos-<kind>/<n>` followed by `key=value` fields, such as
   `talos-review/1 verdict=REQUEST_CHANGES round=1 findings=3`. On the issues and comments Talos
-  files for its own bookkeeping (`talos-debt/1`, `talos-flaky/1`, `talos-sync/1`) the line sits
-  inside an HTML comment; readers accept both forms.
+  files for its own bookkeeping (`talos-debt/1`, `talos-flaky/1`, `talos-sync/1`,
+  `talos-readiness/1`, `talos-drift/1`) the line sits inside an HTML comment; readers accept
+  both forms.
 
 Adding a field keeps the number. Removing or renaming a field, or changing what a value means,
 takes the next number. A reader refuses a contract or number it doesn't know instead of

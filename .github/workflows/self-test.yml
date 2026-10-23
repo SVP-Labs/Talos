@@ -71,5 +71,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+      - name: Set up PHP for the PHP test projects
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # v2.35.5
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer
+        env:
+          fail-fast: true
       - name: Run every test project for this OS
         run: node dist/bin/talos.js self-test test-projects

@@ -11,7 +11,7 @@ about working on the kit itself.
 - `pnpm build` compiles to `dist/`; `pnpm talos <command>` runs that build.
 - `TALOS_DEV=1` runs the copy you built as it is. Without it, the commands that act on a
   repository first look up the release the repository enforces and run that instead, which is
-  what you want everywhere but here.
+  what you want everywhere but here ([architecture.md](architecture.md), which release runs).
 
 ## Checking a change
 
@@ -41,6 +41,8 @@ Talos-specific rules, beyond the standard:
   a contract follows [X1](../DECISIONS.md).
 - No job that holds a token runs repository code, and text from GitHub is data
   ([architecture.md](architecture.md), security rules).
+- `ENGINEERING.md` ships in the package and goes into every review's prompt, which takes its
+  first 40,000 characters; keep it well under that.
 
 ## Test projects and the self-test
 
@@ -63,6 +65,12 @@ copies each case into a fresh git repository, runs its checks, and fails on a mi
 unexpected finding in a clean project, or an engine error. A new check lands with its failing
 case, on every operating system it supports; a new rule of an existing check adds its rule to a
 case. Never edit `expect.json` to make a run pass.
+
+The runtime cases read the vendor feeds recorded in `test-projects/runtime/feeds/`, which the
+self-test sets as `TALOS_RUNTIME_FEEDS`, so they don't move when a vendor ships a release.
+Running every case needs what [the gate's runners](setup.md#the-gates-runners) have: Docker for
+declared services, a C compiler for Lua, PHP with pcov and Composer, the Rust toolchain, `pwsh`,
+and the network. Each pack's README says what its cases need.
 
 ## The two gating layers
 
@@ -98,17 +106,21 @@ A release is a `vX.Y.Z` tag on a commit of `main`, which only the owner can crea
 
 3. **The release workflow** runs on the tag, builds, and publishes `@svp-labs/talos@0.4.2` through
    npm's trusted publishing, with provenance naming that commit (C26). No token is stored.
-4. **The channels job** runs on `main`, on its schedule or when dispatched, as `talos-release`. It
+4. **The channels job** (`.github/workflows/channels.yml`) runs hourly on `main`, as
+   `talos-release`, at stable's pin, so a broken canary release can't stop its own rollback. It
    takes the newest `v*` tag and moves canary's pin to it only if the tagged commit is an
    ancestor of `main`. Talos and Thea now run the release.
-5. **Promotion** moves stable's and evaluate's pins seven days after canary got the release,
-   provided canary repositories saw at least five gate runs under it, none ended in an engine
-   error, and no `regression` issue is open on this repository. A release that carries a
-   security fix doesn't wait: the owner dispatches the promotion workflow, which moves the pins
-   after one clean canary run.
+5. **Promotion,** in the same job, moves stable's and evaluate's pins seven days after canary
+   got the release, provided canary repositories saw at least five gate runs under it, none
+   ended in an engine error, and no `regression` issue is open on this repository. A release
+   that carries a security fix doesn't wait: the owner dispatches `channels.yml` (**Run
+   workflow**), which moves the pins after one clean canary run.
 
-A `regression` issue opened or labelled by the owner, Thea or a Talos App moves canary's pin
-straight back to the previous release, and holds promotion until it is closed.
+A `regression` issue opened or labelled by the owner, Thea or a Talos App starts the channels
+job at once. The newest release at the time of the report is held back, so canary's pin moves to
+the one before it; promotion waits while the issue is open. Closing the issue as not planned
+releases the hold; closing it as done keeps that release out, and canary moves on with the next
+tag.
 
 What a release brings to governed repositories:
 

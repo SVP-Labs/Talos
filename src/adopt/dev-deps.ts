@@ -9,6 +9,9 @@ import { z } from 'zod';
 
 type Pins = Readonly<Record<string, string>>;
 
+/** A JSON manifest's top-level object. */
+export type Manifest = Readonly<Record<string, unknown>>;
+
 const record = z.record(z.string(), z.unknown());
 const versions = z.record(z.string(), z.string());
 
@@ -20,16 +23,30 @@ function sorted(entries: Readonly<Record<string, string>>): Record<string, strin
   return Object.fromEntries(Object.entries(entries).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+/** A manifest's object, or `undefined` when the text isn't a JSON object. */
+export function parseManifest(text: string): Manifest | undefined {
+  try {
+    const parsed = record.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The manifest written back the way the file was: its indent, a newline at the end. */
+export function manifestText(manifest: Manifest, like: string): string {
+  return `${JSON.stringify(manifest, null, indentOf(like))}\n`;
+}
+
+/** Fields of a manifest: where its dev tools and its runtime dependencies are listed. */
+export type ManifestFields = { readonly dev: string; readonly runtime: string };
+
 /**
- * `package.json` (`devDependencies`) or `composer.json` (`require-dev`). A tool the project lists
- * among its runtime dependencies is pinned where it is.
+ * `package.json` (`devDependencies`) or `composer.json` (`require-dev`) with the pins in it. A
+ * tool the project lists among its runtime dependencies is pinned where it is. The manifest
+ * comes back as it was when every pin is there.
  */
-export function pinJsonManifest(
-  text: string,
-  fields: { readonly dev: string; readonly runtime: string },
-  pins: Pins,
-): string | undefined {
-  const manifest = record.parse(JSON.parse(text));
+export function pinManifest(manifest: Manifest, fields: ManifestFields, pins: Pins): Manifest {
   const dev = versions.catch({}).parse(manifest[fields.dev] ?? {});
   const runtime = versions.catch({}).parse(manifest[fields.runtime] ?? {});
   const nextDev = { ...dev };
@@ -41,13 +58,20 @@ export function pinJsonManifest(
     target[name] = version;
     changed = true;
   }
-  if (!changed) return undefined;
-  const next = {
+  if (!changed) return manifest;
+  return {
     ...manifest,
     ...(fields.runtime in manifest ? { [fields.runtime]: nextRuntime } : {}),
     [fields.dev]: sorted(nextDev),
   };
-  return `${JSON.stringify(next, null, indentOf(text))}\n`;
+}
+
+/** {@link pinManifest} on a manifest's text; `undefined` when every pin is already there. */
+export function pinJsonManifest(text: string, fields: ManifestFields, pins: Pins): string | undefined {
+  const manifest = parseManifest(text);
+  if (manifest === undefined) return undefined;
+  const pinned = pinManifest(manifest, fields, pins);
+  return pinned === manifest ? undefined : manifestText(pinned, text);
 }
 
 /** A requirement's name, normalised the way pip compares names. */

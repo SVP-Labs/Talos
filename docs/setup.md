@@ -16,7 +16,7 @@ Never paste a key, token or secret into a chat or an issue; keep them in your pa
   gh auth refresh -s admin:org,repo,workflow
   ```
 
-- Node 22.14 or later, npm 11.5.1 or later and pnpm, for running Talos from a clone and for the
+- Node 22.12 or later, npm 11.5.1 or later and pnpm, for running Talos from a clone and for the
   first npm publish.
 - Your commit signing key asks for a touch or a prompt on every use (a security key, or an SSH
   agent that confirms each signature), and no signing key of yours sits on the VPS. Talos counts
@@ -88,10 +88,13 @@ App**, each with:
 
 Her SVP-Labs App keeps the permissions of her G1
 ([her setup](https://github.com/SVP-Labs/Thea/blob/main/docs/setup/github.md)), which include
-everything Talos needs of her: contents, pull requests and issues read and write; checks,
-commit statuses and actions read. Add to it:
+what C15's table gives her: contents, pull requests and issues read and write; checks, commit
+statuses and actions read. Two things go beyond that table, and both stay:
 
-- **Subscribe to events:** tick **Check run**, so the gate and `talos/review` reach her.
+- **Alert reads:** Dependabot alerts, code scanning alerts and secret scanning alerts, read.
+  Her events for a new advisory or a leaked secret come from them (C20, C28).
+- **Subscribe to events:** tick **Check run**, so the gate's and `talos/review`'s results reach
+  her as events.
 - **Install** it on `SVP-Labs/Talos` too: her hub reads each release's `package.json` there.
 
 Its key stays in her hub's settings and nowhere else.
@@ -114,8 +117,8 @@ repositories**, since every governed repository's caller reads them:
 | `TALOS_RELEASE_APP`     | `talos-release`                                                |
 | `TALOS_REVIEWER_APP_ID` | `talos-reviewer`'s App ID, from its settings page              |
 
-Optional: `TALOS_REVIEW_MODEL` picks the reviewer's model; Opus unless set. `TALOS_LOOKUP` stays
-unset unless the first smoke test fails (step 6).
+`TALOS_LOOKUP` stays unset unless a smoke test says otherwise (step 6). An unset variable reaches
+a workflow as an empty string, which Talos reads as unset: the defaults are SVP-Labs's own.
 
 Then, under **Settings → Actions → General**, keep **Workflow permissions** at **Read repository
 contents and packages permissions**: every Talos workflow asks for exactly what it needs.
@@ -130,12 +133,8 @@ contents and packages permissions**: every Talos workflow asks for exactly what 
   (C17). Add no required reviewers, since the scheduled jobs run unattended. Give it the secret
   `TALOS_RELEASE_KEY` (`talos-release`'s `.pem`) and the variable `TALOS_RELEASE_APP_ID` (its App
   ID).
-- **The privacy canary:** create a private repository with a unique, random name, such as
-  `talos-scratch-` and eight random letters. It stays governed for good, so the central jobs
-  always have it in their matrix, and Talos's CI fails if its name ever shows in a run's log
-  (C30). Give its name to Talos as the repository **variable** `TALOS_PRIVACY_CANARY`, not a
-  secret: GitHub masks secrets in logs, which would hide the very leak the test looks for. The
-  smoke tests below use the same repository.
+- **The privacy canary** comes in step 6, once the pins exist: the scratch repository the smoke
+  tests use stays governed for good, and Talos knows it only by a hash of its name.
 
 ## 4. npm
 
@@ -201,20 +200,39 @@ trusted publishing, so no npm token is stored anywhere (C26).
    branch's ruleset (only `talos-release` writes it). `org pins` shows all three channels at
    `v0.1.0`. From now on only Talos's release jobs move the pins.
 
-## 6. Three smoke tests
+## 6. The scratch repository and six smoke tests
 
-Three things GitHub's documentation doesn't settle get tested on the scratch repository before
-Thea comes in (C18). Govern it first:
+Things GitHub's documentation doesn't settle get tested on a scratch repository before Thea
+comes in: the three C18 names, and three more that Talos's code relies on. Run test 2 last: its
+`Dockerfile` is a security finding, which turns every later gate run on the repository red.
+
+**Create it** as yourself, private, with a unique, random name, such as `talos-scratch-` and
+eight random letters, and a prefix no other repository uses:
 
 ```bash
-talos govern SVP-Labs/<scratch> --agents off
+talos new talos-scratch-<random> --prefix SCR --agents off --dry-run
+talos new talos-scratch-<random> --prefix SCR --agents off
 ```
 
-`govern` prints the steps GitHub's API can't take, such as restricting issue creation to
-collaborators (**Settings → General → Features → Issues**). Do them by hand; a rerun then shows
-every other step `ok`.
+`new` creates the repository with a seed `talos.yml` (its name and prefix), governs it at
+`evaluate`, and adds it to the three App installations. It prints the steps GitHub's API can't
+take, such as restricting issue creation to collaborators (**Settings → General → Features →
+Issues**). Do them by hand; `talos govern SVP-Labs/<scratch>` then shows every other step `ok`.
 
-### Rulesets in Evaluate mode are listed
+**It is also the privacy canary** (C30), and stays governed for good, so the central jobs always
+have it in their matrix. Each central workflow's last job reads every log of its run and fails
+it if a private repository's name shows anywhere, and fails it too if the canary isn't among the
+repositories it watched. Both `talos-reviewer` and `talos-release` must therefore stay installed
+on it: the drift report mints a token from each for every repository in `talos-release`'s
+listing. Talos never learns the canary's name, since a variable's value is printed in the step's
+`env` block in a public log. Give the Talos repository the **variable**
+`TALOS_PRIVACY_CANARY_SHA256` instead, the SHA-256 of the lower-cased `owner/name`:
+
+```bash
+printf %s SVP-Labs/talos-scratch-<random> | tr A-Z a-z | sha256sum | cut -d' ' -f1
+```
+
+### 1. Rulesets in Evaluate mode are listed
 
 C3's version lookup reads them through `rulesets?includes_parents=true`.
 
@@ -235,7 +253,7 @@ C3's version lookup reads them through `rulesets?includes_parents=true`.
   one; and tell Thea's hub, whose lookup has a seam for it but doesn't read the file yet (her
   U2). The drift report then checks the file against the rulesets.
 
-### Apps can still open issues and PRs
+### 2. Apps can still open issues and PRs
 
 C6 limits creation to collaborators. Thea's App, `talos-reviewer` and Dependabot must still get
 through.
@@ -243,31 +261,78 @@ through.
 - **Do:** with issue and PR creation restricted on the scratch repository,
   - ask Thea to open an issue there, and a draft PR from a task;
   - commit a `Dockerfile` with `FROM php:8.4.26-fpm` (older than php2shell's fix, 8.4.27) and
-    run the runtime sweep from the Talos repository's **Actions** tab;
+    run the runtime sweep from the Talos repository's **Actions** tab (`runtime-sweep`, **Run
+    workflow**);
   - commit `.github/dependabot.yml` with a `github-actions` update and a workflow that uses
     `actions/checkout@v3`, then **Insights → Dependency graph → Dependabot → Check for
     updates**.
-- **Expect:** Thea's issue and PR, by her App's bot; a `security` issue by `talos-reviewer[bot]`
-  whose first line is `talos-security/1 kind=runtime priority=p0`; and Dependabot's PR bumping
-  `actions/checkout`.
+- **Expect:** Thea's issue and PR, by her App's bot; Dependabot's PR bumping `actions/checkout`;
+  and a `security` issue by `talos-reviewer[bot]` whose first line is
+
+  ```text
+  talos-security/1 kind=runtime runtime=php version=8.4.26 fixed=8.4.27 priority=p0
+  ```
+
 - **If any is refused:** no repository can keep the restriction. Lift it on the scratch
   repository by hand, and open a `decision` issue on Talos to drop it from `talos govern` and the
   drift report. C6's trust rule and C17's trusted-`regression` rule then carry the protection
   alone.
 
-### The owner's bypass reaches the merge queue
+### 3. The owner's bypass reaches the merge queue
 
 At `evaluate`, the code-owner ruleset gives you a bypass; the merge-queue ruleset has none.
 
-- **Do:** as yourself, push a branch with a signed commit to the scratch repository, open a PR,
-  and choose **Merge when ready** (taking the bypass the page offers).
-- **Expect:** the PR joins the merge queue without anyone's approval, a `merge_group` gate run
-  starts, and the queue merges it onto `main`.
+- **Do:** as yourself, file issue #1, push a branch `SCR-1` with two signed commits, each
+  `[SCR-1]: …` and each adding a line to `README.md`, open a PR from it that closes #1, and
+  choose **Merge when ready** (taking the bypass the page offers).
+- **Expect:** the PR joins the merge queue without anyone's approval, and the queue merges it
+  onto `main`.
 - **If it is refused:** while a repository is at `evaluate`, both rules belong in one ruleset, so
   your bypass covers the queue too; that costs nothing in a phase where nothing is enforced, and
   ends at `--channel`. Open an issue on Talos to change `talos govern` that way.
 
+### 4. A ruleset's required workflow runs on `merge_group`
+
+The gate judges the queue's commits (C3, C14) only if GitHub starts it there.
+
+- **Do:** watch the PR of test 3 while it is in the queue, under **Actions** and **Settings →
+  Rules → Insights**.
+- **Expect:** a `talos` run for the event `merge_group`, with the jobs `verdict (talos 0.1.0)`
+  and `engine (talos 0.1.0)` and a `talos-verdict` artifact.
+- **If there is none:** stop, and open a `decision` issue on Talos before Thea comes in: the
+  queue would land commits the gate never judged.
+
+### 5. The gate's own token can list the rulesets
+
+The gate finds its pin by listing the repository's rulesets with its `GITHUB_TOKEN`, which holds
+`contents: read` and nothing else; the scratch repository is private, the hard case.
+
+- **Do:** open the `pin` job of any gate run on the scratch repository.
+- **Expect:** its **Find the enforced Talos release** step succeeds, and the later jobs carry
+  the version in their names.
+- **If it fails** (`cannot list the repository's rulesets`): set the org variable
+  `TALOS_LOOKUP=channels` and give `talos-release` contents write, as in test 1.
+
+### 6. The queue leaves `main` on the commits it tested
+
+`talos status` reads whether `main` is green from the gate's run on `main`'s head commit (C31),
+which only works if the queue pushes exactly the commits its `merge_group` run tested.
+
+- **Do:** after test 3 has merged,
+
+  ```bash
+  git -C <clone of the scratch repository> pull
+  git -C <clone of the scratch repository> log --format=%H -n 2
+  talos status --repo SVP-Labs/<scratch> --json
+  ```
+
+- **Expect:** `main`'s two newest commits are the two the `merge_group` run judged (its `run`
+  jobs carry each commit's SHA in their names), and `main.gate` is `green`, not `unknown`.
+- **If they differ:** open an issue on Talos: `talos status` must then read `main`'s state from
+  the `merge_group` run by another key than the commit.
+
 Remove the test files from the scratch repository afterwards, and close what the tests opened.
+Keep the repository.
 
 ## 7. Talos governs itself
 
@@ -379,6 +444,36 @@ gh search code 'SVP-Labs/Workflows@' --owner SVP-Labs --json repository --jq '.[
 prints nothing. Then archive `SVP-Labs/Scaffold` and `SVP-Labs/Workflows`, delete the org secrets
 only they used (`REPO_ADMIN_TOKEN`, `SCAFFOLD_SYNC_TOKEN`), and revoke the personal access tokens
 behind them. `CLAUDE_CODE_OAUTH_TOKEN` stays: the reviewer uses it.
+
+## The gate's runners
+
+The gate runs on GitHub's hosted runners (`ubuntu-latest`, and `windows-latest` or
+`macos-latest` for a component that lists those systems). Beyond the Node and PHP it sets up,
+they have what it assumes: git, curl, tar, unzip, jq, yq, `gh`, `pwsh`, a C compiler (Lua is
+built from source), rustup, Docker on Linux for declared services, and an open network. Every
+outside tool comes from `tools.lock`, checked by its sha256, and each language's own tools from
+the project's lockfile.
+
+PHP is the one runtime the gate sets up per project: for each system a PHP component lists, it
+installs the newest release of the newest minor any component's `composer.json` asks for
+(`config.platform.php`, else `require.php`), never older than 8.4, with pcov and Composer. The
+PHP pack refuses, as an engine error, a PHP that isn't the newest release of its cycle.
+
+A runner whose network is restricted (a self-hosted one, or behind a proxy) must reach:
+
+- the registries projects install from and Talos checks releases against:
+  `registry.npmjs.org`, `pypi.org` and `files.pythonhosted.org`, `repo.packagist.org`,
+  `index.crates.io` and `static.crates.io`, `luarocks.org`, `luarocks.github.io` and
+  `www.lua.org`;
+- `github.com`, `objects.githubusercontent.com`, `raw.githubusercontent.com`,
+  `codeload.github.com` and `cdn.powershellgallery.com`, for `tools.lock`'s downloads, uv's
+  Pythons and the sources some rocks and Composer packages come from;
+- `api.osv.dev` and `api.deps.dev`, for advisories and licences;
+- `endoflife.date`, `www.php.net` and `nodejs.org`, for the runtime feeds;
+- `semgrep.dev`, for Semgrep's rule sets.
+
+Behind a proxy, set `NODE_USE_ENV_PROXY=1` beside `HTTPS_PROXY`: Node's `fetch` ignores the proxy
+without it.
 
 ## Afterwards
 

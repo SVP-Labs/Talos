@@ -10,9 +10,10 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
 
 - **Where.** Every governed repository lives in SVP-Labs and carries two custom properties:
   `talos`, its channel (`evaluate`, `canary` or `stable`), and `talos-agents` (C2, C3, C11).
-- **The gate.** An org ruleset runs Talos's gate on `main`, pinned to a release commit. It runs
-  on `pull_request` (opened, synchronize, reopened, ready for review) and in the merge queue,
-  holds no secrets, and only produces findings. Nothing in the repository can change it (C3).
+- **The gate.** An org ruleset runs Talos's gate (its `.github/workflows/gate.yml`) on `main`,
+  pinned to a release commit. It runs on `pull_request` (opened, synchronize, reopened, ready for
+  review) and in the merge queue, holds no secrets, and only produces findings. Nothing in the
+  repository can change it (C3).
 - **The caller.** `.github/workflows/talos.yml` runs `talos job <event>` for everything else:
   issue readiness, the reviewer, `talos/review`, the weekly debt job, the stale-claim sweep and
   label sync. It never changes between releases and reads PRs through the API only (C25).
@@ -44,6 +45,9 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
   that fails gets `needs-spec` and a comment saying what is missing. Issues from before Talos
   are `legacy` and skipped until someone rewrites them and removes the label.
 - **Priority:** `priority/p0` to `priority/p3`; none counts as `p3`. `p0` is a security fix.
+- **The other labels:** `ai/eligible` (the queue may take it), `ai/go` (start it now),
+  `ai/claimed` and `status/in-progress` (claimed), `decision`, `legacy`, `security`, `flaky`,
+  `sync`, `drift` and `regression`. `assets/labels.yml` defines each; label sync keeps them.
 - **The ladder.** One escalation label at a time, each cleared by the one it names:
 
   ```text
@@ -61,7 +65,8 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
 - **The branch is the lock.** Claiming ticket N creates the branch `<P>-<N>`; GitHub creates a
   ref only once, so two claimants can never both hold a ticket. `status/in-progress`,
   `ai/claimed` and the claim comment only mirror it.
-- **The commands**, for agents and people alike, each printing `talos.ticket/1`:
+- **The commands**, for agents and people alike, each printing one JSON object: `talos.claim/1`
+  for a claim, `next` and a release, `talos.ticket/1` for the status:
 
   ```text
   talos ticket claim <N> --agent <id>      claim one ticket
@@ -74,8 +79,9 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
   else holds it, 4 `next` claimed nothing.
 
 - **Claimable:** open, `status/ready`, and none of `blocked`, `legacy`, `needs-spec`,
-  `needs-decision` or `epic`. The queue adds `ai/eligible` and orders by priority, then age.
-  `next` claims nothing while the repository holds `agents.max_claims` claims (default 2).
+  `needs-decision`, `needs-human` or `epic`. The queue adds `ai/eligible` and orders by
+  priority, then age. `next` claims nothing while the repository holds `agents.max_claims`
+  claims (default 2).
 - **Releasing:**
 
   ```text
@@ -137,7 +143,7 @@ merge group   fast tier on every commit of the group; head tier on its tip
 ```
 
 - **The fast tier:** format, lint, types, dead code, unit tests, suppressions and the commit
-  subject. Pre-push runs it too.
+  subject. Run `talos check` before every push.
 - **The head tier:** integration and e2e tests, coverage, type coverage, architecture,
   duplication, secrets, dependencies and licences, Semgrep, Markdown, spelling, the shell,
   PowerShell, Dockerfile and workflow linters, size budgets, doc references, decisions, the
@@ -158,7 +164,7 @@ merge group   fast tier on every commit of the group; head tier on its tip
 - **The changed-line rule:** a pre-existing finding on a line the PR changes is fixed in that
   PR.
 - **Security findings** (`runtime/security`, a high or critical advisory) fail every PR in the
-  repository until the fix lands or an expiring exception covers them.
+  repository until the fix lands or an expiring exception covers them (section 12).
 - **Debt** is what is left on `main` (`talos debt`). A new repository is green on day one, a
   release that adds a rule adds debt instead of red PRs, and a weekly job files five debt issues
   at a time, one file each, `ai/eligible` at `priority/p3`.
@@ -177,8 +183,8 @@ merge group   fast tier on every commit of the group; head tier on its tip
   report. A language without a mature tool (Lua) is n/a, explicitly.
 - **Type coverage:** each package's shipped code stays at or above 99.5% typed; `any`, `as`
   casts and `!` count as untyped, and tests may assert freely. Below the floor, each new untyped
-  identifier is a finding until the package reaches it. Python is 100%: basedpyright rejects
-  `Any`.
+  identifier is a finding until the package reaches it. PHP holds parameters, returns, properties
+  and constants to the floor each. Python is 100%: basedpyright rejects `Any`.
 - **Flaky tests:** a test that fails and then passes on one immediate rerun leaves the gate
   green and gets a `flaky` issue at `priority/p2`. A test that fails twice is a failure.
 - **Test integrity:** no PR deletes a test, removes an assertion or adds a skip without the
@@ -346,8 +352,9 @@ architecture rules in the tools' own syntax, never here.
 - No git or tarball dependency anywhere in the tree, and no install whose provenance is weaker
   than the package's earlier releases'.
 - Every vulnerability exception has a reason and an expiry date, under
-  `supply_chain.exceptions`; Talos generates each scanner's ignore file from it. Nothing is
-  ignored forever.
+  `supply_chain.exceptions`; Talos generates each scanner's ignore file from it. An entry named
+  `<runtime> <version>`, such as `php 8.4.26`, excuses that runtime's `runtime/security` finding.
+  When it expires, the finding fails again. Nothing is ignored forever.
 - Pin every runtime to an exact patch: Dockerfile `FROM` lines, `.nvmrc`, `.node-version`,
   `.python-version`, `rust-toolchain.toml`, `go.mod`'s `toolchain`. Talos checks them against
   the vendors' feeds: `runtime/security` blocks every PR until fixed, and `runtime/eol` and
