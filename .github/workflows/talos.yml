@@ -143,7 +143,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          node ../talos-kit/bootstrap/launch.mjs job "$EVENT" --phase analyze \
+          node ../talos-kit/bootstrap/launch.ts job "$EVENT" --phase analyze \
             --workdir "$RUNNER_TEMP/talos-job"
       - name: Hand the results to act
         if: ${{ !cancelled() }}
@@ -293,7 +293,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TALOS_REVIEWER_TOKEN: ${{ steps.token.outputs.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          REVIEW_MODEL: ${{ vars.TALOS_REVIEW_MODEL }}
+          # The reviewer's model; left unset, it reaches Talos empty and Talos takes its own.
+          TALOS_REVIEW_MODEL: ${{ vars.TALOS_REVIEW_MODEL }}
           TALOS_ORG: ${{ github.repository_owner }}
           TALOS_OWNER: ${{ vars.TALOS_OWNER }}
           TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP }}
@@ -301,6 +302,4 @@ jobs:
           TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
           TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
         run: |
-          # The reviewer's model is the variable's when it is set, and Talos's own otherwise.
-          if [[ -n "$REVIEW_MODEL" ]]; then export TALOS_REVIEW_MODEL="$REVIEW_MODEL"; fi
-          node talos-kit/bootstrap/launch.mjs job "$EVENT" --phase act --workdir "$RUNNER_TEMP/talos-job"
+          node talos-kit/bootstrap/launch.ts job "$EVENT" --phase act --workdir "$RUNNER_TEMP/talos-job"

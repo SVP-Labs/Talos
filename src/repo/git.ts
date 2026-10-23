@@ -1,3 +1,5 @@
+import { mkdir, rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { type Exec, execOk } from '../exec/exec.js';
 
 /** Thin helpers over the git CLI; every path is repository-relative with forward slashes. */
@@ -45,6 +47,27 @@ export async function showFile(repo: Git, sha: string, path: string): Promise<st
   }
 }
 
-export async function addWorktree(repo: Git, sha: string, directory: string): Promise<void> {
-  await repo.run(['worktree', 'add', '--force', '--detach', directory, sha]);
+async function removeWorktree(repo: Git, directory: string): Promise<void> {
+  await repo.run(['worktree', 'remove', '--force', directory]).catch(() => undefined);
+  await rm(directory, { recursive: true, force: true });
+  await repo.run(['worktree', 'prune']).catch(() => undefined);
+}
+
+/**
+ * Runs `work` in a fresh detached worktree of `sha` at `directory`, removed afterwards; one a
+ * run before it left behind is cleared first.
+ */
+export async function inWorktree<T>(
+  repo: Git,
+  at: { readonly sha: string; readonly directory: string },
+  work: () => Promise<T>,
+): Promise<T> {
+  await removeWorktree(repo, at.directory);
+  await mkdir(dirname(at.directory), { recursive: true });
+  await repo.run(['worktree', 'add', '--force', '--detach', at.directory, at.sha]);
+  try {
+    return await work();
+  } finally {
+    await removeWorktree(repo, at.directory);
+  }
 }

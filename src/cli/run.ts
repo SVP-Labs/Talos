@@ -1,10 +1,12 @@
 import { writeFile } from 'node:fs/promises';
 import { type Command, parse, UsageError } from './io.js';
+import { CONFIG_FILE, parseConfig } from '../config/load.js';
+import type { TalosConfig } from '../config/schema.js';
 import type { Os, Tier } from '../core/check.js';
 import { changesBetween, runAt } from '../engine/local.js';
 import type { Side } from '../engine/run.js';
 import { createEngine } from '../engine/session.js';
-import { git, revParse } from '../repo/git.js';
+import { type Git, git, revParse, showFile } from '../repo/git.js';
 
 const TIERS = new Set<string>(['commit', 'head']);
 const OSES = new Set<string>(['linux', 'windows', 'macos']);
@@ -14,7 +16,8 @@ export function currentOs(platform: NodeJS.Platform = process.platform): Os {
   return platform === 'darwin' ? 'macos' : 'linux';
 }
 
-function tiersOf(value: string): Tier[] {
+/** `--tiers`' value: a comma-separated list of `commit` and `head`. */
+export function tiersOf(value: string): Tier[] {
   const tiers = value.split(',').filter(Boolean);
   if (tiers.length === 0 || tiers.some((t) => !TIERS.has(t))) {
     throw new UsageError(`--tiers takes commit,head`);
@@ -27,10 +30,21 @@ function sideOf(range: string | undefined, side: string | undefined): Side {
   return side === 'base' ? 'base' : 'head';
 }
 
+/** The `talos.yml` at `ref`, which a checkout without its own is judged by. */
+async function borrowedConfig(
+  repo: Git,
+  ref: string | undefined,
+): Promise<TalosConfig | undefined> {
+  if (ref === undefined) return undefined;
+  const text = await showFile(repo, ref, CONFIG_FILE);
+  return text === undefined ? undefined : parseConfig(text, `${CONFIG_FILE} at ${ref}`);
+}
+
 /**
  * `talos run`: the checks of some tiers at the checkout in the working directory, as one job of
- * the gate runs them. `--range base..head` says what the run is compared within, and `--side`
- * which end this checkout is.
+ * the gate runs them. `--range base..head` says what the run is compared within, `--side` which
+ * end this checkout is, and `--config-from <ref>` whose `talos.yml` judges a checkout without
+ * one, as the base of the PR that adopts Talos is.
  */
 export const run: Command = async (argv, io) => {
   const { values } = parse(argv, {
@@ -40,6 +54,7 @@ export const run: Command = async (argv, io) => {
     side: { type: 'string' },
     only: { type: 'string' },
     out: { type: 'string' },
+    'config-from': { type: 'string' },
     verbose: { type: 'boolean', default: false },
   });
   const os = values.os ?? currentOs();
@@ -51,6 +66,7 @@ export const run: Command = async (argv, io) => {
   const side = sideOf(values.range, values.side);
   const changes =
     from === undefined || to === undefined ? undefined : await changesBetween(repo, from, to);
+  const config = await borrowedConfig(repo, values['config-from']);
   const result = await runAt(engine, {
     root: io.cwd,
     sha,
@@ -59,6 +75,7 @@ export const run: Command = async (argv, io) => {
     side,
     ...(changes ? { changes } : {}),
     ...(values.only ? { only: values.only.split(',') } : {}),
+    ...(config ? { config } : {}),
   });
   const text = `${JSON.stringify(result)}\n`;
   if (values.out === undefined) io.out(text);

@@ -34,10 +34,15 @@ src/
   adopt/ govern/      bringing a repository in; govern also holds the org rulesets and talos new
   central/            channels, runtime sweep, drift, privacy self-test
   testing/            helpers for tests; never built into dist
-assets/               what Talos writes into repositories: the caller, forms, labels, rulesets
-bootstrap/            find-pin.sh and launch.mjs, which workflows run before Talos is installed
-docs/contracts/       the JSON schemas of talos.verdict/1 and talos.status/1
+assets/               what Talos writes into repositories: the caller, the pre-push hook
+                      (hooks/pre-push), forms, labels, rulesets, the CLAUDE.md block, patches
+bootstrap/            find-pin.sh, launch.ts and php.sh, which workflows run before Talos is
+                      installed
+docs/contracts/       the JSON schemas of talos.verdict/1, talos.status/1, talos.claim/1 and
+                      talos.version/1
 test-projects/        a project per check that it must fail on, and clean projects
+.githooks/            Talos's own pre-push, which runs assets/hooks/pre-push with the build at
+                      hand
 ```
 
 Each pack under `src/langs/` and several under `src/checks/` have a README with their checks,
@@ -119,17 +124,25 @@ fails is an engine error for that component's checks alone; the rest of the run 
 
 The gate is `.github/workflows/gate.yml` in the Talos repository, the path the channel rulesets
 name; it holds no secret and never cancels a run. Each job that runs Talos checks out the Talos
-repository at the pin and runs `bootstrap/launch.mjs`, which installs and verifies that release
+repository at the pin and runs `bootstrap/launch.ts`, which installs and verifies that release
 (below):
 
 1. `pin` finds the pin with the inlined `bootstrap/find-pin.sh`, using the workflow token to
    list the repository's rulesets.
 2. `plan` (`talos plan`) reads the event and decides the runs: base and head with both tiers,
    every other commit with the commit tier, on every OS the components declare (draft PRs: base
-   and head only). `bootstrap/php.sh` reads `talos.yml` and `composer.json` at base and head and
-   says which systems need PHP, and which minor.
+   and head only). Each run in the matrix carries what it sets up, read from `talos.yml` and
+   `composer.json` at its own commit: `langs`, its components' languages on its OS, and `php`,
+   the newest minor its PHP components ask for (`config.platform.php`, else `require.php`, never
+   older than 8.4), empty when none runs on its OS. A commit with no `talos.yml`, such as the
+   base of the PR that adopts Talos, is planned and run with the head's (`--config-from`), so a
+   repository coming under the kit is green on day one; a commit whose `talos.yml` can't be read
+   sets nothing up. A head whose `talos.yml` this release can't read stops `talos plan` with exit
+   2, which the gate counts as an engine error on purpose: a release that refuses a `talos.yml`
+   the previous one accepted must not promote, and `talos.yml` is a protected path,
+   so only its owner can break a canary that way.
 3. `run` is one job per run, in a matrix, each on a checkout of its commit (`talos run`), with
-   PHP, pcov and Composer set up where a PHP component needs them. On a PR, the base run's
+   PHP, pcov and Composer set up where its `php` names a minor. On a PR, the base run's
    result is cached, keyed by the release, OS, tiers, base commit, head tree and day, so a new
    push or leaving draft doesn't run it again; the merge queue never uses the cache.
 4. `verdict (talos <version>)` (`talos verdict`) judges each commit against its parent (commit
@@ -149,7 +162,7 @@ don't change; every finding goes to `.talos/check/talos.sarif`.
 ## Which release runs
 
 C3's lookup, in `src/version/`, mirrored for workflows by `bootstrap/find-pin.sh` and
-`bootstrap/launch.mjs` (a test keeps them in step):
+`bootstrap/launch.ts` (a test keeps them in step):
 
 - **The pin.** By default Talos lists the repository's rulesets, the org's included, skips
   disabled ones, and takes the `workflows` rule that runs the Talos repository's gate; exactly
@@ -213,6 +226,41 @@ applies to parameters, returns, properties and constants each (`typecov/<kind>`)
 
 Both print one `talos.job/1` line and exit 1 when any job failed.
 
+## Adoption
+
+`talos adopt` (`src/adopt/`) decides everything it does to a repository in one pure function,
+`adoptPlan`, over the tracked tree: each step reads what the steps before it planned, only files
+whose content changes are written, and a second run plans nothing. Its `talos.adopt/1` output
+lists each write and deletion with its `why`, and `next`, what whoever commits must do first;
+with any next step, adoption stops before committing. It writes:
+
+- `talos.yml`: from the manifests when there is none, completed when it holds only what
+  `talos new` recorded, kept otherwise; `CLAUDE.md`'s block, the issue forms, the PR template,
+  Dependabot's settings and the brief;
+- every generated base, and each extension file once, filled with the project's own settings
+  where they move: `[tool.ruff]` and `[tool.basedpyright]` (or `[tool.pyright]`) leave
+  `pyproject.toml` for `ruff.toml` and `pyrightconfig.json`, and `[tool.mypy]` goes; an
+  `osv-scanner.toml`'s exceptions move to `talos.yml`'s `supply_chain.exceptions` and its licence
+  ignores to `licences`, and a `.gitleaks.toml`'s own rules to `.gitleaks.project.toml`;
+- each language's setup: the dev tools at Talos's versions; LF line endings in `.gitattributes`
+  for TypeScript and Lua, and `.lua/` in `.gitignore`; pnpm's supply-chain guards in
+  `pnpm-workspace.yaml`, with the patch Stryker's Vitest runner needs where a component pins it;
+  `[tool.uv] exclude-newer` of a day; Composer's plugins, PHP 8.4 or later and no
+  `phpstan/extension-installer`; Rust's lint levels in the manifests' lint tables, and
+  `rust-toolchain.toml` with the components the checks use, pinned to Talos's release unless the
+  project pins an exact one already;
+- the pre-push hook, `.githooks/pre-push` from `assets/hooks/pre-push`, executable in git too,
+  and a root `package.json`'s `prepare` script that sets `core.hooksPath`, when it has none. A
+  hook manager the project uses (pre-commit, lefthook, husky, simple-git-hooks, overcommit) is
+  never replaced: a next step asks it to run the hook.
+
+It deletes what Scaffold left, the files that would shadow a TypeScript base, and the
+`osv-scanner.toml` files whose entries it moved into `talos.yml`. It never rewrites a project's
+`tsconfig.json`: one that doesn't extend the generated base is a next step. It refuses a ticket
+prefix another repository of the organisation uses, read from each one's `talos.yml` (or
+Scaffold's `project.yml`), whenever its token can list them; `prefixChecked` says whether it
+could.
+
 ## Output for agents
 
 Everything an agent runs has a `--json` form that prints capped JSON (C33): at most 20 items per
@@ -236,15 +284,18 @@ talos.adopt/1     talos adopt --json; also talos.govern/1, talos.new/1, talos.or
 
 - `talos findings` prints the newest `talos-verdict` artifact of a gate run on the PR's head,
   taken only from a run of the gate's own workflow file, with `head` and `run` added; with none,
-  `{ schema, status: "unknown", repo, pr, head }`. It exits 1 when red.
+  `{ schema, status: "unknown", repo, pr, head }`, and that with `error` when the verdict the run
+  left can't be read. It exits 1 when red and 0 for every other answer.
 - `talos status` exits 1 when a repository couldn't be read; that element is
   `{ schema, repo, error }`. Thea's hub adds `cards` to each element; Talos never sets it.
 - `talos.claim/1` is the claimed ticket's fields at the top level, or `error`: `claimed` (exit
   3, with `by`), `none` and `max-claims` (exit 4), `refused` (exit 1, with `reason`). A release
   prints `released: true`; `next` adds `swept`, the claims it released first.
 
-[agents.md](agents.md) shows the ones an agent reads, with examples;
-`docs/contracts/` holds the JSON schemas of the first two, which tests keep equal to the code.
+[agents.md](agents.md) shows the ones an agent reads, with examples.
+[docs/contracts/](contracts/README.md) holds the JSON schemas of `talos.verdict/1`,
+`talos.status/1`, `talos.claim/1` and `talos.version/1`, which tests keep equal to the code, and
+the flags and exit codes of the commands that print them.
 
 ### Marker lines
 
@@ -253,8 +304,8 @@ only when the App that writes it wrote it; from anyone else it is text.
 
 ```text
 talos-review/1     visible   every reviewer review: verdict=, round=, findings=
-talos-security/1   visible   the runtime sweep's issues: kind=runtime runtime= version= fixed=
-                             priority=p0
+talos-security/1   visible   the runtime sweep's issues: kind=runtime runtime=<r> version=<v>
+                             fixed=<f|unknown> priority=p0
 talos-debt/1       hidden    weekly debt issues: file=, kind=dead-code|other, count=, findings=
 talos-flaky/1      hidden    flaky-test issues: test=, file=
 talos-sync/1       hidden    the sync chore: files=

@@ -42,10 +42,12 @@ the recordings `TALOS_RUNTIME_FEEDS` names). The project's tests and every tool 
 so no check runs on a release with a known hole. Which PHP a project ships is the runtime pack's
 `runtime/runtimes` check.
 
-The gate and the self-test install PHP with setup-php, asking for the cycle the component's
-`composer.json` needs (never older than 8.4) with `update: true`, so the runner takes that cycle's
-newest patch. On the day php.net ships a release, setup-php's package sources can trail it for
-some hours, and the gate's PHP runs end in this engine error until they catch up.
+The gate, the caller's weekly analysis and the self-test install PHP with setup-php, pinned at
+2.40.0, with `update: true`, so the runner takes the newest patch of the cycle it asks for. The
+gate asks, on each run, for the cycle the PHP components of that run's own commit need
+(`config.platform.php`, else `require.php`, never older than 8.4), as `talos plan` reads it; the
+self-test asks for 8.4. On the day php.net ships a release, setup-php's package sources can trail
+it for some hours, and the gate's PHP runs end in this engine error until they catch up.
 
 The pinned tools need PHP 8.4 or later (Pest 5, and the Pest plugin for PHPStan).
 
@@ -208,3 +210,8 @@ phpstan/phpstan 2.3.1, phpstan/phpstan-strict-rules 2.1.0, shipmonk/dead-code-de
 tomasvotruba/cognitive-complexity 1.3.0 and tomasvotruba/type-coverage 2.5.1, and
 larastan/larastan 3.13.1 in a project that requires `laravel/framework` (Larastan requires the
 framework). PHP-Parser, which the nesting and size checks use, comes with them.
+
+It also allows Pest's and Infection's Composer plugins under `config.allow-plugins`, removes
+`phpstan/extension-installer` (from the requirements and the allowed plugins), and sets
+`require.php` to `^8.4` where there is none or it lets in an older PHP; a constraint it can't
+read stays as it is.

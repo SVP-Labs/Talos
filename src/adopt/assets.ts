@@ -13,8 +13,8 @@ async function optional(url: URL): Promise<string | undefined> {
 }
 
 /**
- * The issue forms, PR template, Dependabot settings, `CLAUDE.md` block and patches this Talos
- * ships.
+ * The issue forms, PR template, Dependabot settings, `CLAUDE.md` block, patches and pre-push
+ * hook this Talos ships.
  */
 export async function loadAdoptAssets(dir: URL = assetsDir()): Promise<AdoptAssets> {
   const formsDir = new URL('issue-forms/', dir);
@@ -23,11 +23,19 @@ export async function loadAdoptAssets(dir: URL = assetsDir()): Promise<AdoptAsse
     .sort((a, b) => a.localeCompare(b));
   const forms = await Promise.all(names.map((name) => readFile(new URL(name, formsDir), 'utf8')));
   const issueForms = Object.fromEntries(names.map((name, index) => [name, forms[index] ?? '']));
-  const [prTemplate, defaults, claudeKit, runnerPatch] = await Promise.all([
+  const [prTemplate, defaults, claudeKit, runnerPatch, prePush] = await Promise.all([
     optional(new URL('pull_request_template.md', dir)),
     readFile(new URL('dependabot/update.yml', dir), 'utf8'),
     readFile(new URL('claude/kit-block.md', dir), 'utf8'),
     optional(new URL(`patches/${RUNNER_PATCH}`, dir)),
+    readFile(new URL('hooks/pre-push', dir), 'utf8'),
   ]);
-  return { issueForms, prTemplate, dependabot: parseDefaults(defaults), claudeKit, runnerPatch };
+  return {
+    issueForms,
+    prTemplate,
+    dependabot: parseDefaults(defaults),
+    claudeKit,
+    runnerPatch,
+    prePush,
+  };
 }

@@ -4,7 +4,9 @@ TypeScript, and JavaScript type-checked through `checkJs` until it is migrated. 
 with `lang: ts` gets the files below rendered at its root before any check runs, and its
 dependencies installed by the package manager its lockfile names (`pnpm install
 --frozen-lockfile`, `npm ci` or `yarn install --immutable`, looking up to the repository root
-for a workspace's lockfile).
+for a workspace's lockfile). Each tool runs on the Node that runs Talos, with a heap of half the
+machine's memory, between 2 and 8 GiB, since a large project's ESLint or tsc outgrows V8's own
+ceiling.
 
 ## Files
 
@@ -20,6 +22,20 @@ for a workspace's lockfile).
 | `stryker.config.mjs`          | `stryker.project.json`                                      | Stryker's options are data; `mutate` comes from `talos.yml`'s `mutation`                                                                                   |
 
 `talos.yml`'s `exclude` reaches every tool from the bases, so no project lists it twice.
+
+Besides these files, `talos adopt` gives a TypeScript component:
+
+- its dev tools at Talos's versions, which `ts/toolchain` checks;
+- no file that would shadow a base (a `.prettierrc` beside `prettier.config.js`, and the like),
+  which `ts/config-strength` would report as `config/shadowed`;
+- `* text=auto eol=lf` in `.gitattributes`, since the formatter writes LF and checks for it;
+- in the `pnpm-workspace.yaml` beside its pnpm lockfile, pnpm's supply-chain guards:
+  `minimumReleaseAge` of at least a day, `blockExoticSubdeps` and `trustPolicy: no-downgrade`.
+  Where the component pins `@stryker-mutator/vitest-runner`, the patch that makes the runner
+  select a mutant's tests under Vitest 5 (`assets/patches/`), registered there, and a next step
+  to refresh the lockfile;
+- a next step for each `tsconfig.json` that doesn't extend `tsconfig.talos.json`, directly or
+  through the files it extends; adoption writes `tsconfig.json` only where there is none.
 
 ## Checks
 

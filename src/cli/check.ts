@@ -1,8 +1,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type Command, parse } from './io.js';
-import { currentOs } from './run.js';
+import { currentOs, tiersOf } from './run.js';
 import { loadConfig } from '../config/load.js';
+import type { TalosConfig } from '../config/schema.js';
+import type { Tier } from '../core/check.js';
 import type { RunResult } from '../core/result.js';
 import { commitFindings, comparisonsFor, compactVerdict } from '../engine/gate.js';
 import { cachedRun, changesBetween, runAt } from '../engine/local.js';
@@ -28,13 +30,13 @@ async function defaultBase(repo: Git): Promise<string> {
 async function runAll(
   engine: Engine,
   repo: Git,
-  plan: GatePlan,
-  only?: string[],
+  scope: { readonly plan: GatePlan; readonly config: TalosConfig; readonly only?: string[] },
 ): Promise<RunResult[]> {
+  const { plan, config, only } = scope;
   const os = currentOs();
   const results: RunResult[] = [];
   for (const spec of plan.runs.filter((r) => r.os === os)) {
-    const common = { sha: spec.sha, tiers: spec.tiers, os, ...(only ? { only } : {}) };
+    const common = { sha: spec.sha, tiers: spec.tiers, os, config, ...(only ? { only } : {}) };
     if (spec.sha === plan.head) {
       const changes = await changesBetween(repo, plan.base);
       results.push(await runAt(engine, { ...common, root: repo.root, side: 'head', changes }));
@@ -46,31 +48,48 @@ async function runAll(
   return results;
 }
 
-/**
- * `talos check`: what the gate would say, locally, before a push. The working tree is judged
- * against the base branch; `--commits` judges every commit against its parent as a ready PR's
- * gate does. `--json` prints the compact verdict an agent reads (`talos.verdict/1`); every finding,
- * past the twenty it lists, is in `.talos/check/talos.sarif`.
- */
-export const check: Command = async (argv, io) => {
-  const { values } = parse(argv, {
+/** `talos check`'s flags, read before anything runs; anything else is a usage error. */
+export function checkArgs(argv: readonly string[]) {
+  return parse(argv, {
     base: { type: 'string' },
     commits: { type: 'boolean', default: false },
     json: { type: 'boolean', default: false },
     only: { type: 'string' },
+    tiers: { type: 'string' },
     verbose: { type: 'boolean', default: false },
-  });
+  }).values;
+}
+
+/** The plan with each run cut down to `tiers`; a run left with none is dropped. */
+export function scopeToTiers(plan: GatePlan, tiers: readonly Tier[]): GatePlan {
+  const runs = plan.runs
+    .map((run) => ({ ...run, tiers: run.tiers.filter((tier) => tiers.includes(tier)) }))
+    .filter((run) => run.tiers.length > 0);
+  return { ...plan, runs };
+}
+
+/**
+ * `talos check`: what the gate would say, locally, before a push. The working tree is judged
+ * against the base branch; `--commits` judges every commit against its parent as a ready PR's
+ * gate does, and `--tiers commit` runs only the fast tier, as the pre-push hook does. `--json`
+ * prints the compact verdict an agent reads (`talos.verdict/1`); every finding, past the twenty it
+ * lists, is in `.talos/check/talos.sarif`.
+ */
+export const check: Command = async (argv, io) => {
+  const values = checkArgs(argv);
   const engine = createEngine(values.verbose);
   const repo = git(engine.exec, io.cwd);
   const config = await loadConfig(io.cwd);
   const tipOfBase =
     values.base === undefined ? await defaultBase(repo) : await revParse(repo, values.base);
-  const plan = await planRange(repo, config, {
+  const planned = await planRange(repo, config, {
     mode: values.commits ? 'ready' : 'draft',
     tipOfBase,
     head: 'HEAD',
   });
-  const results = await runAll(engine, repo, plan, values.only?.split(','));
+  const plan = values.tiers === undefined ? planned : scopeToTiers(planned, tiersOf(values.tiers));
+  const only = values.only?.split(',');
+  const results = await runAll(engine, repo, { plan, config, ...(only ? { only } : {}) });
   const comparisons = (await comparisonsFor(repo, plan)).map(async (c) =>
     c.sha === plan.head && c.against === plan.base
       ? { ...c, changes: await changesBetween(repo, plan.base) }

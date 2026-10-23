@@ -13,7 +13,8 @@ describe('pnpmWorkspace', () => {
     const text = pnpmWorkspace(undefined, { patch: false });
     expect(holds(text)).toBe(true);
     expect(text).toMatch(/^# Supply-chain guards/);
-    expect(text).toContain('minimumReleaseAge: 1440 # nosemgrep: ');
+    expect(text).toContain('minimumReleaseAge: 1440\n');
+    expect(text).not.toContain('nosemgrep');
     expect(text).not.toContain('patchedDependencies');
   });
 

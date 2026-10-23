@@ -13,7 +13,7 @@ on:
 
 permissions: {}
 
-concurrency: # zizmor: ignore[concurrency-limits] a sweep runs to the end; the next one waits
+concurrency: # a sweep runs to the end; the next one waits
   group: runtime-sweep
   cancel-in-progress: false
 
@@ -210,7 +210,7 @@ jobs:
           TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP }}
           TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP }}
           TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
-        run: node talos-kit/bootstrap/launch.mjs central sweep --json
+        run: node talos-kit/bootstrap/launch.ts central sweep --json
 
   privacy:
     name: privacy
@@ -317,4 +317,4 @@ jobs:
           TALOS_PRIVACY_JOB: privacy
           # The canary's name as a SHA-256 digest: the name itself would print here.
           TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
-        run: node talos-kit/bootstrap/launch.mjs central privacy --json
+        run: node talos-kit/bootstrap/launch.ts central privacy --json

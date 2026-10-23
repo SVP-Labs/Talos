@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { type DoctorDeps, doctorReport, nodeItem } from './doctor.js';
+import { type DoctorDeps, doctorReport, hooksItems, nodeItem } from './doctor.js';
 import { missingTools, onPath, resolvable } from './resolve.js';
 import type { Pack } from '../core/pack.js';
 import type { Exec } from '../exec/exec.js';
@@ -215,6 +215,44 @@ describe('doctorReport without its packs', () => {
       status: 'fail',
       detail: "Talos's check packs did not load: broken pack",
     });
+  });
+});
+
+describe('hooksItems', () => {
+  const hooksPathIs =
+    (path: string): Exec =>
+    () =>
+      Promise.resolve({ code: path === '' ? 1 : 0, stdout: `${path}\n`, stderr: '' });
+
+  it('says nothing in a repository without the hook', async () => {
+    expect(await hooksItems(hooksPathIs(''), await directory({}))).toEqual([]);
+  });
+
+  it('is content when git runs .githooks or another hooks path', async () => {
+    const root = await directory({ '.githooks/pre-push': '#!/bin/sh\n' });
+    expect(await hooksItems(hooksPathIs('.githooks'), root)).toEqual([
+      { id: 'hooks', status: 'ok', detail: 'git runs .githooks/pre-push' },
+    ]);
+    expect(await hooksItems(hooksPathIs('.husky/_'), root)).toEqual([
+      { id: 'hooks', status: 'ok', detail: 'git runs the hooks in .husky/_' },
+    ]);
+  });
+
+  it("is content with a hook manager's pre-push, and warns with the fix otherwise", async () => {
+    const managed = await directory({
+      '.githooks/pre-push': '#!/bin/sh\n',
+      '.git/hooks/pre-push': '#!/bin/sh\n',
+    });
+    expect((await hooksItems(hooksPathIs(''), managed))[0]?.status).toBe('ok');
+    const bare = await directory({ '.githooks/pre-push': '#!/bin/sh\n' });
+    expect(await hooksItems(hooksPathIs(''), bare)).toEqual([
+      {
+        id: 'hooks',
+        status: 'warn',
+        detail:
+          'git does not run the pre-push hook: run `git config core.hooksPath .githooks` once',
+      },
+    ]);
   });
 });
 

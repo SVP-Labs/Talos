@@ -7,7 +7,7 @@ import { runAt } from '../engine/local.js';
 import type { Engine } from '../engine/run.js';
 import { createEngine } from '../engine/session.js';
 import { compactDebt, debtCheckIds, debtReport, debtText } from '../jobs/debt-report.js';
-import { addWorktree, type Git, git, revParse } from '../repo/git.js';
+import { type Git, git, inWorktree, revParse } from '../repo/git.js';
 
 /** Where the default branch is, in order: what `origin` says, then the usual name. */
 const DEFAULT_TIPS = ['refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/heads/main'];
@@ -39,18 +39,16 @@ async function aloneAt(engine: Engine, repo: Git, sha: string): Promise<RunResul
   const cached = join(cacheDir, `${sha}-debt-${os}-${engine.version}.json`);
   if (await exists(cached)) return parseRunResult(await readFile(cached, 'utf8'));
   const directory = join(repo.root, '.talos', 'worktrees', `debt-${sha}`);
-  if (!(await exists(directory))) {
-    await mkdir(join(repo.root, '.talos', 'worktrees'), { recursive: true });
-    await addWorktree(repo, sha, directory);
-  }
-  const result = await runAt(engine, {
-    root: directory,
-    sha,
-    tiers: ['commit', 'head'],
-    os,
-    side: 'alone',
-    only: debtCheckIds(engine.packs),
-  });
+  const result = await inWorktree(repo, { sha, directory }, () =>
+    runAt(engine, {
+      root: directory,
+      sha,
+      tiers: ['commit', 'head'],
+      os,
+      side: 'alone',
+      only: debtCheckIds(engine.packs),
+    }),
+  );
   if (engineErrors(result).length === 0) {
     await mkdir(cacheDir, { recursive: true });
     await writeFile(cached, JSON.stringify(result));

@@ -51,20 +51,61 @@ describe('docs/decisions', () => {
 });
 
 describe('docs/glossary', () => {
-  it('finds avoided words in docs and code, not in the glossary or in code spans', async () => {
-    const glossary = '# Glossary\n\n**Merge queue**\nThe queue.\nAvoid: landing strip\n';
+  const glossary = '# Glossary\n\n**Merge queue**\nThe queue.\nAvoid: landing strip\n';
+
+  it('finds avoided words in docs and code, not in Avoid: lines or code spans', async () => {
     const outcome = await run('docs/glossary', {
-      'docs/glossary.md': glossary,
-      'README.md': 'Use the landing strip, not `landing strip`.\n',
+      'docs/glossary.md': `${glossary}\n**Gate**\nWhat runs before the landing strip.\n`,
+      'README.md': 'Use the landing strip, not `landing strip`, nor "landing strip".\n',
       'src/a.ts': 'export const landingStrip = 1;\n',
     });
     expect(where(outcome.findings)).toEqual([
+      ['glossary/avoid', 'docs/glossary.md', 8],
+      ['glossary/avoid', 'README.md', 1],
       ['glossary/avoid', 'README.md', 1],
       ['glossary/avoid', 'src/a.ts', 1],
     ]);
     expect(outcome.findings[0]?.message).toBe(
       '"landing strip" is a word the glossary avoids: write "Merge queue" instead.',
     );
+  });
+
+  it('lets a decision name an avoided word where it rejects it, and nowhere else', async () => {
+    const decision = [
+      '# Decisions',
+      '',
+      '## X1 · Queue',
+      '',
+      '**Decision:** a PR lands through the queue, never a "landing strip".',
+      'The landing strip is gone.',
+      '',
+      '**Rejected:** a landing strip run by hand',
+      '(the landing strip lost).',
+      '',
+      'A landing strip after the list counts.',
+      '',
+      '**Cost:** none.',
+      '',
+      '**Rejected:**',
+      '',
+      '- the landing strip;',
+      '  the landing strip again.',
+      '',
+      '## X2 · Next',
+      '',
+      'There is no landing strip.',
+      'Nor a “landing strip” by another name.',
+    ];
+    const outcome = await run('docs/glossary', {
+      'docs/glossary.md': glossary,
+      'DECISIONS.md': `${decision.join('\n')}\n`,
+      'docs/requirements/20260101-b.md': `# B\n\n**Rejected:** the landing strip.\n`,
+    });
+    expect(where(outcome.findings)).toEqual([
+      ['glossary/avoid', 'DECISIONS.md', 6],
+      ['glossary/avoid', 'DECISIONS.md', 11],
+      ['glossary/avoid', 'DECISIONS.md', 22],
+    ]);
   });
 });
 
@@ -144,6 +185,19 @@ describe('docs/markdown', () => {
       '.markdownlint.json': '{ "default": false }',
     });
     expect(where(outcome.findings)).toEqual([['markdownlint/MD025', 'README.md', 3]]);
+  });
+
+  it('skips PR templates, as the base does, wherever GitHub reads them from', async () => {
+    const template = 'Closes #\n\n## Problem\n\n<!-- What was wrong. -->\n';
+    const outcome = await run('docs/markdown', {
+      'pull_request_template.md': template,
+      '.github/pull_request_template.md': template,
+      'docs/guide.md': template,
+    });
+    expect(where(outcome.findings)).toEqual([['markdownlint/MD041', 'docs/guide.md', 1]]);
+    expect(
+      await run('docs/markdown', { '.github/pull_request_template.md': template }),
+    ).toMatchObject({ status: 'skipped', reason: 'the repository has no Markdown to lint' });
   });
 });
 

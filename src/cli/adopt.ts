@@ -18,6 +18,7 @@ import {
   type AdoptInput,
   type AdoptPlan,
   adoptPlan,
+  executablePaths,
   touchedPaths,
 } from '../adopt/plan.js';
 import { openBootstrapPull, startAdoption } from '../adopt/remote.js';
@@ -189,8 +190,12 @@ async function openPull(session: Session, plan: AdoptPlan, issue: number) {
 
 function commitSteps(plan: AdoptPlan, issue: number): string[] {
   const branch = branchFor(plan.config.prefix, issue);
+  const executable = executablePaths(plan);
+  const chmod =
+    executable.length === 0 ? '' : ` && git update-index --chmod=+x -- ${executable.join(' ')}`;
+  const subject = bootstrapSubject(plan.config.prefix, issue, plan.config.name);
   return [
-    `git add -A && git commit -m "${bootstrapSubject(plan.config.prefix, issue, plan.config.name)}"`,
+    `git add -A${chmod} && git commit -m "${subject}"`,
     `git push origin ${branch}`,
     `talos adopt pr --issue ${issue}`,
   ];
@@ -220,7 +225,8 @@ async function everything(session: Session, args: Args, agent: string) {
     return { ...base, done: false, next: capped(next.map((s) => clip(s))) };
   }
   const subject = bootstrapSubject(plan.config.prefix, started.issue, plan.config.name);
-  await commitPaths(session.io.cwd, session.run, touchedPaths(plan), subject);
+  const staging = { paths: touchedPaths(plan), executable: executablePaths(plan) };
+  await commitPaths(session.io.cwd, session.run, staging, subject);
   await pushBranch(session.io.cwd, session.run, started.branch);
   const pull = await openPull(session, plan, started.issue);
   return { ...base, done: true, ...pull };

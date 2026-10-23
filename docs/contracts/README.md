@@ -7,22 +7,53 @@ anything else takes the next one, and a reader refuses a contract or number it d
 
 ## JSON
 
-| Contract          | Printed by                                        | Schema                                     |
-| ----------------- | ------------------------------------------------- | ------------------------------------------ |
-| `talos.verdict/1` | `talos check --json`; the gate's `verdict.json`   | [verdict.schema.json](verdict.schema.json) |
-| `talos.status/1`  | `talos status --json`, one element per repository | [status.schema.json](status.schema.json)   |
-| `talos.claim/1`   | `talos ticket claim`, `next` and `release`        | [claim.schema.json](claim.schema.json)     |
-| `talos.version/1` | `talos version --enforced --json`                 | [version.schema.json](version.schema.json) |
+| Contract          | Printed by                                                        | Schema                                     |
+| ----------------- | ----------------------------------------------------------------- | ------------------------------------------ |
+| `talos.verdict/1` | `talos check --json`; the gate's `verdict.json`; `talos findings` | [verdict.schema.json](verdict.schema.json) |
+| `talos.status/1`  | `talos status --json`, one element per repository                 | [status.schema.json](status.schema.json)   |
+| `talos.claim/1`   | `talos ticket claim`, `next` and `release`                        | [claim.schema.json](claim.schema.json)     |
+| `talos.version/1` | `talos version --enforced --json`                                 | [version.schema.json](version.schema.json) |
 
 Each schema lists every field Talos writes under its number, and refuses anything else; a test
 checks what the commands really print against it, so the code and the schema change together. A
 release that adds a field adds it here too, under the same number. A reader that validates with
 an older copy should therefore ignore fields it doesn't know rather than refuse the document.
 
+`talos findings --repo <o/n> --pr <N>` prints the newest verdict a run of the gate's own
+workflow left on the PR's head, with that `run` added. With none it can read, its `status` is
+`unknown`, beside the `repo`, `pr` and `head` it looked at, and `error` says why when the run
+left a verdict Talos can't read.
+
+## Flags and exit codes
+
+Every command above takes `--json`, which a caller such as Thea's hub may append to each one:
+`talos ticket` and `talos findings` print JSON with or without it. The answer is always one JSON
+document on stdout, and an exit code says which kind it is:
+
+| Command                                        | 0                            | 1                                   | 3                       | 4                      |
+| ---------------------------------------------- | ---------------------------- | ----------------------------------- | ----------------------- | ---------------------- |
+| `talos check --json [--commits]`               | green                        | red                                 |                         |                        |
+| `talos findings --repo <o/n> --pr <N>`         | green, engine error, unknown | red                                 |                         |                        |
+| `talos status --repo <o/n>… --json`            | every repository read        | one wasn't; its element has `error` |                         |                        |
+| `talos ticket claim <N> --agent <id>`          | claimed                      | refused, with `reason`              | claimed by someone else |                        |
+| `talos ticket next --agent <id>`               | claimed                      |                                     |                         | `none` or `max-claims` |
+| `talos ticket release <N> --reason <one line>` | released                     | refused: `open-pr`, `not-found`     |                         |                        |
+| `talos version --enforced --json`              | the release                  |                                     |                         |                        |
+
+Exit 2 is an engine error. When a check broke, `talos check` prints its verdict with the
+`faults` and `status` `engine-error`; otherwise, and for every other command, nothing reaches
+stdout and the reason goes to stderr. A usage error exits 3 and prints nothing on stdout either,
+which tells it apart from a claim someone else holds. `talos ticket` takes `--repo <o/n>` with
+every subcommand; without it, the repository is `GITHUB_REPOSITORY`'s or the `origin` remote's.
+
+## Other contracts
+
 The other commands' `--json` output names its contract the same way (`talos.ticket/1` for
 `talos ticket status`, `talos.debt/1`, `talos.why/1`, `talos.doctor/1`, `talos.job/1`,
 `talos.central/1`, and `talos.adopt/1`, `talos.govern/1`, `talos.new/1`, `talos.org/1`), without
-a published schema yet.
+a published schema yet. `talos.adopt/1` lists each file adoption writes or deletes with its
+`why`, and `prefixChecked` says whether it could read the organisation's prefixes; both grew
+under the same number.
 
 ## Marker lines
 

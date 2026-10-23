@@ -31,6 +31,15 @@ const BY_FILES: readonly { readonly configs: readonly string[]; readonly globs: 
   { configs: ['p/terraform'], globs: ['**/*.tf'] },
 ];
 
+/**
+ * Registry rules that judge what a Talos check already decides, by another measure: Semgrep's
+ * pnpm rule asks for a longer minimum release age than the one day every SVP-Labs repository
+ * waits, which `supply/settings` checks.
+ */
+const EXCLUDED_RULES: readonly string[] = [
+  'package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age',
+];
+
 /** The rule sets a repository runs: the security sets, and each of its languages' and tools'. */
 export function semgrepConfigs(facts: RepoFacts): string[] {
   const own = BY_FILES.filter((set) => facts.has(...set.globs)).flatMap((set) => set.configs);
@@ -123,6 +132,7 @@ async function scan(ctx: CheckContext): Promise<Finding[]> {
     '--json',
     `--output=${report}`,
     ...semgrepConfigs(ctx.facts).map((config) => `--config=${config}`),
+    ...EXCLUDED_RULES.map((rule) => `--exclude-rule=${rule}`),
     ...ctx.config.exclude.map((entry) => `--exclude=/${entry.replace(/^\/+/, '')}`),
     '.',
   ];

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { loadAdoptAssets } from './assets.js';
 import { AdoptRefusal, checkPrefix, resolveConfig } from './config.js';
-import { type AdoptAssets, type AdoptInput, adoptPlan, touchedPaths } from './plan.js';
+import {
+  type AdoptAssets,
+  type AdoptInput,
+  adoptPlan,
+  executablePaths,
+  touchedPaths,
+} from './plan.js';
 import type { Pack } from '../core/pack.js';
 import { PACKS } from '../core/registry.js';
 
@@ -30,6 +36,7 @@ const ASSETS: AdoptAssets = {
   dependabot: { schedule: { interval: 'weekly' }, cooldown: { 'default-days': 1 } },
   claudeKit: '# {{name}}\n\nBranches are `{{prefix}}-<N>`.\n',
   runnerPatch: 'diff --git a/x b/x\n',
+  prePush: "#!/bin/sh\n# Talos's pre-push hook, written by talos adopt, which rewrites it.\n",
 };
 
 function input(texts: Record<string, string>, overrides: Partial<AdoptInput> = {}): AdoptInput {
@@ -79,10 +86,17 @@ describe('adoptPlan', () => {
       'dev-dependencies package.json',
       'line-endings .gitattributes',
       'supply-chain pnpm-workspace.yaml',
+      'hook .githooks/pre-push',
       'generated tool.config.js',
       'extension tool.project.js',
       'generated .repo-wide',
     ]);
+    expect(executablePaths(plan)).toEqual(['.githooks/pre-push']);
+    expect(JSON.parse(plan.write.find((f) => f.path === 'package.json')?.content ?? '{}')).toEqual(
+      expect.objectContaining({
+        scripts: { prepare: 'git config core.hooksPath .githooks || exit 0' },
+      }),
+    );
     expect(plan.next).toEqual(['in .: pnpm install --lockfile-only']);
     expect(plan.delete).toEqual([]);
   });
@@ -225,6 +239,24 @@ describe('adoptPlan with every pack Talos ships', () => {
     const second = adoptPlan(input(applied(REPO, first), { packs: PACKS, assets }));
     expect(second.write.map((f) => f.path)).toEqual([]);
     expect(second.delete).toEqual([]);
+  });
+
+  it("writes Talos's pre-push hook, and asks for a tsconfig that extends the base", async () => {
+    const assets = await loadAdoptAssets();
+    const plan = adoptPlan(input(REPO, { packs: PACKS, assets }));
+    expect(plan.write.find((f) => f.path === '.githooks/pre-push')).toEqual({
+      path: '.githooks/pre-push',
+      content: assets.prePush,
+      why: 'hook',
+      mode: 'executable',
+    });
+    expect(plan.next).toContainEqual(
+      expect.stringMatching(/^make tsconfig\.json extend \.\/tsconfig\.talos\.json /),
+    );
+    const extending = { ...REPO, 'tsconfig.json': '{ "extends": "./tsconfig.talos.json" }\n' };
+    const kept = adoptPlan(input(extending, { packs: PACKS, assets }));
+    expect(kept.write.map((f) => f.path)).not.toContain('tsconfig.json');
+    expect(kept.next.filter((step) => step.includes('tsconfig'))).toEqual([]);
   });
 
   it('moves the scanners’ settings into talos.yml and the project files', async () => {

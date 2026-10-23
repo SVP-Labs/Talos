@@ -13,7 +13,8 @@ async function judge(files: Record<string, string>, today = TODAY) {
 }
 
 describe('php2shell', () => {
-  // CVE-2026-109618 and -109619, fixed on 2026-10-21 in PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35.
+  // PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35 are the first of their cycles to fix CVE-2026-109618
+  // and CVE-2026-109619.
   it('makes php:8.4.26-fpm a security finding that fails every PR', async () => {
     expect(await judge({ 'docker/Dockerfile': 'FROM php:8.4.26-fpm\n' })).toEqual([
       {

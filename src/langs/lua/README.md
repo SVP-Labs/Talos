@@ -18,7 +18,8 @@ There is no type coverage and no architecture check: Lua has no tool for either.
 
 ## Installing
 
-`install()` builds the tree in `.lua` in the component's root (projects git-ignore it):
+`install()` builds the tree in `.lua` in the component's root, which `talos adopt` adds to the
+repository's `.gitignore` as `.lua/`:
 
 1. hererocks builds Lua 5.4.9 and LuaRocks 3.13.0 into it, without readline. hererocks is a
    single Python script that `tools.lock` pins by checksum; `uv run --no-project --no-config`

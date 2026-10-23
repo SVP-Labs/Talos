@@ -1,7 +1,7 @@
 # Supply-chain guards (C27), the same every governed repository gets: a release waits
 # a day before it can be installed, no dependency of a dependency comes from git or a
 # tarball URL, and a package published with less provenance than before stops the install.
-minimumReleaseAge: 1440 # nosemgrep: package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age
+minimumReleaseAge: 1440
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 trustPolicyExclude:

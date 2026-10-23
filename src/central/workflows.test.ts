@@ -156,7 +156,7 @@ describe('every workflow', () => {
   it('runs Talos through the launcher, which verifies the release first', () => {
     for (const path of paths.filter((p) => p !== FILES.selfTest && p !== FILES.release)) {
       const runs = stepsOf(path).flatMap((s) =>
-        s.run?.includes('launch.mjs') === true ? [s.run] : [],
+        s.run?.includes('launch.ts') === true ? [s.run] : [],
       );
       expect(runs.length, path).toBeGreaterThan(0);
       expect(
@@ -210,8 +210,11 @@ describe('the gate', () => {
     });
   });
 
-  it('never cancels a run and holds no secret', () => {
-    expect(gate.concurrency).toBeUndefined();
+  it('never cancels a run in progress, queues per PR or merge group, and holds no secret', () => {
+    expect(gate.concurrency).toEqual({
+      group:
+        'talos-gate-${{ github.event.pull_request.number || github.event.merge_group.head_ref }}',
+    });
     expect(text(FILES.gate)).not.toMatch(/cancel-in-progress|secrets\./);
     for (const [, job] of Object.entries(jobs)) {
       expect(
@@ -239,6 +242,11 @@ describe('the gate', () => {
     expect(upload?.if).toContain('!cancelled()');
   });
 
+  it("judges a commit without talos.yml by the head's, as the PR that adopts Talos needs", () => {
+    const run = jobs.run?.steps.find(named('Run the checks'))?.run ?? '';
+    expect(run).toContain('--config-from "$HEAD"');
+  });
+
   it('runs every Talos command at the pin, checked out beside the repository', () => {
     for (const [id, job] of Object.entries(jobs).filter(([id]) => id !== 'engine')) {
       const kit = job.steps.find((s) => s.with?.path === 'talos-kit');
@@ -256,19 +264,20 @@ describe('the gate', () => {
     }
   });
 
-  it('sets PHP up only on the runs whose OS a PHP component lists', () => {
-    const find = jobs.plan?.steps.find((s) => s.id === 'php');
-    expect(find?.run).toBe(
-      'bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"',
-    );
-    expect(jobs.plan?.outputs).toMatchObject({
-      'php-oses': '${{ steps.php.outputs.oses }}',
-      'php-version': '${{ steps.php.outputs.version }}',
+  it("sets PHP up from each run's own matrix entry, only where a PHP component needs it", () => {
+    expect(JSON.stringify(jobs.plan)).not.toContain('php.sh');
+    expect(jobs.plan?.outputs).toEqual({
+      matrix: '${{ steps.plan.outputs.matrix }}',
+      base: '${{ steps.plan.outputs.base }}',
+      head: '${{ steps.plan.outputs.head }}',
+      tree: '${{ steps.plan.outputs.tree }}',
     });
     const steps = jobs.run?.steps ?? [];
     const php = steps.findIndex(using('shivammathur/setup-php'));
-    expect(steps[php]?.if).toContain('contains(fromJSON(needs.plan.outputs.php-oses), matrix.os)');
-    expect(steps[php]?.with?.['php-version']).toBe('${{ needs.plan.outputs.php-version }}');
+    expect(steps[php]?.if).toBe(
+      "${{ steps.cached.outputs.cache-hit != 'true' && matrix.php != '' }}",
+    );
+    expect(steps[php]?.with?.['php-version']).toBe('${{ matrix.php }}');
     expect(php).toBeLessThan(steps.findIndex(named('Run the checks')));
   });
 
@@ -359,14 +368,25 @@ describe('the caller', () => {
     expect(download.with).toEqual({ name: 'talos-analyze', path: upload.with?.path });
     const checkout = stepIn(analyze, (s) => s.with?.path === 'repo', 'checking the branch out');
     expect(checkout.with?.ref).toBe('${{ github.event.repository.default_branch }}');
-    expect(JSON.stringify(analyze)).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN|TALOS_REVIEW_MODEL/);
-    const run = stepIn(act, named('Act'), 'Act');
-    expect(run.env).toMatchObject({
+    expect(JSON.stringify(analyze)).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN/);
+    expect(stepIn(act, named('Act'), 'Act').env).toMatchObject({
       CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
-      REVIEW_MODEL: '${{ vars.TALOS_REVIEW_MODEL }}',
       TALOS_OWNER: '${{ vars.TALOS_OWNER }}',
     });
-    expect(run.run).toContain('export TALOS_REVIEW_MODEL="$REVIEW_MODEL"');
+  });
+
+  it("hands the reviewer's model setting to the act phase alone, defaulting nothing", () => {
+    const { analyze, act } = caller.jobs;
+    const run = stepIn(act, named('Act'), 'Act');
+    expect(run.env?.TALOS_REVIEW_MODEL).toBe('${{ vars.TALOS_REVIEW_MODEL }}');
+    expect(run.run).not.toMatch(/REVIEW_MODEL/);
+    expect(JSON.stringify(analyze)).not.toMatch(/REVIEW_MODEL/);
+    const lines = text(FILES.caller)
+      .split('\n')
+      .filter((line) => line.includes('REVIEW_MODEL'));
+    expect(lines.map((line) => line.trim())).toEqual([
+      'TALOS_REVIEW_MODEL: ${{ vars.TALOS_REVIEW_MODEL }}',
+    ]);
   });
 
   it('lets one event at a time act on a PR or an issue, cancelling none', () => {
@@ -424,7 +444,7 @@ describe('the central jobs in this public repository', () => {
         new Set(jobs.map(([id]) => id).filter((id) => id !== 'privacy')),
       );
       const run = privacy.steps.at(-1);
-      expect(run?.run, path).toBe('node talos-kit/bootstrap/launch.mjs central privacy --json');
+      expect(run?.run, path).toBe('node talos-kit/bootstrap/launch.ts central privacy --json');
       expect(run?.env?.TALOS_PRIVACY_JOB, path).toBe(privacy.name);
     }
   });
@@ -442,7 +462,7 @@ describe('the central jobs in this public repository', () => {
   it('print JSON only', () => {
     for (const path of CENTRAL) {
       for (const step of stepsOf(path).filter(
-        (s) => s.run?.includes('launch.mjs central') === true,
+        (s) => s.run?.includes('launch.ts central') === true,
       )) {
         expect(step.run, path).toMatch(/ --json$/);
       }
@@ -477,7 +497,7 @@ describe('the release and channel workflows', () => {
     expect(job.if).toContain("github.event.label.name == 'regression'");
     expect(job.steps[0]?.if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
     expect(job.steps.at(-1)?.run).toBe(
-      'node talos-kit/bootstrap/launch.mjs central channels --json',
+      'node talos-kit/bootstrap/launch.ts central channels --json',
     );
   });
 

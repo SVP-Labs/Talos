@@ -25,11 +25,16 @@ export function parseConfig(text: string, source = CONFIG_FILE): TalosConfig {
   return result.data;
 }
 
-export async function loadConfig(root: string): Promise<TalosConfig> {
+/**
+ * The `talos.yml` at `root`. Without one, `fallback` stands in when given: the head's, for a
+ * commit from before the repository adopted Talos, so its run judges the same components.
+ */
+export async function loadConfig(root: string, fallback?: TalosConfig): Promise<TalosConfig> {
   let text: string;
   try {
     text = await readFile(join(root, CONFIG_FILE), 'utf8');
   } catch {
+    if (fallback !== undefined) return fallback;
     throw new ConfigError(`${CONFIG_FILE} not found in ${root}: run \`talos adopt\` first`);
   }
   return parseConfig(text);

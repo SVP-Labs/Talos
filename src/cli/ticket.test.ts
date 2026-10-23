@@ -103,6 +103,16 @@ describe('talos ticket', () => {
     });
   });
 
+  it('takes --json, which agents pass to every command, and answers the same', async () => {
+    const claimed = await talos('claim', '7', '--agent', 'thea', '--repo', 'o/r', '--json');
+    expect(claimed).toMatchObject({ code: 0, json: { schema: 'talos.claim/1', branch: 'R-7' } });
+    expect(await talos('status', '7', '--json')).toMatchObject({
+      code: 0,
+      json: { schema: 'talos.ticket/1', claimed: true, agent: 'thea' },
+    });
+    await expect(talos('status', '7', '--json=yes')).rejects.toThrow(UsageError);
+  });
+
   it('refuses bad usage before calling GitHub', async () => {
     await expect(talos()).rejects.toThrow(UsageError);
     await expect(talos('steal', '7')).rejects.toThrow(UsageError);

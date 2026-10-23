@@ -79,6 +79,9 @@ pnpm self-test                              # every check against its test proje
 TALOS_DEV=1 node dist/bin/talos.js <cmd>    # run this build, not the pinned release
 ```
 
+`pnpm install` points git at `.githooks`, whose `pre-push` runs the fast tier with the build in
+`dist/`: run `pnpm build` after pulling, so it judges with the code you have.
+
 Never:
 
 - call GitHub's API with a write method from a test or a local run: tests pass a fake fetch to

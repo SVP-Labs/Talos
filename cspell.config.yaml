@@ -18,6 +18,10 @@ ignoreRegExpList:
   - '/xǁ[\wǁ]*/gu'
 ignorePaths:
   - '**/node_modules/**'
+  - '**/.talos/**'
+  - '**/coverage/**'
+  - '**/reports/**'
+  - '**/.stryker-tmp/**'
   - '.cspell/**'
   - '**/pnpm-lock.yaml'
   - '**/*.lock'

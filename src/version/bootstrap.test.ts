@@ -36,7 +36,7 @@ type Bootstrap = {
   ): string | undefined;
 };
 
-const bootstrap = (await import(pathToFileURL(join(BOOTSTRAP, 'launch.mjs')).href)) as Bootstrap;
+const bootstrap = (await import(pathToFileURL(join(BOOTSTRAP, 'launch.ts')).href)) as Bootstrap;
 
 const recorded: unknown = JSON.parse(
   readFileSync(new URL('fixtures/sigstore-core-4.0.1.attestations.json', import.meta.url), 'utf8'),
@@ -84,7 +84,7 @@ function verdicts(response: unknown, expected: ExpectedBuild): [Verdict, Verdict
   ];
 }
 
-describe('bootstrap/launch.mjs agrees with the engine', () => {
+describe('bootstrap/launch.ts agrees with the engine', () => {
   const recordedStatement: unknown = JSON.parse(
     Buffer.from(
       (

@@ -80,7 +80,7 @@ function exitOf(result: ClaimResult | ReleaseResult | NextResult): number {
 
 const USAGE =
   'usage: talos ticket claim <issue> --agent <id> | next --agent <id> | ' +
-  'release <issue> --reason <text> | status <issue>   [--repo owner/name]';
+  'release <issue> --reason <text> | status <issue>   [--repo owner/name] [--json]';
 
 /** A subcommand with its arguments checked, before anything touches GitHub. */
 export type TicketRequest =
@@ -179,9 +179,16 @@ async function runRequest(
 export function ticketWith(options: GitHubOptions): Command {
   return async (argv, io) => {
     const [sub, ...rest] = argv;
+    // Every answer is JSON already, so `--json`, which agents pass to every command, changes
+    // nothing here.
     const { values, positionals } = parse(
       rest,
-      { agent: { type: 'string' }, reason: { type: 'string' }, repo: { type: 'string' } },
+      {
+        agent: { type: 'string' },
+        reason: { type: 'string' },
+        repo: { type: 'string' },
+        json: { type: 'boolean', default: false },
+      },
       true,
     );
     const request = ticketRequest(sub, {
@@ -207,6 +214,7 @@ export function ticketWith(options: GitHubOptions): Command {
 
 /**
  * `talos ticket`: the claim protocol, for agents and people alike. Every subcommand prints one
- * JSON object (`talos.ticket/1`); `next` first releases claims idle for four hours.
+ * JSON object, with or without `--json`: `talos.claim/1` from `claim`, `next` and `release`, and
+ * `talos.ticket/1` from `status`. `next` first releases claims idle for four hours.
  */
 export const ticket: Command = ticketWith({});

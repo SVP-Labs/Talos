@@ -7,6 +7,9 @@ import type { Finding } from '../../core/finding.js';
 
 const FILES = ['rust-toolchain.toml', 'rust-toolchain'];
 
+/** The exact release a toolchain file Talos writes pins; one a project already pins stays. */
+export const RUST_CHANNEL = '1.99.1';
+
 /** What the editor needs beside the compiler to show what the gate reports. */
 const REQUIRED_COMPONENTS = ['clippy', 'rustfmt'];
 

@@ -1,4 +1,4 @@
-import { deflateRawSync } from 'node:zlib';
+import { crc32, deflateRawSync } from 'node:zlib';
 import { z } from 'zod';
 import { github, type GitHub } from '../../github/api.js';
 
@@ -44,6 +44,8 @@ export type FakeLabel = { name: string; color: string; description: string | nul
 
 export type FakeArtifact = {
   id: number;
+  /** The workflow run that uploaded it, when a test lists a run's artifacts. */
+  run?: number;
   name: string;
   created_at: string;
   expired: boolean;
@@ -89,6 +91,8 @@ function text(value: unknown): string | undefined {
 export class FakeGitHub {
   readonly calls: Call[] = [];
   defaultBranch = 'main';
+  /** The organisation's custom properties on the repository, such as `talos-agents`. */
+  readonly properties: Record<string, string> = {};
   readonly refs = new Map<string, string>([['main', 'sha-main']]);
   readonly commitDates = new Map<string, string>([['sha-main', '2026-10-01T00:00:00Z']]);
   readonly issues = new Map<number, FakeIssue>();
@@ -105,7 +109,7 @@ export class FakeGitHub {
   private nextId = 5000;
 
   private readonly routes: [string, RegExp, Handler][] = [
-    ['GET', /^repos\/o\/r$/, () => ok({ default_branch: this.defaultBranch, full_name: 'o/r' })],
+    ['GET', /^repos\/o\/r$/, () => this.repository()],
     ['GET', /^repos\/o\/r\/git\/ref\/heads\/(.+)$/, (_c, m) => this.getRef(m)],
     ['GET', /^repos\/o\/r\/git\/matching-refs\/heads\/(.*)$/, (_c, m) => this.matchingRefs(m)],
     ['POST', /^repos\/o\/r\/git\/refs$/, (c) => this.createRef(c)],
@@ -122,12 +126,14 @@ export class FakeGitHub {
     ['POST', /^repos\/o\/r\/issues\/(\d+)\/comments$/, (c, m) => this.addComment(c, m)],
     ['GET', /^repos\/o\/r\/issues\/(\d+)\/timeline$/, (_c, m) => this.timeline(m)],
     ['GET', /^repos\/o\/r\/pulls$/, (c) => this.listPulls(c)],
+    ['GET', /^repos\/o\/r\/pulls\/(\d+)$/, (_c, m) => this.pull(m)],
     ['PATCH', /^repos\/o\/r\/pulls\/(\d+)$/, (c, m) => this.editPull(c, m)],
     ['GET', /^repos\/o\/r\/labels$/, () => ok(this.labels)],
     ['POST', /^repos\/o\/r\/labels$/, (c) => this.createLabel(c)],
     ['PATCH', /^repos\/o\/r\/labels\/(.+)$/, (c, m) => this.editLabel(c, m)],
     ['GET', /^repos\/o\/r\/contents\/(.+)$/, (c, m) => this.contents(c, m)],
     ['GET', /^repos\/o\/r\/actions\/artifacts$/, (c) => this.listArtifacts(c)],
+    ['GET', /^repos\/o\/r\/actions\/runs\/(\d+)\/artifacts$/, (_c, m) => this.runArtifacts(m)],
     ['GET', /^repos\/o\/r\/actions\/artifacts\/(\d+)\/zip$/, (_c, m) => this.redirect(m)],
     ['GET', /^storage\/(\d+)$/, (c, m) => this.download(c, m)],
     ['POST', /^graphql$/, (c) => this.answerGraphql(c)],
@@ -222,6 +228,15 @@ export class FakeGitHub {
       closed_at: issue.closed_at,
       ...(issue.pull_request === undefined ? {} : { pull_request: issue.pull_request }),
     };
+  }
+
+  private repository(): Reply {
+    return ok({
+      id: 1,
+      full_name: 'o/r',
+      default_branch: this.defaultBranch,
+      custom_properties: this.properties,
+    });
   }
 
   private getRef(m: RegExpExecArray): Reply {
@@ -390,6 +405,13 @@ export class FakeGitHub {
     );
   }
 
+  private pull(m: RegExpExecArray): Reply {
+    const pull = this.pulls.find((p) => p.number === Number(m[1]));
+    if (pull === undefined) return NOT_FOUND;
+    const head = { ref: pull.head, sha: this.refs.get(pull.head) ?? 'gone' };
+    return ok({ number: pull.number, draft: pull.draft, state: pull.state, head });
+  }
+
   private editPull(call: Call, m: RegExpExecArray): Reply {
     const pull = this.pulls.find((p) => p.number === Number(m[1]));
     if (pull === undefined) return NOT_FOUND;
@@ -436,7 +458,14 @@ export class FakeGitHub {
 
   private listArtifacts(call: Call): Reply {
     const name = call.query.get('name');
-    const listed = this.artifacts.filter((a) => name === null || a.name === name);
+    return this.artifactList(this.artifacts.filter((a) => name === null || a.name === name));
+  }
+
+  private runArtifacts(m: RegExpExecArray): Reply {
+    return this.artifactList(this.artifacts.filter((a) => a.run === Number(m[1])));
+  }
+
+  private artifactList(listed: readonly FakeArtifact[]): Reply {
     return ok({
       total_count: listed.length,
       artifacts: listed.map((a) => ({
@@ -446,7 +475,7 @@ export class FakeGitHub {
         expired: a.expired,
         created_at: a.created_at,
         archive_download_url: `https://api.github.com/repos/o/r/actions/artifacts/${a.id}/zip`,
-        workflow_run: { id: a.id * 10, head_branch: 'T-1', head_sha: 'abc' },
+        workflow_run: { id: a.run ?? a.id * 10, head_branch: 'T-1', head_sha: 'abc' },
       })),
     });
   }
@@ -469,7 +498,8 @@ export class FakeGitHub {
 
 /**
  * A zip archive as `actions/upload-artifact` writes one: deflated entries, and with `streamed`,
- * local headers whose sizes are zero because a data descriptor follows the data.
+ * local headers whose sizes and checksums are zero because a data descriptor follows the data.
+ * Each entry carries its CRC-32, so the system's `unzip` reads the archive too.
  */
 export function makeZip(
   entries: Readonly<Record<string, string>>,
@@ -482,17 +512,23 @@ export function makeZip(
     const raw = Buffer.from(content);
     const data = options.stored === true ? raw : deflateRawSync(raw);
     const fileName = Buffer.from(name);
+    const checksum = crc32(raw);
+    // A streamed entry leaves its checksum and sizes to the data descriptor after the data.
+    const [crc, packed, size] =
+      options.streamed === true ? [0, 0, 0] : [checksum, data.length, raw.length];
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04_03_4b_50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(options.streamed === true ? 8 : 0, 6);
     local.writeUInt16LE(options.stored === true ? 0 : 8, 8);
-    local.writeUInt32LE(options.streamed === true ? 0 : data.length, 18);
-    local.writeUInt32LE(options.streamed === true ? 0 : raw.length, 22);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(packed, 18);
+    local.writeUInt32LE(size, 22);
     local.writeUInt16LE(fileName.length, 26);
     const entry = Buffer.alloc(46);
     entry.writeUInt32LE(0x02_01_4b_50, 0);
     entry.writeUInt16LE(options.stored === true ? 0 : 8, 10);
+    entry.writeUInt32LE(checksum, 16);
     entry.writeUInt32LE(data.length, 20);
     entry.writeUInt32LE(raw.length, 24);
     entry.writeUInt16LE(fileName.length, 28);

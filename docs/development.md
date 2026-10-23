@@ -12,6 +12,10 @@ about working on the kit itself.
 - `TALOS_DEV=1` runs the copy you built as it is. Without it, the commands that act on a
   repository first look up the release the repository enforces and run that instead, which is
   what you want everywhere but here ([architecture.md](architecture.md), which release runs).
+- `pnpm install` also points the clone's `core.hooksPath` at `.githooks`, whose `pre-push` runs
+  the hook every governed repository gets (`assets/hooks/pre-push`): the fast tier, here with the
+  build in `dist/` and `TALOS_DEV=1`. It refuses a push when there is no build, and judges with
+  whatever build is there, so run `pnpm build` after pulling.
 
 ## Checking a change
 

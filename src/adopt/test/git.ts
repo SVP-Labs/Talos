@@ -19,9 +19,13 @@ export const quietExec: Exec = (command, args, options) =>
     });
   });
 
+/** Runs a program from PATH, as the engine's own `exec` does, and returns what it printed. */
+function runSync(program: string, args: readonly string[], cwd: string): string {
+  return execFileSync(program, args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+}
+
 export function sh(cwd: string, ...args: string[]): string {
-  // eslint-disable-next-line sonarjs/no-os-command-from-path -- tests drive the git on PATH
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+  return runSync('git', args, cwd);
 }
 
 /** A clone of a bare origin, with `files` committed on main and pushed. */

@@ -2,7 +2,15 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import type { TalosConfig } from '../config/schema.js';
-import type { Check, CheckContext, Component, Memo, Os, Tier } from '../core/check.js';
+import type {
+  ApplyContext,
+  Check,
+  CheckContext,
+  Component,
+  Memo,
+  Os,
+  Tier,
+} from '../core/check.js';
 import type { Finding, Reported } from '../core/finding.js';
 import { fingerprint, identity } from '../core/fingerprint.js';
 import type { Logger } from '../core/log.js';
@@ -39,6 +47,11 @@ export type RunPlan = {
   readonly only?: readonly string[];
   /** Components whose install failed, by root: their checks report it as an engine error. */
   readonly failedInstalls?: ReadonlyMap<string, string>;
+  /**
+   * The commit has no `talos.yml` and is judged by the head's: it predates adopting Talos, so a
+   * component that can't be installed there isn't there yet, and its checks skip.
+   */
+  readonly borrowed?: boolean;
   readonly concurrency?: number;
 };
 
@@ -121,6 +134,23 @@ type Shared = {
   readonly scratchRoot: string;
 };
 
+/** Why a task doesn't run: its component failed to install, or the check doesn't apply. */
+function heldBack(
+  plan: RunPlan,
+  task: Task,
+  applyContext: ApplyContext,
+): { readonly status: 'error' | 'skipped'; readonly reason: string } | undefined {
+  const failed =
+    task.component === undefined ? undefined : plan.failedInstalls?.get(task.component.root);
+  if (failed !== undefined) {
+    return plan.borrowed === true
+      ? { status: 'skipped', reason: `the component predates talos.yml here: ${failed}` }
+      : { status: 'error', reason: failed };
+  }
+  const applicability = task.check.applies(applyContext);
+  return applicability.applies ? undefined : { status: 'skipped', reason: applicability.reason };
+}
+
 async function runTask(shared: Shared, task: Task): Promise<Outcome> {
   const { engine, plan } = shared;
   const started = performance.now();
@@ -137,21 +167,8 @@ async function runTask(shared: Shared, task: Task): Promise<Outcome> {
     ...(task.component ? { component: task.component } : {}),
     ...(plan.changes ? { changes: plan.changes } : {}),
   };
-  const failedInstall =
-    task.component === undefined ? undefined : plan.failedInstalls?.get(task.component.root);
-  if (failedInstall !== undefined) {
-    return { ...base, status: 'error', reason: failedInstall, durationMs: 0, findings: [] };
-  }
-  const applicability = task.check.applies(applyContext);
-  if (!applicability.applies) {
-    return {
-      ...base,
-      status: 'skipped',
-      reason: applicability.reason,
-      durationMs: 0,
-      findings: [],
-    };
-  }
+  const held = heldBack(plan, task, applyContext);
+  if (held !== undefined) return { ...base, ...held, durationMs: 0, findings: [] };
   const scratch = await mkdtemp(join(shared.scratchRoot, `${task.check.id.replaceAll('/', '-')}-`));
   const ctx: CheckContext = {
     ...applyContext,

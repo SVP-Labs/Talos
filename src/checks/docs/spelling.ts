@@ -91,7 +91,12 @@ export const cspellBase: Generated = {
   path: CSPELL_CONFIG,
   scope: 'repo',
   applies: (ctx) => spellingFiles(ctx.facts).length > 0,
-  render: (ctx) => renderCspellBase(ctx.version, ctx.config.exclude),
+  render: (ctx) =>
+    renderCspellBase(
+      ctx.version,
+      ctx.config.exclude,
+      ctx.config.components.map((component) => component.lang),
+    ),
   extension: {
     path: WORDS_FILE,
     initial: () => "# Words the dictionaries don't know, one per line, grouped and sorted.\n",

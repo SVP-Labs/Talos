@@ -143,7 +143,8 @@ merge group   fast tier on every commit of the group; head tier on its tip
 ```
 
 - **The fast tier:** format, lint, types, dead code, unit tests, suppressions and the commit
-  subject. Run `talos check` before every push.
+  subject. Run `talos check` before every push; the pre-push hook `talos adopt` writes
+  (`.githooks/pre-push`) runs the fast tier too, but the gate decides.
 - **The head tier:** integration and e2e tests, coverage, type coverage, architecture,
   duplication, secrets, dependencies and licences, Semgrep, Markdown, spelling, the shell,
   PowerShell, Dockerfile and workflow linters, size budgets, doc references, decisions, the
@@ -274,8 +275,9 @@ Each kind of knowledge has one place (C7):
   unique and every reference resolves. A reversal is a new entry marked `Reverses:`, and the old
   entry gains `Reversed by:`; nothing is edited in place.
 - **The glossary,** one file at the path `talos.yml` names: `**Term**` and its definition.
-  Words under `Avoid:` fail in code, docs and commit subjects; terms feed the spelling
-  dictionary.
+  Words under `Avoid:` fail in code, docs, the glossary's own definitions and commit subjects;
+  terms feed the spelling dictionary. A code span mentions a word anywhere without using it, and
+  a decision may also name one in its `**Rejected:**` list or in double quotes.
 - **History** is the PR body (section 4). There is no changelog.
 - **Code comments** as section 7 says.
 - **`CLAUDE.md`** holds instructions only: Talos's generated block, which links here, and a
@@ -382,8 +384,11 @@ architecture rules in the tools' own syntax, never here.
   moves a green repository on and removes the code-owner ruleset. Where GitHub's API exposes no
   setting, it prints the manual step (C29).
 - **`talos adopt`:** writes the files and labels in one bootstrap PR: `talos.yml`, the generated
-  configs, `CLAUDE.md`, the issue forms, the labels, the brief and issue #1. Existing open issues
-  become `legacy`. Thea can run it.
+  configs, `CLAUDE.md`, the issue forms, the labels, the pre-push hook, each language's setup
+  (pinned dev tools, supply-chain settings, toolchain), the brief and issue #1. The project's own
+  tool settings move into the extension files and `talos.yml`; what it can't do itself, it lists
+  as next steps. It refuses a prefix another repository uses. Existing open issues become
+  `legacy`. Thea can run it.
 - A repository comes in at `evaluate`, where nothing blocks and the owner approves every PR on
   GitHub, and moves to its channel once it is green (C18).
 - The settings are checked weekly by the drift report; a difference becomes a `drift` issue.

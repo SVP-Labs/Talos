@@ -179,9 +179,11 @@ describe('talos adopt', () => {
         'talos.yml',
         'CLAUDE.md',
         '.github/dependabot.yml',
+        '.githooks/pre-push',
         'docs/requirements/20261023-demo-what-it-is-for.md',
       ]),
     );
+    expect(git(origin, 'ls-tree', 'D-2', '--', '.githooks/pre-push')).toMatch(/^100755 /);
     expect(state.issues[0]?.labels).toEqual([]);
     expect(state.comments.get(2)?.[0]).toMatch(/^🔒 claimed by SvenPGH/);
   });
@@ -231,6 +233,9 @@ describe('talos adopt', () => {
       0,
     );
     expect(files.stdout).toContain('step: files');
+    expect(files.stdout).toContain(
+      'git add -A && git update-index --chmod=+x -- .githooks/pre-push && git commit -m',
+    );
     sh(root, 'add', '-A');
     sh(root, 'commit', '--quiet', '-m', '[D-1]: Bring demo under Talos');
     sh(root, 'push', '--quiet', 'origin', 'D-1');

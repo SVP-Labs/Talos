@@ -2,6 +2,7 @@ import { posix } from 'node:path';
 import { checkPrefix, type ConfigInput, parsed, resolveConfig } from './config.js';
 import { isFixture } from './dependabot.js';
 import { type Deletion, type Draft, type PlannedFile, startDraft } from './draft.js';
+import { type HookAssets, prePushHook } from './hooks.js';
 import { type KitAssets, kitFiles } from './kit.js';
 import { type LanguageAssets, languageSteps } from './languages.js';
 import type { Seed } from './python.js';
@@ -9,6 +10,7 @@ import { fromScaffold, scaffoldLeftovers } from './scaffold.js';
 import { securityMigration } from './security.js';
 import { withAdditions } from './talos-yml.js';
 import { briefPath } from './texts.js';
+import { tsconfigSteps } from './tsconfig.js';
 import { GITLEAKS_PROJECT } from '../checks/security/gitleaks-config.js';
 import type { TalosConfig } from '../config/schema.js';
 import { renderConfigs } from '../configs/files.js';
@@ -18,7 +20,7 @@ import type { PrefixUse } from '../govern/create.js';
 import { repoFacts } from '../repo/facts.js';
 
 /** What adoption copies into every repository from Talos's assets. */
-export type AdoptAssets = KitAssets & LanguageAssets;
+export type AdoptAssets = KitAssets & LanguageAssets & HookAssets;
 
 export type AdoptInput = ConfigInput & {
   /** A brief to add, as given: its file name and text. */
@@ -72,21 +74,22 @@ function settle(draft: Draft, input: AdoptInput, seeds: Map<string, Seed>): Sett
 
 /**
  * Every generated base through the shared rendering, and each missing extension file once: from
- * its initial text, or the project's own settings moved into it.
+ * its initial text, or the project's own settings moved into it. Returns the bases' paths.
  */
 function generated(
   draft: Draft,
   input: AdoptInput,
   config: TalosConfig,
   seeds: ReadonlyMap<string, Seed>,
-): void {
+): string[] {
   const ctx: ApplyContext = {
     facts: repoFacts(draft.files(), config.exclude),
     config,
     side: 'alone',
     tiers: ['commit', 'head'],
   };
-  for (const file of renderConfigs(input.packs, ctx, input.version)) {
+  const rendered = renderConfigs(input.packs, ctx, input.version);
+  for (const file of rendered) {
     const extension = file.extension;
     const missing = extension !== undefined && !draft.has(extension.path);
     draft.write(file.path, file.content, 'generated');
@@ -98,6 +101,7 @@ function generated(
       'extension',
     );
   }
+  return rendered.map((file) => file.path);
 }
 
 function brief(draft: Draft, input: AdoptInput, config: TalosConfig): string | undefined {
@@ -125,7 +129,9 @@ export function adoptPlan(input: AdoptInput): AdoptPlan {
     seeds.set(path, seed);
   }
   const briefFile = brief(draft, input, config);
-  generated(draft, input, config, seeds);
+  prePushHook(draft, input.assets);
+  const bases = generated(draft, input, config, seeds);
+  tsconfigSteps(draft, config, bases);
   const done = draft.done();
   return {
     config,
@@ -143,4 +149,9 @@ export function touchedPaths(plan: AdoptPlan): string[] {
   return [...plan.write.map((f) => f.path), ...plan.delete.map((d) => d.path)].map((p) =>
     posix.normalize(p),
   );
+}
+
+/** The files a plan writes that git must record as executable. */
+export function executablePaths(plan: AdoptPlan): string[] {
+  return plan.write.filter((f) => f.mode === 'executable').map((f) => posix.normalize(f.path));
 }

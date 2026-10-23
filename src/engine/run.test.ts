@@ -105,4 +105,18 @@ describe('runChecks after a failed install', () => {
       ['b', 'findings', undefined],
     ]);
   });
+
+  it("skips them on a commit judged by the head's talos.yml, which predates the component", async () => {
+    const root = await tempRepo({});
+    const config = parseConfig('name: T\nprefix: T\ncomponents:\n  - { lang: py, root: a }\n');
+    const result = await runChecks(testEngine([pack]), {
+      ...testPlan(root, [], config),
+      only: ['demo/per-component'],
+      failedInstalls: new Map([['a', 'installing py at a: no uv.lock']]),
+      borrowed: true,
+    });
+    expect(result.outcomes.map((o) => [o.component, o.status, o.reason])).toEqual([
+      ['a', 'skipped', 'the component predates talos.yml here: installing py at a: no uv.lock'],
+    ]);
+  });
 });

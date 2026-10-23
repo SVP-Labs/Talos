@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { excludeGlobs } from './markdownlint.js';
 import { generatedHeader } from '../../configs/header.js';
-import { EngineError } from '../../core/check.js';
+import { EngineError, type Lang } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
 import { KIT_BEGIN, KIT_END } from '../../docs/claude.js';
 import type { RepoFacts } from '../../repo/facts.js';
@@ -24,6 +24,24 @@ const SPELLING_GLOBS = [
   '.githooks/*',
 ];
 const NOT_SPELLED = ['**/pnpm-lock.yaml', '**/*.lock'];
+
+/** Where Talos keeps its local reports and cache, in every repository. */
+const TALOS_OUTPUT = '.talos';
+
+/** What each language's tools write into a checkout: reports, sandboxes and installed packages. */
+const TOOL_OUTPUT: readonly (readonly [Lang, readonly string[]])[] = [
+  ['ts', ['coverage', 'reports', '.stryker-tmp']],
+  ['py', ['.venv', 'htmlcov', 'mutants']],
+  ['php', ['vendor']],
+  ['lua', ['.lua']],
+  ['rust', ['target', 'mutants.out']],
+];
+
+/** The directories Talos and the tools of these languages write output into, anywhere. */
+export function outputGlobs(langs: readonly Lang[]): string[] {
+  const dirs = TOOL_OUTPUT.filter(([lang]) => langs.includes(lang)).flatMap(([, list]) => list);
+  return [TALOS_OUTPUT, ...dirs].map((dir) => `**/${dir}/**`);
+}
 
 /** Words of the text Talos writes into every repository and the project keeps. */
 export const KIT_WORDS = ['talos'];
@@ -49,8 +67,23 @@ function yamlList(items: readonly string[]): string[] {
   return items.map((item) => `  - '${item.replaceAll("'", "''")}'`);
 }
 
-/** The base for editors and `cspell`, written as Prettier writes it. */
-export function renderCspellBase(version: string, exclude: readonly string[]): string {
+/**
+ * The base for editors and `cspell`, written as Prettier writes it. It skips what Talos and the
+ * tools of the repository's languages write into a checkout, which `cspell` over every file
+ * would otherwise read.
+ */
+export function renderCspellBase(
+  version: string,
+  exclude: readonly string[],
+  langs: readonly Lang[],
+): string {
+  const ignored = [
+    '**/node_modules/**',
+    ...outputGlobs(langs),
+    '.cspell/**',
+    ...NOT_SPELLED,
+    ...excludeGlobs(exclude),
+  ];
   return [
     generatedHeader('#', version).trimEnd(),
     '# Spelling in docs, code, scripts and CI, in British or American English. Words the',
@@ -66,7 +99,7 @@ export function renderCspellBase(version: string, exclude: readonly string[]): s
     'ignoreRegExpList:',
     ...yamlList(IGNORED_PATTERNS),
     'ignorePaths:',
-    ...yamlList(['**/node_modules/**', '.cspell/**', ...NOT_SPELLED, ...excludeGlobs(exclude)]),
+    ...yamlList(ignored),
     '',
   ].join('\n');
 }

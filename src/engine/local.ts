@@ -1,13 +1,15 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { prepare } from './prepare.js';
 import { type Engine, runChecks, type Side } from './run.js';
-import { loadConfig } from '../config/load.js';
+import { CONFIG_FILE, loadConfig } from '../config/load.js';
+import type { TalosConfig } from '../config/schema.js';
 import type { Os, Tier } from '../core/check.js';
-import { parseRunResult, type RunResult } from '../core/result.js';
+import { engineErrors, parseRunResult, type RunResult } from '../core/result.js';
 import { type ChangeSet, parseDiff } from '../repo/changes.js';
 import { repoFacts } from '../repo/facts.js';
-import { addWorktree, type Git, git, trackedFiles } from '../repo/git.js';
+import { type Git, git, inWorktree, showFile, trackedFiles } from '../repo/git.js';
 
 export type At = {
   readonly root: string;
@@ -17,11 +19,13 @@ export type At = {
   readonly side: Side;
   readonly changes?: ChangeSet;
   readonly only?: readonly string[];
+  /** The `talos.yml` a checkout without one is judged by: the head's. */
+  readonly config?: TalosConfig;
 };
 
 /** Prepares a checkout and runs the checks there: one `talos run`. */
 export async function runAt(engine: Engine, at: At): Promise<RunResult> {
-  const config = await loadConfig(at.root);
+  const config = await loadConfig(at.root, at.config);
   const facts = repoFacts(await trackedFiles(git(engine.exec, at.root)), config.exclude);
   const plan = {
     root: at.root,
@@ -33,6 +37,7 @@ export async function runAt(engine: Engine, at: At): Promise<RunResult> {
     facts,
     ...(at.changes ? { changes: at.changes } : {}),
     ...(at.only ? { only: at.only } : {}),
+    ...(at.config !== undefined && config === at.config ? { borrowed: true } : {}),
   };
   const prepared = await prepare(engine, plan);
   try {
@@ -55,23 +60,36 @@ export async function changesBetween(repo: Git, from: string, to?: string): Prom
   return parseDiff(await repo.run(args));
 }
 
-/** A base commit's results don't change; local runs keep them under `.talos/cache`. */
+function digest(text: string): string {
+  return createHash('sha256').update(text).digest('hex').slice(0, 12);
+}
+
+/**
+ * A base commit's results don't change; local runs keep them under `.talos/cache`, unless an
+ * engine error spoilt them. A commit judged by the head's `talos.yml` is kept under that file's
+ * digest too.
+ */
 export async function cachedRun(
   engine: Engine,
   repo: Git,
   at: Omit<At, 'root'>,
 ): Promise<RunResult> {
   const cacheDir = join(repo.root, '.talos', 'cache');
-  const file = join(cacheDir, `${at.sha}-${at.tiers.join('+')}-${at.os}-${engine.version}.json`);
+  const own = (await showFile(repo, at.sha, CONFIG_FILE)) !== undefined;
+  const borrowed = own || at.config === undefined ? '' : `-${digest(JSON.stringify(at.config))}`;
+  const name = `${at.sha}-${at.tiers.join('+')}-${at.os}-${engine.version}${borrowed}.json`;
+  const file = join(cacheDir, name);
   try {
     return parseRunResult(await readFile(file, 'utf8'));
   } catch {
     const directory = join(repo.root, '.talos', 'worktrees', at.sha);
-    await mkdir(join(repo.root, '.talos', 'worktrees'), { recursive: true });
-    await addWorktree(repo, at.sha, directory);
-    const result = await runAt(engine, { ...at, root: directory });
-    await mkdir(cacheDir, { recursive: true });
-    await writeFile(file, JSON.stringify(result));
+    const result = await inWorktree(repo, { sha: at.sha, directory }, () =>
+      runAt(engine, { ...at, root: directory }),
+    );
+    if (engineErrors(result).length === 0) {
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(file, JSON.stringify(result));
+    }
     return result;
   }
 }

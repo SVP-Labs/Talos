@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import semver from 'semver';
@@ -176,6 +177,46 @@ async function componentItems(deps: DoctorDeps, config: TalosConfig): Promise<Do
   );
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function hooksPath(exec: Exec, cwd: string): Promise<string> {
+  try {
+    const result = await exec('git', ['config', 'core.hooksPath'], { cwd, timeoutMs: 15_000 });
+    return result.code === 0 ? result.stdout.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Whether git runs the pre-push hook `talos adopt` writes: through `core.hooksPath`, which a Node
+ * project's `prepare` sets on install and any other clone sets once, or through a hook manager.
+ * A repository without the hook gets no item.
+ */
+export async function hooksItems(exec: Exec, cwd: string): Promise<DoctorItem[]> {
+  if (!(await exists(join(cwd, '.githooks', 'pre-push')))) return [];
+  const path = await hooksPath(exec, cwd);
+  if (path === '.githooks') return [item('hooks', 'ok', 'git runs .githooks/pre-push')];
+  if (path !== '') return [item('hooks', 'ok', `git runs the hooks in ${path}`)];
+  if (await exists(join(cwd, '.git', 'hooks', 'pre-push'))) {
+    return [item('hooks', 'ok', "a hook manager's pre-push runs")];
+  }
+  return [
+    item(
+      'hooks',
+      'warn',
+      'git does not run the pre-push hook: run `git config core.hooksPath .githooks` once',
+    ),
+  ];
+}
+
 /** Whether this machine and repository are set up for Talos, one item per concern. */
 export async function doctorReport(deps: DoctorDeps): Promise<DoctorItem[]> {
   const config = await configItem(deps.cwd);
@@ -183,6 +224,7 @@ export async function doctorReport(deps: DoctorDeps): Promise<DoctorItem[]> {
     nodeItem(deps.node),
     ...(await toolItems(deps)),
     config.item,
+    ...(await hooksItems(deps.exec, deps.cwd)),
     ...(await githubItems(deps)),
     ...(config.config === undefined ? [] : await componentItems(deps, config.config)),
   ];

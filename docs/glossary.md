@@ -2,9 +2,10 @@
 
 Talos's words, in these senses, in code, docs, commit subjects and the issues and PRs it writes.
 Each entry is a term in bold and its definition. A word listed after `Avoid:` fails Talos's
-glossary check wherever it is used; every term here feeds the spelling dictionary. Decisions
-written Cn are [the brief's](requirements/20261022-talos-core.md), Xn are
-[DECISIONS.md](../DECISIONS.md)'s.
+glossary check wherever it is used, these definitions included; a code span only mentions it,
+and so does a decision's `**Rejected:**` list or double quotes. Every term here feeds the
+spelling dictionary. Decisions written Cn are [the brief's](requirements/20261022-talos-core.md),
+Xn are [DECISIONS.md](../DECISIONS.md)'s.
 
 ## The kit and how it reaches a repository
 
@@ -97,6 +98,11 @@ the operating systems it runs on (C24).
 **Tier**
 When a check runs. The commit tier (the fast tier) runs on every commit of a ready PR and of a
 merge group; the head tier runs on the PR's head (C8).
+
+**Pre-push hook**
+`.githooks/pre-push`, which `talos adopt` writes: it runs the fast tier on the working tree
+before a push, once a clone's `core.hooksPath` is `.githooks`. It gives an early answer; the gate
+decides (C4).
 
 **Applicability**
 Whether a check runs at all: when the repository has what it checks, or declares it in
@@ -343,4 +349,5 @@ changelog (C7).
 
 **Bootstrap PR**
 The PR `talos adopt` opens to bring a repository's files under Talos: `talos.yml`, the
-generated configs, `CLAUDE.md`, the issue forms, the brief and issue #1 (C29).
+generated configs, `CLAUDE.md`, the issue forms, the pre-push hook, each language's setup and
+the brief, closing the issue #1 adoption files (C29).

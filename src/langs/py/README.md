@@ -46,6 +46,14 @@ The checks use the file the tool itself would read: `.ruff.toml`, `ruff.toml`, t
 with `--config` on that file, so a nested config can't loosen a subdirectory, and with
 `--no-fix`.
 
+Since the tools read those files first, `talos adopt` moves a component's `[tool.ruff]` and
+`[tool.basedpyright]` (or `[tool.pyright]`) out of `pyproject.toml` into the extension files it
+writes, where they would otherwise go unread, and drops `[tool.mypy]`: basedpyright replaces
+mypy. Settings that can't move as text are a next step. Unless the component installs from
+`requirements*.txt` files without a `uv.lock`, it also sets `[tool.uv] exclude-newer = "1 day"`,
+so uv resolves only releases at least a day old, and asks for a `uv lock`; a span of a day or
+more stays as it is.
+
 The ruff base selects every stable rule and the preview rule `PLR1702` (nesting), leaving out
 only the rules that fight the formatter and `CPY001`. Docstrings follow the Google convention.
 Limits: complexity 12, 4 arguments (positional or not), 15 branches, 10 returns, 60 statements,

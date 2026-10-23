@@ -16,7 +16,7 @@ on:
 
 permissions: {}
 
-concurrency: # zizmor: ignore[concurrency-limits] pin moves run one at a time, and each run decides from scratch
+concurrency: # pin moves run one at a time, and each run decides from scratch
   group: channels
   cancel-in-progress: false
 
@@ -109,7 +109,7 @@ jobs:
           TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP }}
           TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
           TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
-        run: node talos-kit/bootstrap/launch.mjs central channels --json
+        run: node talos-kit/bootstrap/launch.ts central channels --json
 
   privacy:
     name: privacy
@@ -217,4 +217,4 @@ jobs:
           TALOS_PRIVACY_JOB: privacy
           # The canary's name as a SHA-256 digest: the name itself would print here.
           TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
-        run: node talos-kit/bootstrap/launch.mjs central privacy --json
+        run: node talos-kit/bootstrap/launch.ts central privacy --json

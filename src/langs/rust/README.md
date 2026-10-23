@@ -206,6 +206,11 @@ tests fail exits 4 and judges no mutant; `rust/tests` reports those failures.
 
 `rust/toolchain` wants the component's `rust-toolchain.toml` (its own or the nearest one above
 it in the repository; the legacy one-line `rust-toolchain` file counts) to pin an exact release,
-such as `channel = "1.97.0"`, with the `clippy` and `rustfmt` components, so the editor, `talos
-check` and the gate run the same rustc, Clippy and rustfmt. A channel such as `stable` or `1.97`
+such as `channel = "1.99.1"`, with the `clippy` and `rustfmt` components, so the editor, `talos
+check` and the gate run the same rustc, Clippy and rustfmt. A channel such as `stable` or `1.99`
 is `toolchain/unpinned`; a missing file or component is `toolchain/missing`.
+
+`talos adopt` writes the file where there is none, pinned to Talos's release (`RUST_CHANNEL` in
+`toolchain.ts`), and adds the components the checks use to one that lacks them. It keeps a channel
+the project already pins exactly, even one past its end of life, which the runtime pack's
+`runtime/eol` then reports.

@@ -12,7 +12,7 @@ on:
 
 permissions: {}
 
-concurrency: # zizmor: ignore[concurrency-limits] a publish is never cancelled half way
+concurrency: # a publish is never cancelled half way
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 

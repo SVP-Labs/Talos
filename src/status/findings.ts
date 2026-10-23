@@ -44,16 +44,66 @@ const runsSchema = z.object({
 const pullSchema = z.object({ head: z.object({ sha: z.string() }) });
 
 const MAX_LISTED = 20;
+const MAX_FAULTS = 5;
 const MAX_MESSAGE = 200;
+const MAX_REASON = 300;
 
-/** Re-checked on the way out: a verdict passes through only in its own capped shape. */
-const verdictSchema = z
-  .object({
-    schema: z.literal('talos.verdict/1'),
-    status: z.enum(['green', 'red', 'engine-error']),
-    blocking: z.array(z.object({ message: z.string().max(MAX_MESSAGE) }).loose()).max(MAX_LISTED),
-  })
-  .loose();
+const count = z.number().int().nonnegative();
+const sha = z.string().regex(/^[0-9a-f]{40}$/);
+
+/**
+ * Re-checked on the way out: a verdict passes through only in its own capped shape, the one
+ * `docs/contracts/verdict.schema.json` publishes, and only with the fields that shape names.
+ */
+const verdictSchema = z.object({
+  schema: z.literal('talos.verdict/1'),
+  talos: z.string().min(1),
+  repo: z.string().nullable(),
+  pr: z.number().int().positive().nullable(),
+  mode: z.enum(['draft', 'ready', 'merge-group']),
+  base: sha,
+  head: sha,
+  status: z.enum(['green', 'red', 'engine-error']),
+  counts: z.object({
+    blocking: count,
+    existing: count,
+    faults: count,
+    byRule: z.record(z.string(), z.number().int().positive()),
+  }),
+  blocking: z
+    .array(
+      z.object({
+        sha,
+        rule: z.string().min(1),
+        why: z.enum(['new', 'changed-line', 'security', 'lost', 'existing', 'info']),
+        file: z.string().nullable(),
+        line: z.number().int().positive().nullable(),
+        message: z.string().max(MAX_MESSAGE),
+      }),
+    )
+    .max(MAX_LISTED),
+  faults: z
+    .array(
+      z.object({
+        sha,
+        os: z.enum(['linux', 'windows', 'macos']),
+        check: z.string().min(1),
+        reason: z.string().max(MAX_REASON),
+      }),
+    )
+    .max(MAX_FAULTS),
+  flaky: z.array(z.object({ id: z.string(), file: z.string().nullable() })).max(MAX_LISTED),
+  truncated: z.boolean(),
+});
+
+/** The artifact's text as a verdict, or `undefined` when it is no verdict Talos can read. */
+function readVerdict(text: string): z.infer<typeof verdictSchema> | undefined {
+  try {
+    return verdictSchema.safeParse(JSON.parse(text)).data;
+  } catch {
+    return undefined;
+  }
+}
 
 function isGateRun(
   file: { path: string; repositoryName: string } | null,
@@ -89,7 +139,10 @@ export type FindingsDeps = {
   readonly talosRepo: string;
 };
 
-/** The latest gate verdict for a PR's head (`talos.verdict/1`), or status `unknown`. */
+/**
+ * The latest gate verdict for a PR's head (`talos.verdict/1`) with the `run` that left it, or
+ * status `unknown` when no gate run left one, with `error` when the one it left can't be read.
+ */
 export async function prFindings(
   deps: FindingsDeps,
   repo: string,
@@ -107,9 +160,9 @@ export async function prFindings(
     file: 'verdict.json',
   });
   if (text === undefined) return unknown;
-  const verdict = verdictSchema.safeParse(JSON.parse(text));
-  if (!verdict.success) {
+  const verdict = readVerdict(text);
+  if (verdict === undefined) {
     return { ...unknown, error: 'the gate run left a verdict Talos cannot read' };
   }
-  return { ...verdict.data, repo, pr, head, run: runId };
+  return { ...verdict, repo, pr, head, run: runId };
 }

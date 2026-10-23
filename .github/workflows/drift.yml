@@ -14,7 +14,7 @@ on:
 
 permissions: {}
 
-concurrency: # zizmor: ignore[concurrency-limits] a report runs to the end; the next one waits
+concurrency: # a report runs to the end; the next one waits
   group: drift
   cancel-in-progress: false
 
@@ -224,7 +224,7 @@ jobs:
           TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP }}
           TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP }}
           TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
-        run: node talos-kit/bootstrap/launch.mjs central drift --json
+        run: node talos-kit/bootstrap/launch.ts central drift --json
 
   channels-file:
     name: channels-file
@@ -241,7 +241,7 @@ jobs:
         with:
           app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
-          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app] reads the org's channel rulesets
+          owner: ${{ github.repository_owner }} # reads the org's channel rulesets
           permission-organization-administration: read
       - name: Mint talos-reviewer's filing token for this repository
         id: file
@@ -340,7 +340,7 @@ jobs:
           TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP }}
           TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP }}
           TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
-        run: node talos-kit/bootstrap/launch.mjs central drift --channels-file --json
+        run: node talos-kit/bootstrap/launch.ts central drift --channels-file --json
 
   privacy:
     name: privacy
@@ -457,4 +457,4 @@ jobs:
           TALOS_PRIVACY_JOB: privacy
           # The canary's name as a SHA-256 digest: the name itself would print here.
           TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
-        run: node talos-kit/bootstrap/launch.mjs central privacy --json
+        run: node talos-kit/bootstrap/launch.ts central privacy --json

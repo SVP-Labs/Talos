@@ -109,6 +109,8 @@ repositories**, since every governed repository's caller reads them:
 | `TALOS_REVIEWER_KEY`      | `talos-reviewer`'s private key, the whole `.pem` file                       |
 | `CLAUDE_CODE_OAUTH_TOKEN` | The reviewer's model; `claude setup-token` makes one. Kept from the old kit |
 
+Every one of these variables is required:
+
 | Variable                | Value                                                          |
 | ----------------------- | -------------------------------------------------------------- |
 | `TALOS_OWNER`           | `SvenPGH`: the one login whose approval `talos/review` accepts |
@@ -117,8 +119,21 @@ repositories**, since every governed repository's caller reads them:
 | `TALOS_RELEASE_APP`     | `talos-release`                                                |
 | `TALOS_REVIEWER_APP_ID` | `talos-reviewer`'s App ID, from its settings page              |
 
-`TALOS_LOOKUP` stays unset unless a smoke test says otherwise (step 6). An unset variable reaches
-a workflow as an empty string, which Talos reads as unset: the defaults are SVP-Labs's own.
+And two are optional:
+
+| Variable             | Set it when                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `TALOS_LOOKUP`       | a smoke test says so (step 6), to `channels`                 |
+| `TALOS_REVIEW_MODEL` | the reviewer should use a model other than `claude-opus-5-5` |
+
+Only the caller's act phase reads `TALOS_REVIEW_MODEL`.
+
+An unset variable reaches a workflow as an empty string, which Talos reads as unset. Talos's code
+falls back to SVP-Labs's own identities, but the workflows repeat none of them, so an unset
+identity fails closed there: without `TALOS_OWNER` the channels job refuses the owner's urgent
+promotion, and without `TALOS_THEA_APP` or `TALOS_RELEASE_APP` a review or comment by that App
+starts no `act` job, so a `talos-approve` review by Thea wouldn't rerun `talos/review`. The
+organisation is no variable: the workflows pass `github.repository_owner` as `TALOS_ORG`.
 
 Then, under **Settings → Actions → General**, keep **Workflow permissions** at **Read repository
 contents and packages permissions**: every Talos workflow asks for exactly what it needs.
@@ -203,7 +218,7 @@ trusted publishing, so no npm token is stored anywhere (C26).
 ## 6. The scratch repository and six smoke tests
 
 Things GitHub's documentation doesn't settle get tested on a scratch repository before Thea
-comes in: the three C18 names, and three more that Talos's code relies on. Run test 2 last: its
+comes in: the six C18 names, the last three of which Talos's code relies on. Run test 2 last: its
 `Dockerfile` is a security finding, which turns every later gate run on the repository red.
 
 **Create it** as yourself, private, with a unique, random name, such as `talos-scratch-` and
@@ -231,6 +246,9 @@ listing. Talos never learns the canary's name, since a variable's value is print
 ```bash
 printf %s SVP-Labs/talos-scratch-<random> | tr A-Z a-z | sha256sum | cut -d' ' -f1
 ```
+
+The variable is required: without it no run can prove it watched the canary, so the privacy job
+of every central workflow (the channels job, the runtime sweep and the drift report) fails.
 
 ### 1. Rulesets in Evaluate mode are listed
 
@@ -382,7 +400,23 @@ talos govern SVP-Labs/Thea --agents on
 Thea runs `talos adopt` as a task; its bootstrap PR touches `talos.yml` and `.github/`, so you
 approve it on GitHub. In it, every row of her `docs/development/checks.md` maps to a Talos check;
 `ci.yml` and `mutation.yml` go, and `desktop.yml` keeps only the installer build and release.
-Her decision citations in code comments become findings on the debt list. Once green:
+Her decision citations in code comments become findings on the debt list.
+
+Two things in her repository need you or a ticket of their own:
+
+- **Her Rust pin.** `apps/desktop/rust-toolchain.toml` pins Rust `1.97.0`, whose cycle reached
+  its end of life on 2026-08-20, so `runtime/eol` reports it. Adoption adds the components the
+  checks use but keeps a channel the project already pins exactly; move it to the release
+  Talos pins (`1.99.1`, the one adoption writes where there is no pin).
+- **Her pushes run the pre-push hook.** Her `prepare` script already points `core.hooksPath` at
+  `.githooks`, where adoption writes Talos's `pre-push`, so her clones run the fast tier on every
+  `git push`. Her task has already run `talos check --json` by then; her daemon either passes
+  the push the same `TALOS_VERSION` and `TALOS_SHA` the task had, or pushes with `--no-verify`,
+  which skips only that early answer: the gate runs the same checks.
+
+Her daemon runs `talos check` in the task's own environment, which needs the network the gate's
+runners have ([below](#the-gates-runners)): Semgrep fetches its rule sets, and without them
+every `talos check` ends in an engine error. Once green:
 
 ```bash
 talos govern SVP-Labs/Thea --channel canary
@@ -403,9 +437,12 @@ re-point everything that named the old place (C18 step 4):
 - Thea's clones under `~/.thea/repos/<owner>/<name>`: move each to
   `~/.thea/repos/SVP-Labs/<name>`, or delete it and let her next task clone it again.
 
-Each repository's ticket prefix must be unique in the org (C23). `talos new` checks it; for a
-repository that comes in through `talos adopt`, pick one no governed repository's `talos.yml`
-uses. The Toolbox can't keep Scaffold's `T`, which is Thea's.
+Each repository's ticket prefix must be unique in the org (C23). `talos new` checks it, and so
+does `talos adopt`, against the `talos.yml` (or Scaffold's `project.yml`) on every unarchived
+repository's default branch. Adoption checks only when its token can list the org's
+repositories, and its JSON says whether it did (`prefixChecked`); when it couldn't, pick a
+prefix no other repository uses yourself. The Toolbox can't keep Scaffold's `T`, which is
+Thea's.
 
 When the last one has moved, uninstall Thea's SvenPGH App and delete it, and make sure her hub's
 `GITHUB_LOGIN` is set: only her SVP-Labs App remains (her U15).
@@ -420,7 +457,9 @@ Thea runs `talos adopt`: Python at the root and the JavaScript frontend in its s
 components, `exclude: [app]`, and its two custom checks, `check_docs.py` and
 `check_value_graph.py`, which gain `--json` while their baseline files are deleted (C19). The move
 also takes black to ruff format, mypy to basedpyright, the local-only gates to CI, and drops the
-grandfathered `ignore_imports` entry (C21). Once green:
+grandfathered `ignore_imports` entry (C21). LoreLock runs its hooks through pre-commit, which
+adoption never replaces: a next step asks for a `pre-push` entry there that runs Talos's
+`.githooks/pre-push`. Once green:
 
 ```bash
 talos govern SVP-Labs/LoreLock --channel stable
@@ -432,6 +471,12 @@ The remaining repositories, the small ones and those generated from Scaffold, on
 `talos govern`, then `talos adopt`, then `--channel stable` once green. For a repository generated
 from Scaffold, adoption deletes what Scaffold put there: its callers, `scripts/`, `justfile`,
 `.lang/` and `lefthook.yml` (C18 step 5).
+
+What adoption can't do itself, it lists as next steps, and it then stops before committing:
+a lock file to refresh, a hook manager to wire to Talos's hook, a `tsconfig.json` to make extend
+the generated base. The pre-push hook runs once a clone's `core.hooksPath` is `.githooks`. In a
+repository with a root `package.json`, its `prepare` script sets that on install; in one
+without, every clone runs `git config core.hooksPath .githooks` once.
 
 ## 12. Archiving Scaffold and Workflows
 
@@ -454,10 +499,15 @@ built from source), rustup, Docker on Linux for declared services, and an open n
 outside tool comes from `tools.lock`, checked by its sha256, and each language's own tools from
 the project's lockfile.
 
-PHP is the one runtime the gate sets up per project: for each system a PHP component lists, it
-installs the newest release of the newest minor any component's `composer.json` asks for
-(`config.platform.php`, else `require.php`), never older than 8.4, with pcov and Composer. The
-PHP pack refuses, as an engine error, a PHP that isn't the newest release of its cycle.
+PHP is the one runtime the gate sets up per project, and each run of its matrix sets up what its
+own commit asks for, so base and head may differ: on a system a PHP component of that commit
+lists, the newest minor any such component's `composer.json` asks for (`config.platform.php`,
+else `require.php`), never older than 8.4, with pcov and Composer. setup-php (pinned at 2.40.0)
+runs with `update: true`, so the runner takes that minor's newest release. The PHP pack refuses,
+as an engine error, a PHP that isn't the newest release of its cycle, or whose cycle is past its
+end of life, judged by the runtime feeds. On the day php.net ships a release, setup-php's package
+sources can trail it for some hours, and the gate stops with that engine error in every
+repository with a PHP component until they catch up.
 
 A runner whose network is restricted (a self-hosted one, or behind a proxy) must reach:
 

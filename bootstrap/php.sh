@@ -8,10 +8,8 @@
 # A PHP component in talos.yml at any of the commits needs PHP on each OS it lists (linux when it
 # lists none). The version is the newest minor that any of their composer.json files asks for
 # (config.platform.php, else require.php), and never older than 8.4, the oldest PHP the toolchain
-# installs on. Prints two lines for $GITHUB_OUTPUT:
-#
-#   oses=["linux"]
-#   version=8.4
+# installs on. Prints two lines for $GITHUB_OUTPUT, the OSes as a JSON list and then the minor,
+# such as `oses=["linux"]` and `version=8.4`.
 #
 # Needs git, jq and yq (mikefarah's, which GitHub's runners carry, or the Python one). The caller
 # workflow, which never changes between releases, runs it from whichever release a repository

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { batches, installedPackage, nodeTool, parseJson, upwards } from './node.js';
+import { batches, heapFlag, installedPackage, nodeTool, parseJson, upwards } from './node.js';
 import { EngineError } from '../../core/check.js';
 import { tempRepo } from '../../testing/engine.js';
 
@@ -42,6 +42,16 @@ describe('the component’s own tools', () => {
     const root = await tempRepo({ 'package.json': '{}' });
     await expect(nodeTool({ root }, 'knip', 'knip')).rejects.toThrow(EngineError);
     await expect(nodeTool({ root }, 'knip', 'knip')).rejects.toThrow(/devDependencies/);
+  });
+});
+
+describe('heapFlag', () => {
+  const GIB = 1024 ** 3;
+
+  it('gives a tool half the machine, between 2 and 8 GiB', () => {
+    expect(heapFlag(2 * GIB)).toBe('--max-old-space-size=2048');
+    expect(heapFlag(8 * GIB)).toBe('--max-old-space-size=4096');
+    expect(heapFlag(64 * GIB)).toBe('--max-old-space-size=8192');
   });
 });
 

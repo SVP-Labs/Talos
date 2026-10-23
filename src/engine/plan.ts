@@ -1,7 +1,10 @@
+import { posix } from 'node:path';
 import { z } from 'zod';
+import { compareVersions } from '../checks/runtime/versions.js';
+import { CONFIG_FILE, ConfigError, parseConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
-import type { Os, Tier } from '../core/check.js';
-import { type Git, mergeBase, revList, revParse } from '../repo/git.js';
+import type { Lang, Os, Tier } from '../core/check.js';
+import { type Git, mergeBase, revList, revParse, showFile } from '../repo/git.js';
 
 /**
  * - `draft`: a draft PR; its latest commit only, against the PR's base;
@@ -10,7 +13,18 @@ import { type Git, mergeBase, revList, revParse } from '../repo/git.js';
  */
 export type Mode = 'draft' | 'ready' | 'merge-group';
 
-type RunSpec = { readonly sha: string; readonly tiers: readonly Tier[]; readonly os: Os };
+/** The oldest PHP the PHP toolchain installs on: a run that needs PHP never gets an older one. */
+const PHP_FLOOR = '8.4';
+
+/** What a run sets up before Talos runs, read from `talos.yml` at the run's own commit. */
+type Needs = {
+  /** The languages of the components on the run's OS, in `talos.yml`'s order. */
+  readonly langs: readonly Lang[];
+  /** The PHP minor to set up, such as `8.4`, or `''` when no PHP component is on the run's OS. */
+  readonly php: string;
+};
+
+type RunSpec = Needs & { readonly sha: string; readonly tiers: readonly Tier[]; readonly os: Os };
 
 export type GatePlan = {
   readonly mode: Mode;
@@ -35,24 +49,102 @@ const mergeGroupEvent = z.object({
   merge_group: z.object({ base_sha: z.string(), head_sha: z.string(), head_ref: z.string() }),
 });
 
+/** A constraint Composer can read; any other value (`false` hides the platform PHP) asks none. */
+const constraint = z.string().optional().catch(undefined);
+
+/** The PHP a `composer.json` asks for: `config.platform.php`, else `require.php`. */
+const composerPhp = z.object({
+  config: z.object({ platform: z.object({ php: constraint }).optional() }).optional(),
+  require: z.object({ php: constraint }).optional(),
+});
+
+type Component = { readonly lang: Lang; readonly os: readonly Os[]; readonly php?: string };
+
+/** The first minor a version constraint names: `8.5` of `^8.5`, `8.4` of `~8.4.1 || ^8.5`. */
+function firstMinor(range: string): string | undefined {
+  for (const release of range.split(/[^\d.]+/)) {
+    const [major, minor] = release.split('.');
+    if (major && minor) return `${major}.${minor}`;
+  }
+  return undefined;
+}
+
+/** The minor of PHP a `composer.json` asks for, or nothing. */
+function minorAsked(text: string): string | undefined {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const asked = composerPhp.safeParse(json).data;
+  return firstMinor(asked?.config?.platform?.php ?? asked?.require?.php ?? '');
+}
+
+/**
+ * The components `talos.yml` declares at a commit, each PHP one with the minor its
+ * `composer.json` there asks for. A commit with no `talos.yml`, such as the base of the PR that
+ * adopts Talos, takes the head's, as its run does; one whose `talos.yml` can't be read declares
+ * none, so its run sets nothing up and reports the file itself.
+ */
+async function componentsAt(repo: Git, sha: string, head: string): Promise<Component[]> {
+  const text =
+    (await showFile(repo, sha, CONFIG_FILE)) ?? (await showFile(repo, head, CONFIG_FILE));
+  if (text === undefined) return [];
+  let config: TalosConfig;
+  try {
+    config = parseConfig(text);
+  } catch (error) {
+    if (error instanceof ConfigError) return [];
+    throw error;
+  }
+  return Promise.all(
+    config.components.map(async ({ lang, root, os }): Promise<Component> => {
+      if (lang !== 'php') return { lang, os };
+      const composer = await showFile(repo, sha, posix.join(root, 'composer.json'));
+      const php = composer === undefined ? undefined : minorAsked(composer);
+      return php === undefined ? { lang, os } : { lang, os, php };
+    }),
+  );
+}
+
+function needsOn(components: readonly Component[], os: Os): Needs {
+  const here = components.filter((c) => c.os.includes(os));
+  const langs = [...new Set(here.map((c) => c.lang))];
+  if (!langs.includes('php')) return { langs, php: '' };
+  const php = here.reduce(
+    (newest, { php: asked }) =>
+      asked !== undefined && compareVersions(asked, newest) > 0 ? asked : newest,
+    PHP_FLOOR,
+  );
+  return { langs, php };
+}
+
 function osesOf(config: TalosConfig): Os[] {
   const all = new Set<Os>(['linux']);
   for (const component of config.components) for (const os of component.os) all.add(os);
   return [...all];
 }
 
-function runsFor(
+async function runsFor(
+  repo: Git,
   range: { mode: Mode; base: string; head: string; commits: readonly string[] },
   oses: readonly Os[],
-): RunSpec[] {
+): Promise<RunSpec[]> {
   const { mode, base, head, commits } = range;
   const both: Tier[] = ['commit', 'head'];
   const middle = mode === 'draft' ? [] : commits.filter((sha) => sha !== head);
-  return oses.flatMap((os) => [
-    { sha: base, tiers: both, os },
-    ...middle.map((sha) => ({ sha, tiers: ['commit'] as Tier[], os })),
-    { sha: head, tiers: both, os },
-  ]);
+  const judged = [
+    { sha: base, tiers: both },
+    ...middle.map((sha) => ({ sha, tiers: ['commit'] as Tier[] })),
+    { sha: head, tiers: both },
+  ];
+  const declared = await Promise.all(
+    judged.map(async (run) => ({ ...run, components: await componentsAt(repo, run.sha, head) })),
+  );
+  return oses.flatMap((os) =>
+    declared.map(({ components, ...run }) => ({ ...run, os, ...needsOn(components, os) })),
+  );
 }
 
 /** Plans the gate's runs from the event GitHub delivered (`GITHUB_EVENT_PATH`). */
@@ -83,6 +175,10 @@ export async function planFromEvent(
   return planRange(repo, config, { mode, tipOfBase, head, ...(branch ? { branch } : {}) });
 }
 
+/**
+ * Plans the runs between the base and a head: on every OS `config` declares, each judged commit
+ * with what its own `talos.yml` says the run needs, since base and head may differ.
+ */
 export async function planRange(
   repo: Git,
   config: TalosConfig,
@@ -97,7 +193,7 @@ export async function planRange(
     head,
     commits,
     ...(range.branch ? { branch: range.branch } : {}),
-    runs: runsFor({ mode: range.mode, base, head, commits }, osesOf(config)),
+    runs: await runsFor(repo, { mode: range.mode, base, head, commits }, osesOf(config)),
   };
 }
 
@@ -112,6 +208,8 @@ export const gatePlanSchema = z.object({
       sha: z.string(),
       tiers: z.array(z.enum(['commit', 'head'])),
       os: z.enum(['linux', 'windows', 'macos']),
+      langs: z.array(z.enum(['ts', 'py', 'php', 'lua', 'rust'])),
+      php: z.string(),
     }),
   ),
 });

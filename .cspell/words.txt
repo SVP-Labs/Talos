@@ -90,6 +90,7 @@ gitdir
 gpgsign
 gsub
 hererocks
+htmlcov
 idents
 importlinter
 iniconfig

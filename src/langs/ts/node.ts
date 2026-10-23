@@ -1,4 +1,5 @@
 import { access, readFile } from 'node:fs/promises';
+import { totalmem } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { rootOf } from './files.js';
@@ -105,6 +106,17 @@ export const TOOL_ENV: Readonly<Record<string, string>> = {
   CI: 'true',
 };
 
+const MIB = 1024 * 1024;
+
+/**
+ * The heap a JavaScript tool may grow to: half the machine's memory, between 2 and 8 GiB. V8's
+ * own ceiling is lower on most machines, and a large project's ESLint or tsc outgrows it.
+ */
+export function heapFlag(totalMemory: number = totalmem()): string {
+  const half = Math.floor(totalMemory / 2 / MIB);
+  return `--max-old-space-size=${Math.min(8192, Math.max(2048, half))}`;
+}
+
 export type RunOptions = {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
@@ -118,7 +130,7 @@ export async function runTool(
   options: RunOptions = {},
 ): Promise<ExecResult> {
   try {
-    return await ctx.exec(process.execPath, [tool.script, ...args], {
+    return await ctx.exec(process.execPath, [heapFlag(), tool.script, ...args], {
       cwd: options.cwd ?? componentDir(ctx),
       env: { ...TOOL_ENV, ...options.env },
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),

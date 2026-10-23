@@ -1,9 +1,10 @@
 import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { startDraft } from './draft.js';
-import { pinToolchain, RUST_CHANNEL, rustLints, rustToolchain, withLints } from './rust.js';
+import { pinToolchain, rustLints, rustToolchain, withLints } from './rust.js';
 import type { Component } from '../core/check.js';
 import { lintsBlock } from '../langs/rust/lints.js';
+import { RUST_CHANNEL } from '../langs/rust/toolchain.js';
 
 const CORE: Component = { lang: 'rust', root: 'core', os: ['linux'] };
 

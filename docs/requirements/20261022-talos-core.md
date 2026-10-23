@@ -597,6 +597,17 @@ leaves the old backlog alone until someone rewrites an issue in the ticket forma
      queue,** whose ruleset has no bypass (C18). If it doesn't, the two rules share one
      ruleset while the repository is at `evaluate`, so the owner's bypass covers the queue
      too; that costs nothing in a phase where nothing is enforced, and ends at `--channel`.
+
+   _Added 2026-10-23:_ three more assumptions, which Talos's code relies on, get a smoke test on
+   the same scratch repository. [Setting Talos up](../setup.md), step 6, runs all six and says
+   what to do when one fails:
+   - **A ruleset's required workflow runs on `merge_group`,** so the gate judges the queue's
+     commits (C3, C14).
+   - **The gate's own `GITHUB_TOKEN`, with `contents: read` alone, can list a private
+     repository's rulesets,** which C3's lookup reads inside the gate.
+   - **The merge queue leaves `main` on exactly the commits its `merge_group` run tested,** so
+     the gate's conclusion on `main`'s head commit says whether `main` is green (C31).
+
 2. Thea's hub, in her own repository and before she comes in, gains everything Talos expects
    of her:
    - her pushes land freely on a `<P>-<N>` branch she holds the claim for (until now only
@@ -790,6 +801,9 @@ on:
   schedule: [{ cron: '17 3 * * *' }]
   workflow_dispatch:
 ```
+
+_Added 2026-10-23:_ the caller also takes `pull_request_target`'s `edited` type, beyond the
+gate's, so fixing a PR's body (its `Closes #N` or a section) reruns `talos/review`.
 
 It does one thing: run `talos job <event>` at the version the repository's rulesets enforce,
 found the way local runs find it (C3). Issue readiness, the reviewer, `talos/review` (on every

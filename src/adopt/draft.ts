@@ -17,10 +17,19 @@ type Why =
   | 'ignore'
   | 'lints'
   | 'toolchain'
+  | 'hook'
   | 'brief';
 
+/** How a planned file is written: `executable` files get the executable bit, in git too. */
+type Mode = 'executable';
+
 /** A file adoption writes, and why. */
-export type PlannedFile = { readonly path: string; readonly content: string; readonly why: Why };
+export type PlannedFile = {
+  readonly path: string;
+  readonly content: string;
+  readonly why: Why;
+  readonly mode?: Mode;
+};
 
 /** Why adoption deletes a file. */
 type Gone = 'scaffold' | 'pr-template' | 'shadowed' | 'migrated';
@@ -37,7 +46,7 @@ export type Draft = {
   has(path: string): boolean;
   /** The tracked files after the steps so far, with the planned ones. */
   files(): string[];
-  write(path: string, content: string, why: Why): void;
+  write(path: string, content: string, why: Why, mode?: Mode): void;
   remove(path: string, why: Gone): void;
   /** A step whoever commits must take first, once. */
   next(step: string): void;
@@ -72,9 +81,16 @@ export function startDraft(
     read: draftRead,
     has: (path) => present().includes(path) || draftRead(path) !== undefined,
     files: present,
-    write: (path, content, why) => {
+    write: (path, content, why, mode) => {
       state.removed.delete(path);
-      state.writes.set(path, { path, content, why: state.writes.get(path)?.why ?? why });
+      const earlier = state.writes.get(path);
+      const kept = mode ?? earlier?.mode;
+      state.writes.set(path, {
+        path,
+        content,
+        why: earlier?.why ?? why,
+        ...(kept === undefined ? {} : { mode: kept }),
+      });
     },
     remove: (path, why) => {
       state.writes.delete(path);

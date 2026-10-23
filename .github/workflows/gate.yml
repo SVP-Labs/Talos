@@ -5,10 +5,15 @@
 # and engine errors under a release by them.
 name: talos
 
-on: # zizmor: ignore[concurrency-limits] the gate never cancels a run in progress (every commit is judged)
+on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
+
+# One run at a time per PR or merge group, and a run in progress is never cancelled: a newer push
+# only takes the place of a run still waiting, which would judge a head the PR has moved past.
+concurrency:
+  group: talos-gate-${{ github.event.pull_request.number || github.event.merge_group.head_ref }}
 
 permissions: {}
 
@@ -111,7 +116,7 @@ jobs:
       - name: Install and verify the release
         id: launch
         run: |
-          version="$(node talos-kit/bootstrap/launch.mjs version)"
+          version="$(node talos-kit/bootstrap/launch.ts version)"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "talos: no release version" >&2; exit 1; }
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
@@ -127,8 +132,6 @@ jobs:
       base: ${{ steps.plan.outputs.base }}
       head: ${{ steps.plan.outputs.head }}
       tree: ${{ steps.plan.outputs.tree }}
-      php-oses: ${{ steps.php.outputs.oses }}
-      php-version: ${{ steps.php.outputs.version }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,22 +152,17 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
+      # Each run in the matrix carries what it sets up, read at its own commit: `php`, the PHP
+      # minor its PHP components ask for (empty where none runs on its OS), and `langs`.
       - name: Plan the runs
         id: plan
         working-directory: repo
         run: |
-          node ../talos-kit/bootstrap/launch.mjs plan --out "$RUNNER_TEMP/talos-plan.json"
+          node ../talos-kit/bootstrap/launch.ts plan --out "$RUNNER_TEMP/talos-plan.json"
           jq -r '"base=\(.base)", "head=\(.head)"' "$RUNNER_TEMP/talos-plan.json" >> "$GITHUB_OUTPUT"
           head="$(jq -r '.head' "$RUNNER_TEMP/talos-plan.json")"
           tree="$(git rev-parse "$head^{tree}")"
           printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
-      - name: Find the runs that need PHP
-        id: php
-        working-directory: repo
-        env:
-          BASE: ${{ steps.plan.outputs.base }}
-          HEAD: ${{ steps.plan.outputs.head }}
-        run: bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
       - name: Keep the plan for the verdict
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -235,12 +233,10 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Set up PHP
-        if: >-
-          ${{ steps.cached.outputs.cache-hit != 'true' &&
-            contains(fromJSON(needs.plan.outputs.php-oses), matrix.os) }}
+        if: ${{ steps.cached.outputs.cache-hit != 'true' && matrix.php != '' }}
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
-          php-version: ${{ needs.plan.outputs.php-version }}
+          php-version: ${{ matrix.php }}
           coverage: pcov
           tools: composer
         env:
@@ -260,8 +256,9 @@ jobs:
           side='head'
           [[ "$RUN_SHA" == "$BASE" ]] && side='base'
           mkdir -p "$RUNNER_TEMP/talos-result"
-          node ../talos-kit/bootstrap/launch.mjs run --tiers "$TIERS" --os "$RUN_OS" \
-            --range "$BASE..$HEAD" --side "$side" --out "$RUNNER_TEMP/talos-result/result-$INDEX.json"
+          node ../talos-kit/bootstrap/launch.ts run --tiers "$TIERS" --os "$RUN_OS" \
+            --range "$BASE..$HEAD" --side "$side" --config-from "$HEAD" \
+            --out "$RUNNER_TEMP/talos-result/result-$INDEX.json"
       - name: Take the base run from the cache
         if: ${{ steps.cached.outputs.cache-hit == 'true' }}
         env:
@@ -341,7 +338,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/talos-verdict"
           code=0
-          node ../talos-kit/bootstrap/launch.mjs verdict \
+          node ../talos-kit/bootstrap/launch.ts verdict \
             --plan "$RUNNER_TEMP/talos-plan/talos-plan.json" --results "$RUNNER_TEMP/talos-results" \
             --sarif "$RUNNER_TEMP/talos-verdict/talos.sarif" --json "$RUNNER_TEMP/talos-verdict/verdict.json" \
             || code=$?

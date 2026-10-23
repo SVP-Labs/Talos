@@ -19,9 +19,6 @@ const RUNNER = '@stryker-mutator/vitest-runner';
 const RUNNER_VERSION = '10.0.0';
 export const RUNNER_PATCH = `${RUNNER.replace('/', '__')}@${RUNNER_VERSION}.patch`;
 
-const NOSEMGREP =
-  ' nosemgrep: package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age';
-
 const GUARDS_NOTE = [
   ' Supply-chain guards: a release waits a day before it can be installed, no dependency of a',
   ' dependency comes from git or a tarball URL, and a release with less provenance than the',
@@ -46,12 +43,6 @@ function addPair(doc: Document, key: string, value: unknown, note?: string): voi
   doc.contents.items.push(doc.createPair(keyNode, value));
 }
 
-function ageNode(doc: Document): unknown {
-  const node = doc.createNode(1440);
-  node.comment = NOSEMGREP;
-  return node;
-}
-
 /** Sets the three guards that don't hold yet; `true` when something changed. */
 function guard(doc: Document): boolean {
   const age = Number(doc.get('minimumReleaseAge'));
@@ -61,7 +52,7 @@ function guard(doc: Document): boolean {
     trustPolicy: doc.get('trustPolicy') !== 'no-downgrade',
   };
   const values = {
-    minimumReleaseAge: ageNode(doc),
+    minimumReleaseAge: 1440,
     blockExoticSubdeps: true,
     trustPolicy: 'no-downgrade',
   };

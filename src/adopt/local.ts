@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import type { AdoptPlan } from './plan.js';
 import type { Reader } from './scaffold.js';
@@ -69,6 +69,7 @@ export async function applyPlan(root: string, plan: AdoptPlan): Promise<void> {
     const path = join(root, safePath(file.path));
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, file.content);
+    if (file.mode === 'executable') await chmod(path, 0o755);
   }
 }
 
@@ -91,15 +92,23 @@ export async function checkoutClaim(root: string, run: Exec, branch: string): Pr
   await repo.run(['switch', '-c', branch, '--track', `origin/${branch}`]);
 }
 
-/** Stages exactly `paths` and commits them; `false` when there was nothing to commit. */
+/** What a commit takes: exactly `paths`, the `executable` ones with git's executable bit. */
+export type Staging = { readonly paths: readonly string[]; readonly executable: readonly string[] };
+
+/**
+ * Stages exactly the paths, the executable ones as such whatever the file system says (Windows
+ * has no executable bit), and commits them; `false` when there was nothing to commit.
+ */
 export async function commitPaths(
   root: string,
   run: Exec,
-  paths: readonly string[],
+  staging: Staging,
   subject: string,
 ): Promise<boolean> {
   const repo = git(run, root);
+  const { paths, executable } = staging;
   if (paths.length > 0) await repo.run(['add', '-A', '--', ...paths]);
+  if (executable.length > 0) await repo.run(['update-index', '--chmod=+x', '--', ...executable]);
   const staged = await run('git', ['diff', '--cached', '--quiet'], { cwd: root });
   if (staged.code === 0) return false;
   await repo.run(['commit', '-m', subject]);

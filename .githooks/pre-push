@@ -1,0 +1,5 @@
+#!/bin/sh
+# Talos's own pre-push hook runs the one talos adopt writes into every governed repository,
+# assets/hooks/pre-push. In Talos, that runs the fast tier (talos check --tiers commit) with the
+# build at hand rather than a release. Git runs a hook at the top of the working tree.
+exec sh assets/hooks/pre-push "$@"

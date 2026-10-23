@@ -12,6 +12,12 @@ export const MARKDOWNLINT_RULES = {
   MD013: { line_length: 100, tables: false, code_blocks: false },
 } as const;
 
+/**
+ * What markdownlint skips, in the gate and in the base alike: installed packages, and PR
+ * templates, which are forms of HTML comments to fill in rather than documents.
+ */
+export const NOT_LINTED = ['**/node_modules/**', '**/pull_request_template.md'];
+
 /** Globs for what `talos.yml` excludes: each entry as a file and as a directory. */
 export function excludeGlobs(exclude: readonly string[]): string[] {
   return exclude.flatMap((entry) => {
@@ -40,8 +46,7 @@ function inlineObject(value: Readonly<Record<string, unknown>>): string {
  * on, and the line length is the kit's.
  */
 export function renderMarkdownlintBase(version: string, exclude: readonly string[]): string {
-  // A PR template is a form of HTML comments to fill in, not a document.
-  const ignores = ['**/node_modules/**', '**/pull_request_template.md', ...excludeGlobs(exclude)];
+  const ignores = [...NOT_LINTED, ...excludeGlobs(exclude)];
   return [
     generatedHeader('//', version).trimEnd(),
     "// markdownlint's rules for every Markdown file, lines up to 100 outside tables and code.",

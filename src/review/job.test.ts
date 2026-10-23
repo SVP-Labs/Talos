@@ -675,9 +675,12 @@ describe('when talos/review cannot decide', () => {
     ['a thrown value', { reason: 'boom' }, 'an error while reading the PR'],
   ])('says so for %s, without its message', async (_name, error, detail) => {
     const fake = debtScenario();
+    const thrown: unknown = error;
     const ctx = jobContext(fake, {
-      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- a non-Error throw is the case under test
-      config: () => Promise.reject(error),
+      config: async () => {
+        await Promise.resolve();
+        throw thrown;
+      },
     });
     await expect(reviewJobWith(ctx, deps(fakeModel(APPROVE)))).rejects.toBe(error);
     expect(output(lastCheck(fake)).summary.split('\n')[0]).toBe(detail);

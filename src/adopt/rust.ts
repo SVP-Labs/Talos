@@ -23,16 +23,13 @@ import {
   lintsBlock,
   weakerThan,
 } from '../langs/rust/lints.js';
-import { toolchainFile } from '../langs/rust/toolchain.js';
+import { RUST_CHANNEL, toolchainFile } from '../langs/rust/toolchain.js';
 
 /**
  * A Rust component as Talos wants it: the lint levels the gate holds it to written into its
  * manifests, so the editor shows what the gate reports, and its toolchain pinned to an exact
  * release with the components the checks use.
  */
-
-/** The release a new toolchain file pins; an exact pin a project already has stays. */
-export const RUST_CHANNEL = '1.99.1';
 
 const COMPONENTS = ['clippy', 'rustfmt', 'llvm-tools'];
 

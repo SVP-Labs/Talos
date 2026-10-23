@@ -85,7 +85,7 @@ async function talos(
 }
 
 describe('talos debt', () => {
-  it('runs every check but mutation at the default branch, alone, and caches the run', async () => {
+  it('runs every check but mutation at the default branch, alone, caches it, cleans up', async () => {
     const root = await repoWith({
       'talos.yml': 'name: T\nprefix: T\n',
       'src/a.ts': 'export const a = 1;\n',
@@ -104,7 +104,7 @@ describe('talos debt', () => {
     expect(again.out).toContain('1 finding(s)');
     const full: unknown = JSON.parse(await readFile(join(root, 'debt.json'), 'utf8'));
     expect(full).toMatchObject({ findings: [{ rule: 'eslint/complexity', file: 'src/a.ts' }] });
-    expect(await readdir(join(root, '.talos', 'worktrees'))).toHaveLength(1);
+    expect(await readdir(join(root, '.talos', 'worktrees'))).toHaveLength(0);
   });
 
   it('exits 2 when a check fails to run, and keeps no cache of that run', async () => {
