@@ -132,21 +132,24 @@ export async function repoStatus(ctx: StatusContext, repository: Repository): Pr
   }
 }
 
-async function inBatches<T, R>(
+/** Runs `work` over `items` with at most `limit` at once, keeping the input order. */
+async function pooled<T, R>(
   items: readonly T[],
-  size: number,
+  limit: number,
   work: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = [];
-  for (let start = 0; start < items.length; start += size) {
-    results.push(...(await Promise.all(items.slice(start, start + size).map(work))));
-  }
+  const queue = items.entries();
+  const worker = async (): Promise<void> => {
+    for (const [index, item] of queue) results[index] = await work(item);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return results;
 }
 
 /** The state of each named repository, in the order given. */
 export async function statusOf(ctx: StatusContext, repos: readonly string[]): Promise<Status[]> {
-  return inBatches(repos, 4, async (repo) => {
+  return pooled(repos, 4, async (repo) => {
     try {
       return await repoStatus(ctx, await getRepository(ctx.gh, repo));
     } catch (error) {
@@ -160,5 +163,5 @@ export async function orgStatus(ctx: StatusContext): Promise<Status[]> {
   const governed = (await listOrgRepositories(ctx.gh, ctx.who.org))
     .filter((r) => !r.archived && propertyOf(r, 'talos') !== undefined)
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  return inBatches(governed, 4, (repository) => repoStatus(ctx, repository));
+  return pooled(governed, 4, (repository) => repoStatus(ctx, repository));
 }

@@ -57,7 +57,9 @@ describe('branches', () => {
 
 describe('agentProblem and reasonProblem', () => {
   it('accepts plain agent ids', () => {
-    for (const agent of ['thea', 'sven', 'gha-123', 'a.b_c']) expect(agentProblem(agent)).toBeUndefined();
+    for (const agent of ['thea', 'sven', 'gha-123', 'a.b_c']) {
+      expect(agentProblem(agent)).toBeUndefined();
+    }
   });
 
   it('refuses ids that could forge a line or the approval marker', () => {
@@ -145,7 +147,12 @@ describe('claim and release against GitHub', () => {
 
   beforeEach(() => {
     fake = new FakeGitHub();
-    fake.addIssue({ number: 7, title: 'Fix it', body: '## Goal\nx', labels: ['bug', 'status/ready'] });
+    fake.addIssue({
+      number: 7,
+      title: 'Fix it',
+      body: '## Goal\nx',
+      labels: ['bug', 'status/ready'],
+    });
     t = { gh: fake.client(THEA), repo: 'o/r', prefix: 'T', who, now: NOW };
   });
 
@@ -199,12 +206,18 @@ describe('claim and release against GitHub', () => {
     expect(result).toEqual({ result: 'released', branch: 'T-7', deleted: true });
     expect(fake.refs.has('T-7')).toBe(false);
     expect(fake.issues.get(7)?.labels).toEqual(['bug', 'status/ready']);
-    expect(fake.issues.get(7)?.comments.at(-1)?.body).toBe('🔓 released: the criteria are ambiguous');
+    expect(fake.issues.get(7)?.comments.at(-1)?.body).toBe(
+      '🔓 released: the criteria are ambiguous',
+    );
   });
 
   it('repairs the labels even when the branch is already gone', async () => {
     fake.issues.get(7)?.labels.splice(0, 2, 'bug', 'ai/claimed');
-    expect(await release(t, 7, 'repair')).toEqual({ result: 'released', branch: 'T-7', deleted: false });
+    expect(await release(t, 7, 'repair')).toEqual({
+      result: 'released',
+      branch: 'T-7',
+      deleted: false,
+    });
     expect(fake.issues.get(7)?.labels).toEqual(['bug', 'status/ready']);
   });
 

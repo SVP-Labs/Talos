@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { LABEL, looksClaimed, priorityOf, TYPE_LABELS, typeLabelsOf, UNCLAIMABLE } from './labels.js';
+import {
+  LABEL,
+  looksClaimed,
+  priorityOf,
+  TYPE_LABELS,
+  typeLabelsOf,
+  CLAIM_BLOCKERS,
+} from './labels.js';
 import { shippedLabels } from '../jobs/label-sync.js';
 
 describe('priorityOf', () => {
@@ -34,7 +41,13 @@ describe('looksClaimed', () => {
 describe('the shipped labels', () => {
   it('define every label the protocol and the jobs use, with a description', async () => {
     const shipped = new Map((await shippedLabels()).map((l) => [l.name, l]));
-    const used = [...Object.values(LABEL), ...TYPE_LABELS, ...UNCLAIMABLE, 'ai/go', 'priority/p0'];
+    const used = [
+      ...Object.values(LABEL),
+      ...TYPE_LABELS,
+      ...CLAIM_BLOCKERS,
+      'ai/go',
+      'priority/p0',
+    ];
     for (const name of used) expect(shipped.get(name)?.description, name).toBeTruthy();
   });
 

@@ -16,7 +16,10 @@ describe('zipEntry', () => {
   });
 
   it('reads sizes from the directory when the local header has none', () => {
-    const zip = makeZip({ 'a.txt': 'x'.repeat(1000), 'verdict.json': '{"b":2}' }, { streamed: true });
+    const zip = makeZip(
+      { 'a.txt': 'x'.repeat(1000), 'verdict.json': '{"b":2}' },
+      { streamed: true },
+    );
     expect(zipEntry(zip, 'verdict.json', MB)?.toString('utf8')).toBe('{"b":2}');
   });
 
@@ -24,7 +27,9 @@ describe('zipEntry', () => {
     const zip = makeZip({ 'v.json': 'in a slice' });
     const padded = new Uint8Array(zip.length + 8);
     padded.set(zip, 4);
-    expect(zipEntry(padded.subarray(4, 4 + zip.length), 'v.json', MB)?.toString()).toBe('in a slice');
+    expect(zipEntry(padded.subarray(4, 4 + zip.length), 'v.json', MB)?.toString()).toBe(
+      'in a slice',
+    );
   });
 
   it('answers undefined when the entry is missing', () => {

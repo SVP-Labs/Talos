@@ -102,6 +102,8 @@ export const exec: Exec = async (command, args, options) => {
         stderr: Buffer.concat(stderr).toString('utf8'),
       });
     });
+    // A program that exits before reading its input closes the pipe; that is not an error here.
+    child.stdin.on('error', () => undefined);
     child.stdin.end(options.input ?? '');
   });
 };

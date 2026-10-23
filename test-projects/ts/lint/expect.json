@@ -1,0 +1,5 @@
+{
+  "checks": ["ts/lint"],
+  "rules": ["eslint/complexity", "eslint/@typescript-eslint/no-explicit-any", "eslint/parse-error"],
+  "os": ["linux", "windows"]
+}

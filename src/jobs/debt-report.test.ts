@@ -23,7 +23,9 @@ describe('debtReport', () => {
           finding('eslint/complexity', 'src/a.ts'),
           finding('eslint/max-depth', 'src/a.ts', { message: 'x'.repeat(300) }),
         ]),
-        outcome('supply/advisories', [finding('osv/GHSA-1', undefined, { key: 'lodash@1 GHSA-1', policy: 'always' })]),
+        outcome('supply/advisories', [
+          finding('osv/GHSA-1', undefined, { key: 'lodash@1 GHSA-1', policy: 'always' }),
+        ]),
         outcome('ts/types', [], { status: 'error', reason: 'tsc crashed' }),
         outcome('lua/tests', [], { status: 'error', component: 'mods', reason: 'r'.repeat(300) }),
       ]),
@@ -47,7 +49,12 @@ describe('debtReport', () => {
       truncated: false,
     });
     expect(report.findings[2]?.message).toHaveLength(200);
-    expect(report.findings[3]).toMatchObject({ file: null, line: null, key: 'lodash@1 GHSA-1', policy: 'always' });
+    expect(report.findings[3]).toMatchObject({
+      file: null,
+      line: null,
+      key: 'lodash@1 GHSA-1',
+      policy: 'always',
+    });
     expect(report.faults).toEqual([
       { check: 'ts/types', reason: 'tsc crashed' },
       { check: 'lua/tests@mods', reason: expect.stringMatching(/^r+…$/) },

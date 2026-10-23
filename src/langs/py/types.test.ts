@@ -52,7 +52,8 @@ describe('parseBasedpyright', () => {
       {
         file: '/repo/src/demo/calc.py',
         rule: 'reportReturnType',
-        message: 'Type "str" is not assignable to return type "int"\n  "str" is not assignable to "int"',
+        message:
+          'Type "str" is not assignable to return type "int"\n  "str" is not assignable to "int"',
         line: 14,
         endLine: 15,
         column: 12,

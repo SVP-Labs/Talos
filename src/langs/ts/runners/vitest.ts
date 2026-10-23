@@ -1,10 +1,9 @@
-import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CheckContext } from '../../../core/check.js';
 import type { RawTestRun, TestRequest, TestRunner } from '../../../quality/index.js';
 import { playwrightSuites, suiteImports } from '../checks/e2e.js';
 import { fullTestsHere, inComponent, rootOf } from '../files.js';
-import { componentDir, nodeTool, runTool, tail } from '../node.js';
+import { componentDir, exists, nodeTool, runTool, tail } from '../node.js';
 
 export type VitestPlan = {
   readonly junit: string;
@@ -37,13 +36,6 @@ export function vitestArgs(plan: VitestPlan): string[] {
     ...coverage,
     ...(plan.files ?? []),
   ];
-}
-
-async function exists(path: string): Promise<boolean> {
-  return access(path).then(
-    () => true,
-    () => false,
-  );
 }
 
 /** The suites Playwright runs, which Vitest never should (component-relative). */

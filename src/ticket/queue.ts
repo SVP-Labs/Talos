@@ -1,6 +1,6 @@
 import { claim, type ClaimResult, type Ticketing } from './claim.js';
 import { getIssue } from './github.js';
-import { LABEL, looksClaimed, priorityOf, UNCLAIMABLE } from './labels.js';
+import { LABEL, looksClaimed, priorityOf, CLAIM_BLOCKERS } from './labels.js';
 import { type Issue, parseIssues } from './schemas.js';
 import { ticketBranches } from './stale.js';
 
@@ -26,7 +26,7 @@ export function queueOrder(issues: readonly Issue[]): Issue[] {
         i.labels.includes(LABEL.ready) &&
         i.labels.includes(LABEL.eligible) &&
         !looksClaimed(i.labels) &&
-        !UNCLAIMABLE.some((label) => i.labels.includes(label)),
+        !CLAIM_BLOCKERS.some((label) => i.labels.includes(label)),
     )
     .sort(
       (a, b) =>
@@ -53,8 +53,9 @@ export type NextResult =
  */
 export async function next(t: Ticketing, agent: string, maxClaims: number): Promise<NextResult> {
   const held = await openClaims(t);
-  if (held.length >= maxClaims)
-    {return { result: 'max-claims', claims: held.length, max: maxClaims };}
+  if (held.length >= maxClaims) {
+    return { result: 'max-claims', claims: held.length, max: maxClaims };
+  }
   const candidates = await queue(t);
   for (const issue of candidates) {
     const outcome = await claim(t, issue.number, agent);

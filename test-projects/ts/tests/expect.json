@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/tests"],
+  "rules": ["tests/failed"]
+}

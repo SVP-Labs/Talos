@@ -302,6 +302,29 @@ describe('pinFinder', () => {
   });
 });
 
+describe('pinFinder failures', () => {
+  it('rejects once, with nothing left unhandled, when the rulesets cannot be read', async () => {
+    const gh = fakeGitHub({
+      'GET repos/SVP-Labs/Talos': new GitHubError('GET repos/SVP-Labs/Talos: 401', 401),
+      'GET repos/o/r/rulesets?includes_parents=true': new GitHubError('GET rulesets: 401', 401),
+    });
+    const rejected: unknown[] = [];
+    const listener = (reason: unknown): void => {
+      rejected.push(reason);
+    };
+    process.on('unhandledRejection', listener);
+    try {
+      await expect(pinFinder(gh, 'SVP-Labs/Talos', 'rulesets')('o/r')).rejects.toBeInstanceOf(
+        GitHubError,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+    expect(rejected).toEqual([]);
+  });
+});
+
 describe('versions', () => {
   it("reads Talos's version from a package.json", () => {
     expect(versionOf(JSON.stringify({ name: '@svp-labs/talos', version: '1.2.0-rc.1' }))).toBe(

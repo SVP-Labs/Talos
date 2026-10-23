@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type GitHub, GitHubError } from '../github/api.js';
+import type { GitHub } from '../github/api.js';
 
 const artifactList = z.object({
   artifacts: z.array(
@@ -46,32 +46,4 @@ export async function recentArtifacts(
     })
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, query.max);
-}
-
-export type Download = (url: string) => Promise<Uint8Array>;
-
-/**
- * Downloads an artifact's zip with the workflow's token. GitHub answers with a redirect to a
- * short-lived storage URL, which is followed by hand so the token never travels there.
- */
-export function downloader(token: string, fetchImpl: typeof fetch = fetch): Download {
-  return async (url) => {
-    if (!url.startsWith('https://')) throw new GitHubError('GET artifact: not https', 0);
-    const first = await fetchImpl(url, {
-      redirect: 'manual',
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        'user-agent': 'svp-labs-talos',
-      },
-    });
-    const location = first.headers.get('location');
-    const response =
-      first.status >= 300 && first.status < 400 && location !== null
-        ? await fetchImpl(location)
-        : first;
-    if (!response.ok) throw new GitHubError(`GET artifact: ${response.status}`, response.status);
-    return new Uint8Array(await response.arrayBuffer());
-  };
 }

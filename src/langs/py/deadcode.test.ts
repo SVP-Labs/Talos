@@ -62,7 +62,13 @@ describe('parseVulture', () => {
     expect(
       parseVulture("a.py:3: unused variable 'x' (60% confidence)\nError: a.py: invalid syntax\n"),
     ).toEqual([
-      { file: 'a.py', line: 3, endLine: 3, code: 'V107', message: "The variable 'x' is never used." },
+      {
+        file: 'a.py',
+        line: 3,
+        endLine: 3,
+        code: 'V107',
+        message: "The variable 'x' is never used.",
+      },
     ]);
   });
 });

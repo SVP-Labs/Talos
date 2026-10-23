@@ -1,0 +1,35 @@
+{
+    "name": "svp-labs/ledger-analysis",
+    "description": "A Talos test project: code that breaks the lint, type, dead-code and type-coverage rules.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4"
+    },
+    "require-dev": {
+        "pestphp/pest": "5.3.3",
+        "pestphp/pest-plugin-phpstan": "5.2.2",
+        "phpmd/phpmd": "3.0.0",
+        "phpstan/phpstan": "2.3.1",
+        "phpstan/phpstan-strict-rules": "2.1.0",
+        "shipmonk/dead-code-detector": "1.4.2",
+        "tomasvotruba/cognitive-complexity": "1.3.0",
+        "tomasvotruba/type-coverage": "2.5.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ledger\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    }
+}

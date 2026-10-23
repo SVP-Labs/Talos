@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.talos.json",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "noEmit": true,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src", "test", "*.config.ts", "*.project.ts"]
+}

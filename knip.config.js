@@ -11,12 +11,6 @@ export default {
     ...(project.ignore ?? []),
   ],
   ignoreDependencies: [
-    '@stryker-mutator/core',
-    '@stryker-mutator/vitest-runner',
-    '@vitest/coverage-v8',
-    'dependency-cruiser',
-    'knip',
-    'prettier',
     'type-coverage',
     ...(project.ignoreDependencies ?? []),
   ],

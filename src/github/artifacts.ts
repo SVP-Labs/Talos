@@ -17,6 +17,7 @@ export function downloader(token: string, options: GitHubOptions = {}): Download
   const doFetch = options.fetch ?? fetch;
   return async (path) => {
     const url = path.startsWith('https://') ? path : `${baseUrl}/${path.replace(/^\//, '')}`;
+    if (!url.startsWith(`${baseUrl}/`)) throw new GitHubError('GET artifact: not an API URL', 0);
     const first = await doFetch(url, {
       redirect: 'manual',
       headers: {

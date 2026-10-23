@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flagWeakenings, ruleWeakenings, splitLimit } from './compare.js';
+import { weakerFlags, weakerRules, splitLimit } from './compare.js';
 import { TSC_FLAGS } from './configs/tsconfig.js';
 
 describe('splitLimit', () => {
@@ -14,7 +14,7 @@ describe('splitLimit', () => {
   });
 });
 
-describe('ruleWeakenings', () => {
+describe('weakerRules', () => {
   const base = {
     complexity: [2, 12],
     'max-lines': [2, { max: 400, skipBlankLines: true, skipComments: true }],
@@ -24,7 +24,7 @@ describe('ruleWeakenings', () => {
   };
 
   it('accepts the base itself and anything stricter', () => {
-    expect(ruleWeakenings(base, base)).toEqual([]);
+    expect(weakerRules(base, base)).toEqual([]);
     const stricter = {
       ...base,
       complexity: [2, 10],
@@ -32,7 +32,7 @@ describe('ruleWeakenings', () => {
       '@stylistic/max-len': [2, { code: 100, ignoreUrls: false }],
       'no-console': [2],
     };
-    expect(ruleWeakenings(base, stricter)).toEqual([]);
+    expect(weakerRules(base, stricter)).toEqual([]);
   });
 
   it('reports a rule turned off, made a warning, loosened or changed', () => {
@@ -42,27 +42,27 @@ describe('ruleWeakenings', () => {
       '@stylistic/max-len': [2, { code: 100, ignoreUrls: true, ignoreComments: true }],
       eqeqeq: [2, 'smart'],
     };
-    expect(ruleWeakenings(base, weaker).map((w) => [w.subject, w.kind])).toEqual([
+    expect(weakerRules(base, weaker).map((w) => [w.subject, w.kind])).toEqual([
       ['complexity', 'limit'],
       ['max-lines', 'severity'],
       ['@stylistic/max-len', 'options'],
       ['eqeqeq', 'options'],
     ]);
-    expect(ruleWeakenings({ complexity: ['error', 12] }, {})).toEqual([
+    expect(weakerRules({ complexity: ['error', 12] }, {})).toEqual([
       { subject: 'complexity', kind: 'off', how: 'turns off complexity' },
     ]);
   });
 });
 
-describe('flagWeakenings', () => {
+describe('weakerFlags', () => {
   it('wants every base flag, and no strict-family flag turned off', () => {
-    expect(flagWeakenings({ ...TSC_FLAGS })).toEqual([]);
+    expect(weakerFlags({ ...TSC_FLAGS })).toEqual([]);
     const weaker = { ...TSC_FLAGS, noUncheckedIndexedAccess: false, strictNullChecks: false };
-    expect(flagWeakenings(weaker).map((w) => w.subject)).toEqual([
+    expect(weakerFlags(weaker).map((w) => w.subject)).toEqual([
       'noUncheckedIndexedAccess',
       'strictNullChecks',
     ]);
     const { checkJs: _, ...missing } = TSC_FLAGS;
-    expect(flagWeakenings(missing).map((w) => w.how)).toEqual(['does not set checkJs to true']);
+    expect(weakerFlags(missing).map((w) => w.how)).toEqual(['does not set checkJs to true']);
   });
 });

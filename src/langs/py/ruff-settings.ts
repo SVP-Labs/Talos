@@ -159,7 +159,7 @@ function compareValue(key: string, base: RuffSettings, mine: RuffSettings): Weak
 }
 
 /** Every way the project's effective settings are weaker than the base's. */
-export function ruffWeakenings(base: RuffSettings, mine: RuffSettings): Weakening[] {
+export function weakerRuff(base: RuffSettings, mine: RuffSettings): Weakening[] {
   const rules = [...base.enabled]
     .filter(([code]) => !mine.enabled.has(code))
     .map(([code, name]) => ({ setting: `rule ${code}`, message: `turns off ${name} (${code})` }));

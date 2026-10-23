@@ -6,7 +6,7 @@ import { cruiseOnce } from './arch.js';
 import { lintRun, lintTargets } from './lint.js';
 import { type Check, type CheckContext, skip, APPLIES } from '../../../core/check.js';
 import type { Finding } from '../../../core/finding.js';
-import { flagWeakenings, ruleWeakenings, type Weakening } from '../compare.js';
+import { weakerFlags, weakerRules, type Weakening } from '../compare.js';
 import { UNIVERSAL_RULES, DEPCRUISE_PROJECT } from '../configs/depcruise.js';
 import { ESLINT_BASE, ESLINT_PROJECT } from '../configs/eslint.js';
 import { KNIP_PROJECT, KNIP_WEAKENING_KEYS } from '../configs/knip.js';
@@ -16,6 +16,7 @@ import {
   inRepo,
   isJavaScript,
   isTest,
+  isTooling,
   rootOf,
   tsconfigs,
 } from '../files.js';
@@ -29,13 +30,17 @@ const printed = z.looseObject({
     .default({}),
 });
 
-/** One file of each kind ESLint treats differently: source, TSX, tests, JavaScript. */
+/**
+ * One file of each kind ESLint treats differently: source, TSX, tests, JavaScript (a source
+ * when there is one, and a tool config).
+ */
 export function representatives(files: readonly string[]): string[] {
   const kinds: ((file: string) => boolean)[] = [
     (file) => /\.[cm]?ts$/.test(file) && !isTest(file),
     (file) => file.endsWith('.tsx') && !isTest(file),
     (file) => isTest(file) && !isJavaScript(file),
-    (file) => isJavaScript(file),
+    (file) => isJavaScript(file) && !isTooling(file),
+    (file) => isJavaScript(file) && isTooling(file),
   ];
   return kinds.flatMap((matches) => {
     const first = files.find((file) => matches(file));
@@ -65,7 +70,19 @@ async function weaker(
   };
 }
 
-async function printConfig(ctx: CheckContext, config: string, file: string) {
+type Printed = z.infer<typeof printed>;
+
+/** The rules, with the unused-directive report as one more severity to keep. */
+function settings(config: Printed): Record<string, unknown> {
+  const reports = config.linterOptions.reportUnusedDisableDirectives;
+  return { ...config.rules, 'linterOptions/reportUnusedDisableDirectives': reports };
+}
+
+async function printConfig(
+  ctx: CheckContext,
+  config: string,
+  file: string,
+): Promise<Printed | undefined> {
   const tool = await nodeTool(ctx, 'eslint', 'eslint');
   const result = await runTool(ctx, tool, ['--config', config, '--print-config', file]);
   const text = result.stdout.trim();
@@ -88,19 +105,9 @@ async function eslintRules(ctx: CheckContext): Promise<Finding[]> {
       printConfig(ctx, ESLINT_BASE, file),
     ]);
     if (only === undefined || effective === undefined) continue;
-    const reports = {
-      'linterOptions/reportUnusedDisableDirectives':
-        only.linterOptions.reportUnusedDisableDirectives,
-    };
-    const effectiveReports = {
-      'linterOptions/reportUnusedDisableDirectives':
-        effective.linterOptions.reportUnusedDisableDirectives,
-    };
-    for (const weakening of [
-      ...ruleWeakenings(only.rules, effective.rules),
-      ...ruleWeakenings(reports, effectiveReports),
-    ]) {
-      found.set(`${weakening.subject}/${weakening.kind}`, { ...weakening, file });
+    for (const weakening of weakerRules(settings(only), settings(effective))) {
+      const key = `${weakening.subject}/${weakening.kind}`;
+      if (!found.has(key)) found.set(key, { ...weakening, file });
     }
   }
   const project = inRepo(root, ESLINT_PROJECT);
@@ -141,7 +148,7 @@ async function tscFlags(ctx: CheckContext): Promise<Finding[]> {
     const result = await runTool(ctx, tool, ['--showConfig', '-p', 'tsconfig.json'], { cwd });
     if (result.code !== 0 || !result.stdout.trim().startsWith('{')) continue;
     const options = shown.parse(parseJson('tsc --showConfig', result.stdout)).compilerOptions;
-    for (const w of flagWeakenings(options)) {
+    for (const w of weakerFlags(options)) {
       findings.push(
         await weaker(
           ctx,

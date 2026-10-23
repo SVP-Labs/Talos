@@ -21,13 +21,18 @@ function bot(slug: string): string {
   return `${slug}[bot]`;
 }
 
+/** An unset organisation variable reaches a workflow as an empty string. */
+function setting(value: string | undefined, fallback: string): string {
+  return value === undefined || value === '' ? fallback : value;
+}
+
 export function identities(env: Readonly<Record<string, string | undefined>>): Identities {
-  const org = env.TALOS_ORG ?? 'SVP-Labs';
+  const org = setting(env.TALOS_ORG, 'SVP-Labs');
   return {
-    owner: env.TALOS_OWNER ?? 'SvenPGH',
-    thea: bot(env.TALOS_THEA_APP ?? 'thea-svp'),
-    reviewer: bot(env.TALOS_REVIEWER_APP ?? 'talos-reviewer'),
-    release: bot(env.TALOS_RELEASE_APP ?? 'talos-release'),
+    owner: setting(env.TALOS_OWNER, 'SvenPGH'),
+    thea: bot(setting(env.TALOS_THEA_APP, 'thea-svp')),
+    reviewer: bot(setting(env.TALOS_REVIEWER_APP, 'talos-reviewer')),
+    release: bot(setting(env.TALOS_RELEASE_APP, 'talos-release')),
     org,
     talosRepo: `${org}/Talos`,
   };

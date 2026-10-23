@@ -19,11 +19,7 @@ import { EngineError } from '../../core/check.js';
 import type { Finding, Location } from '../../core/finding.js';
 
 /** The file a module lives in, repository-relative, among the component's Python files. */
-export function moduleFile(
-  module: string,
-  files: ReadonlySet<string>,
-  root: string,
-): string | undefined {
+function moduleFile(module: string, files: ReadonlySet<string>, root: string): string | undefined {
   const path = module.replaceAll('.', '/');
   const candidates = ['', 'src/'].flatMap((at) => [`${at}${path}.py`, `${at}${path}/__init__.py`]);
   const found = candidates.find((candidate) => files.has(candidate));
@@ -92,8 +88,10 @@ async function lintImports(
 async function devOnly(ctx: Bound): Promise<string[]> {
   const lock = join(componentDir(ctx), 'uv.lock');
   if (!(await fileExists(lock))) return [];
-  const dists = devOnlyDistributions(await readFile(lock, 'utf8'));
-  return dists === undefined ? [] : devOnlyModules(dists, await readEnvironment(ctx));
+  const devOnlyPackages = devOnlyDistributions(await readFile(lock, 'utf8'));
+  return devOnlyPackages === undefined
+    ? []
+    : devOnlyModules(devOnlyPackages, await readEnvironment(ctx));
 }
 
 async function universal(ctx: Bound, roots: Roots): Promise<Finding[]> {

@@ -13,7 +13,7 @@ import {
 } from '../../../core/check.js';
 import type { Finding } from '../../../core/finding.js';
 import { componentFiles, rootOf, stripSlashes } from '../files.js';
-import { type NodeTool, installedPackage, binScript, runTool, tail } from '../node.js';
+import { type NodeTool, installedPackage, binScript, runTool, tail, mapInChunks } from '../node.js';
 
 const PLAYWRIGHT_CONFIG = /(?:^|\/)playwright\.config\.[cm]?[jt]s$/;
 
@@ -49,8 +49,8 @@ export async function suiteImports(
   suite: Suite,
 ): Promise<{ playwright: boolean; axe: boolean }> {
   const files = componentFiles(ctx).filter((file) => holds(suite.path, file));
-  const texts = await Promise.all(
-    files.map((file) => readFile(join(ctx.root, file), 'utf8').catch(() => '')),
+  const texts = await mapInChunks(files, (file) =>
+    readFile(join(ctx.root, file), 'utf8').catch(() => ''),
   );
   return {
     playwright: texts.some((text) => text.includes('@playwright/test')),

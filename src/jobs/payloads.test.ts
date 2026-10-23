@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { admission } from './payloads.js';
+import { admission, defaultBranchOf } from './payloads.js';
 import { identities } from '../github/identities.js';
 
 const who = identities({});
@@ -16,7 +16,9 @@ describe('admission', () => {
   it('admits comments and reviews from the owner, members and collaborators', () => {
     for (const association of ['OWNER', 'MEMBER', 'COLLABORATOR']) {
       expect(admission('issue_comment', comment('x', association), who)).toEqual({ admit: true });
-      expect(admission('pull_request_review', review('x', association), who)).toEqual({ admit: true });
+      expect(admission('pull_request_review', review('x', association), who)).toEqual({
+        admit: true,
+      });
     }
   });
 
@@ -32,7 +34,9 @@ describe('admission', () => {
         admit: false,
         reason: 'author not trusted',
       });
-      expect(admission('pull_request_review', review('mallory', association), who).admit).toBe(false);
+      expect(admission('pull_request_review', review('mallory', association), who).admit).toBe(
+        false,
+      );
     }
   });
 
@@ -52,8 +56,22 @@ describe('admission', () => {
   });
 
   it('admits every other event; their jobs judge them', () => {
-    for (const event of ['issues', 'pull_request_target', 'merge_group', 'schedule', 'workflow_dispatch']) {
+    for (const event of [
+      'issues',
+      'pull_request_target',
+      'merge_group',
+      'schedule',
+      'workflow_dispatch',
+    ]) {
       expect(admission(event, {}, who)).toEqual({ admit: true });
     }
+  });
+});
+
+describe('defaultBranchOf', () => {
+  it('reads the default branch a payload names', () => {
+    expect(defaultBranchOf({ repository: { default_branch: 'trunk' } })).toBe('trunk');
+    expect(defaultBranchOf({ schedule: '17 3 * * *' })).toBeUndefined();
+    expect(defaultBranchOf(null)).toBeUndefined();
   });
 });

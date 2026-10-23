@@ -1,0 +1,276 @@
+# Talos's caller: every job but the PR gate, run as `talos job <event>` at the Talos release this
+# repository's rulesets enforce. It never changes between releases; `talos govern` writes it and
+# the drift report checks it. `analyze` runs the default branch's code and holds no secret; `act`
+# holds the reviewer's token and never checks out or runs the PR's code: it reads the diff and
+# files through the API.
+name: talos
+
+on: # zizmor: ignore[concurrency-limits] each event's job must finish: a cancelled one drops talos/review or an issue's work
+  # `edited` beyond the gate's types: fixing a PR's body reruns talos/review.
+  pull_request_target: # zizmor: ignore[dangerous-triggers] the act job never checks out or runs the PR
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+  issues:
+  issue_comment:
+  pull_request_review:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  analyze:
+    name: analyze
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read # the rulesets, and the default branch's checkout
+    steps:
+      - name: Find the enforced Talos release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: |
+          # bootstrap/find-pin.sh, inlined (Talos isn't checked out yet); a test keeps them equal.
+          find_pin() {
+            set -euo pipefail
+
+            repo="${GITHUB_REPOSITORY:-}"
+            talos="${TALOS_REPO:-SVP-Labs/Talos}"
+            mode="${TALOS_LOOKUP:-rulesets}"
+            sha_pattern='^[0-9a-f]{40}$'
+
+            fail() {
+              echo "find-pin: $1" >&2
+              exit 1
+            }
+
+            api() {
+              gh api "$@" 2>/dev/null
+            }
+
+            by_rulesets() {
+              local talos_id ids id detail shas count=0 pin=""
+              talos_id="$(api "repos/$talos" | jq -r '.id')" || fail "cannot read the Talos repository"
+              ids="$(api --paginate "repos/$repo/rulesets?includes_parents=true" |
+                jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
+                fail "cannot list the repository's rulesets"
+              for id in $ids; do
+                detail="$(api "repos/$repo/rulesets/$id?includes_parents=true")" || fail "cannot read a ruleset"
+                shas="$(jq -r --argjson talos "$talos_id" '
+                  [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
+                    | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
+                  fail "cannot read a ruleset"
+                [[ -z "$shas" ]] && continue
+                count=$((count + 1))
+                [[ "$shas" == *$'\n'* ]] && fail "a ruleset pins Talos at several commits"
+                [[ "$shas" =~ $sha_pattern ]] || fail "a ruleset runs Talos at a ref, not a commit SHA"
+                pin="$shas"
+              done
+              [[ "$count" -eq 0 ]] && fail "no ruleset that applies to this repository runs the Talos gate"
+              [[ "$count" -gt 1 ]] && fail "$count Talos rulesets apply; exactly one must"
+              printf '%s\n' "$pin"
+            }
+
+            by_channels() {
+              local channel sha
+              channel="$(api "repos/$repo" | jq -r '.custom_properties.talos // empty')" ||
+                fail "cannot read the repository"
+              case "$channel" in
+                evaluate | canary | stable) ;;
+                *) fail "the talos property names no channel" ;;
+              esac
+              sha="$(api "repos/$talos/contents/channels.json?ref=channels" |
+                jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
+                fail "cannot read channels.json"
+              [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"
+              printf '%s\n' "$sha"
+            }
+
+            [[ -n "$repo" ]] || fail "GITHUB_REPOSITORY is not set"
+            case "$mode" in
+              rulesets) by_rulesets ;;
+              channels) by_channels ;;
+              *) fail "TALOS_LOOKUP must be rulesets or channels" ;;
+            esac
+          }
+          pin="$(find_pin)"
+          printf 'sha=%s\n' "$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ steps.find.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Analyze
+        working-directory: repo
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          node ../talos-kit/bootstrap/launch.mjs job "$EVENT" --phase analyze \
+            --workdir "$RUNNER_TEMP/talos-job"
+      - name: Hand the results to act
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: talos-analyze
+          path: ${{ runner.temp }}/talos-job
+          retention-days: 1
+          if-no-files-found: ignore
+
+  act:
+    name: act
+    needs: analyze
+    # Strangers can comment and review on a public repository: such an event stops here, before
+    # the reviewer's key is used (`talos job` checks the same again).
+    if: >-
+      ${{ !cancelled() && (
+        (github.event_name != 'issue_comment' && github.event_name != 'pull_request_review') ||
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+          github.event.comment.author_association || github.event.review.author_association) ||
+        (github.event.comment.user.login || github.event.review.user.login) ==
+          (vars.TALOS_OWNER || 'SvenPGH') ||
+        (github.event.comment.user.login || github.event.review.user.login) ==
+          format('{0}[bot]', vars.TALOS_THEA_APP || 'thea-svp') ||
+        (github.event.comment.user.login || github.event.review.user.login) ==
+          format('{0}[bot]', vars.TALOS_RELEASE_APP || 'talos-release')
+      ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read # the gate's runs and its talos-verdict artifacts
+      contents: write # deleting stale ticket branches; nothing is checked out or pushed
+    steps:
+      - name: Find the enforced Talos release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: |
+          # bootstrap/find-pin.sh, inlined (Talos isn't checked out yet); a test keeps them equal.
+          find_pin() {
+            set -euo pipefail
+
+            repo="${GITHUB_REPOSITORY:-}"
+            talos="${TALOS_REPO:-SVP-Labs/Talos}"
+            mode="${TALOS_LOOKUP:-rulesets}"
+            sha_pattern='^[0-9a-f]{40}$'
+
+            fail() {
+              echo "find-pin: $1" >&2
+              exit 1
+            }
+
+            api() {
+              gh api "$@" 2>/dev/null
+            }
+
+            by_rulesets() {
+              local talos_id ids id detail shas count=0 pin=""
+              talos_id="$(api "repos/$talos" | jq -r '.id')" || fail "cannot read the Talos repository"
+              ids="$(api --paginate "repos/$repo/rulesets?includes_parents=true" |
+                jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
+                fail "cannot list the repository's rulesets"
+              for id in $ids; do
+                detail="$(api "repos/$repo/rulesets/$id?includes_parents=true")" || fail "cannot read a ruleset"
+                shas="$(jq -r --argjson talos "$talos_id" '
+                  [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
+                    | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
+                  fail "cannot read a ruleset"
+                [[ -z "$shas" ]] && continue
+                count=$((count + 1))
+                [[ "$shas" == *$'\n'* ]] && fail "a ruleset pins Talos at several commits"
+                [[ "$shas" =~ $sha_pattern ]] || fail "a ruleset runs Talos at a ref, not a commit SHA"
+                pin="$shas"
+              done
+              [[ "$count" -eq 0 ]] && fail "no ruleset that applies to this repository runs the Talos gate"
+              [[ "$count" -gt 1 ]] && fail "$count Talos rulesets apply; exactly one must"
+              printf '%s\n' "$pin"
+            }
+
+            by_channels() {
+              local channel sha
+              channel="$(api "repos/$repo" | jq -r '.custom_properties.talos // empty')" ||
+                fail "cannot read the repository"
+              case "$channel" in
+                evaluate | canary | stable) ;;
+                *) fail "the talos property names no channel" ;;
+              esac
+              sha="$(api "repos/$talos/contents/channels.json?ref=channels" |
+                jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
+                fail "cannot read channels.json"
+              [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"
+              printf '%s\n' "$sha"
+            }
+
+            [[ -n "$repo" ]] || fail "GITHUB_REPOSITORY is not set"
+            case "$mode" in
+              rulesets) by_rulesets ;;
+              channels) by_channels ;;
+              *) fail "TALOS_LOOKUP must be rulesets or channels" ;;
+            esac
+          }
+          pin="$(find_pin)"
+          printf 'sha=%s\n' "$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ steps.find.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Collect what analyze left
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: talos-analyze
+          path: ${{ runner.temp }}/talos-job
+      - name: Mint the reviewer's token for this repository
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-issues: write
+          permission-checks: write
+      - name: Act
+        env:
+          EVENT: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TALOS_REVIEWER_TOKEN: ${{ steps.token.outputs.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          TALOS_OWNER: ${{ vars.TALOS_OWNER || 'SvenPGH' }}
+          TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP || 'thea-svp' }}
+          TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP || 'talos-reviewer' }}
+          TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP || 'talos-release' }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP || 'rulesets' }}
+        run: |
+          node talos-kit/bootstrap/launch.mjs job "$EVENT" --phase act --workdir "$RUNNER_TEMP/talos-job"

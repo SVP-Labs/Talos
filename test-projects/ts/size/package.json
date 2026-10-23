@@ -1,0 +1,9 @@
+{
+  "name": "talos-case-size",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "size-limit": "14.1.0",
+    "@size-limit/file": "14.1.0"
+  }
+}

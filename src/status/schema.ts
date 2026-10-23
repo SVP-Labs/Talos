@@ -63,7 +63,7 @@ const card = z.strictObject({
   since: timestamp,
 });
 
-export const repoStatusSchema = z
+const repoStatusSchema = z
   .strictObject({
     schema: z.literal(STATUS_SCHEMA),
     repo: z.string().describe('owner/name'),
@@ -96,7 +96,7 @@ export const repoStatusSchema = z
   })
   .describe("one governed repository's state");
 
-export const statusErrorSchema = z
+const statusErrorSchema = z
   .strictObject({
     schema: z.literal(STATUS_SCHEMA),
     repo: z.string(),
@@ -110,7 +110,6 @@ export const statusSchema = z
   .meta({ title: STATUS_SCHEMA, description: "A governed repository's current state" });
 
 export type RepoStatus = z.infer<typeof repoStatusSchema>;
-export type StatusError = z.infer<typeof statusErrorSchema>;
 export type Status = z.infer<typeof statusSchema>;
 export type CheckStateName = z.infer<typeof checkState>;
 export type Claim = z.infer<typeof claim>;

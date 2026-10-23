@@ -1,0 +1,5 @@
+{
+  "checks": ["ts/toolchain"],
+  "rules": ["toolchain/version"],
+  "os": ["linux", "windows"]
+}

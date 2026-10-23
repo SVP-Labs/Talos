@@ -1,0 +1,8 @@
+{
+  "name": "talos-case-toolchain",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "prettier": "3.9.9"
+  }
+}

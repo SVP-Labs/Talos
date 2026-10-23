@@ -9,15 +9,17 @@ import { createEngine } from '../engine/session.js';
 import { compactDebt, debtCheckIds, debtReport, debtText } from '../jobs/debt-report.js';
 import { addWorktree, type Git, git, revParse } from '../repo/git.js';
 
-const DEFAULT_TIPS = ['origin/HEAD', 'origin/main', 'main'];
+/** Where the default branch is, in order: what `origin` says, then the usual name. */
+const DEFAULT_TIPS = ['refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/heads/main'];
 
 async function tipOf(repo: Git, ref: string | undefined): Promise<string> {
   if (ref !== undefined) return revParse(repo, ref);
-  for (const candidate of DEFAULT_TIPS) {
-    const sha = await revParse(repo, candidate).catch(() => undefined);
-    if (sha !== undefined) return sha;
-  }
-  throw new Error('no default branch found: pass --ref <ref>');
+  const listed = (await repo.run(['for-each-ref', '--format=%(refname)', ...DEFAULT_TIPS])).split(
+    '\n',
+  );
+  const found = DEFAULT_TIPS.find((tip) => listed.includes(tip));
+  if (found === undefined) throw new Error('no default branch found: pass --ref <ref>');
+  return revParse(repo, found);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -56,23 +58,30 @@ async function aloneAt(engine: Engine, repo: Git, sha: string): Promise<RunResul
   return result;
 }
 
+/** `talos debt` with an engine of the caller's choosing (tests pass one with test packs). */
+export function debtWith(makeEngine: (verbose: boolean) => Engine): Command {
+  return async (argv, io) => {
+    const { values } = parse(argv, {
+      json: { type: 'boolean', default: false },
+      out: { type: 'string' },
+      ref: { type: 'string' },
+      verbose: { type: 'boolean', default: false },
+    });
+    const engine = makeEngine(values.verbose);
+    const repo = git(engine.exec, io.cwd);
+    const sha = await tipOf(repo, values.ref);
+    const report = debtReport(await aloneAt(engine, repo, sha), { now: new Date() });
+    if (values.out !== undefined) {
+      await writeFile(values.out, `${JSON.stringify(report, null, 2)}\n`);
+    }
+    io.out(values.json ? `${JSON.stringify(compactDebt(report), null, 2)}\n` : debtText(report));
+    return report.counts.faults > 0 ? 2 : 0;
+  };
+}
+
 /**
  * `talos debt`: the findings on the default branch, with nothing compared. `--json` prints the
  * counts by rule and file (`talos.debt/1`, lists capped at 20); `--out` writes every finding.
  * Exits 0, or 2 when a check had an engine error and the list is incomplete.
  */
-export const debt: Command = async (argv, io) => {
-  const { values } = parse(argv, {
-    json: { type: 'boolean', default: false },
-    out: { type: 'string' },
-    ref: { type: 'string' },
-    verbose: { type: 'boolean', default: false },
-  });
-  const engine = createEngine(values.verbose);
-  const repo = git(engine.exec, io.cwd);
-  const sha = await tipOf(repo, values.ref);
-  const report = debtReport(await aloneAt(engine, repo, sha), { now: new Date() });
-  if (values.out !== undefined) await writeFile(values.out, `${JSON.stringify(report, null, 2)}\n`);
-  io.out(values.json ? `${JSON.stringify(compactDebt(report), null, 2)}\n` : debtText(report));
-  return report.counts.faults > 0 ? 2 : 0;
-};
+export const debt: Command = debtWith(createEngine);

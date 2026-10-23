@@ -18,7 +18,11 @@ export function finding(
   };
 }
 
-export function outcome(check: string, findings: Reported[], extra: Partial<Outcome> = {}): Outcome {
+export function outcome(
+  check: string,
+  findings: Reported[],
+  extra: Partial<Outcome> = {},
+): Outcome {
   return {
     check,
     tier: 'commit',

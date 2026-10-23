@@ -1,0 +1,5 @@
+# This project's additions to phpstan.neon, which may only tighten it.
+parameters:
+    paths:
+        - "src"
+        - "tests"

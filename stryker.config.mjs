@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 
 const project = JSON.parse(readFileSync(new URL('./stryker.project.json', import.meta.url), 'utf8'));
 
-/** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   testRunner: 'vitest',
   coverageAnalysis: 'perTest',

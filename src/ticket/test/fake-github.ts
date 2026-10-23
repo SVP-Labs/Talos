@@ -8,7 +8,7 @@ import { github, type GitHub } from '../../github/api.js';
  * login acting, so `fake.client('thea-svp[bot]')` comments as Thea's App.
  */
 
-export type FakeComment = {
+type FakeComment = {
   id: number;
   body: string;
   user: string;
@@ -76,6 +76,7 @@ const NOT_FOUND: Reply = { status: 404, json: { message: 'Not Found' } };
 const NO_CONTENT: Reply = { status: 204 };
 
 const anyRecord = z.record(z.string(), z.unknown()).catch({});
+const stringList = z.array(z.string()).catch([]);
 
 function record(value: unknown): Record<string, unknown> {
   return anyRecord.parse(value);
@@ -99,7 +100,8 @@ export class FakeGitHub {
   readonly failures = new Map<string, number>();
   /** Answers GraphQL queries. */
   graphql: (query: string, variables: Record<string, unknown>) => unknown = () => ({});
-  now = '2026-10-23T10:00:00Z';
+  /** When events the fake records happen: the real clock, as the commands under test use it. */
+  now = new Date().toISOString();
   private nextId = 5000;
 
   private readonly routes: [string, RegExp, Handler][] = [
@@ -148,7 +150,7 @@ export class FakeGitHub {
       login: auth.replace(/^Bearer /, ''),
     };
     this.calls.push(call);
-    return this.respond(this.route(call));
+    return Promise.resolve(this.respond(this.route(call)));
   };
 
   private route(call: Call): Reply {
@@ -168,11 +170,12 @@ export class FakeGitHub {
     if (reply.bytes !== undefined) {
       return new Response(Buffer.from(reply.bytes), {
         status: reply.status,
-        headers: reply.headers,
+        headers: reply.headers ?? {},
       });
     }
-    if (reply.json === undefined)
-      {return new Response(null, { status: reply.status, headers: reply.headers });}
+    if (reply.json === undefined) {
+      return new Response(null, { status: reply.status, headers: reply.headers ?? {} });
+    }
     return new Response(JSON.stringify(reply.json), {
       status: reply.status,
       headers: { 'content-type': 'application/json; charset=utf-8', ...reply.headers },
@@ -212,7 +215,7 @@ export class FakeGitHub {
       body: issue.body,
       state: issue.state,
       state_reason: issue.state_reason,
-      labels: issue.labels.map((name) => ({ name, color: 'ededed' })),
+      labels: issue.labels.map((name) => ({ name, color: '000000' })),
       user: { login: issue.user, type: issue.user.endsWith('[bot]') ? 'Bot' : 'User' },
       author_association: issue.author_association,
       created_at: issue.created_at,
@@ -246,10 +249,12 @@ export class FakeGitHub {
   }
 
   private deleteRef(m: RegExpExecArray): Reply {
-    if (!this.refs.delete(m[1] ?? ''))
-      {return { status: 422, json: { message: 'Reference does not exist' } };}
-    for (const pull of this.pulls.filter((p) => p.head === m[1] && p.state === 'open'))
-      {pull.state = 'closed';}
+    if (!this.refs.delete(m[1] ?? '')) {
+      return { status: 422, json: { message: 'Reference does not exist' } };
+    }
+    for (const pull of this.pulls.filter((p) => p.head === m[1] && p.state === 'open')) {
+      pull.state = 'closed';
+    }
     return NO_CONTENT;
   }
 
@@ -276,9 +281,7 @@ export class FakeGitHub {
 
   private createIssue(call: Call): Reply {
     const body = record(call.body);
-    const labels = Array.isArray(body.labels)
-      ? body.labels.filter((l) => typeof l === 'string')
-      : [];
+    const labels = stringList.parse(body.labels);
     const number = Math.max(0, ...this.issues.keys(), ...this.pulls.map((p) => p.number)) + 1;
     const issue = this.addIssue({
       number,
@@ -307,9 +310,8 @@ export class FakeGitHub {
   private addLabels(call: Call, m: RegExpExecArray): Reply {
     const issue = this.issues.get(Number(m[1]));
     if (issue === undefined) return NOT_FOUND;
-    const labels = record(call.body).labels;
-    for (const name of Array.isArray(labels) ? labels : []) {
-      if (typeof name !== 'string' || issue.labels.includes(name)) continue;
+    for (const name of stringList.parse(record(call.body).labels)) {
+      if (issue.labels.includes(name)) continue;
       issue.labels.push(name);
       issue.timeline.push({ event: 'labeled', created_at: this.now, label: { name } });
     }
@@ -403,8 +405,9 @@ export class FakeGitHub {
       color: text(body.color) ?? '',
       description: text(body.description) ?? null,
     };
-    if (this.labels.some((l) => l.name.toLowerCase() === label.name.toLowerCase()))
-      {return { status: 422, json: { message: 'already_exists' } };}
+    if (this.labels.some((l) => l.name.toLowerCase() === label.name.toLowerCase())) {
+      return { status: 422, json: { message: 'already_exists' } };
+    }
     this.labels.push(label);
     return ok(label, 201);
   }

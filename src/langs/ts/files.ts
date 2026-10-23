@@ -20,7 +20,7 @@ export const TEST_GLOBS = [
 /** Tool configuration rather than source: `*.config.*`, Talos's `*.project.*`, dotfiles. */
 const TOOLING = /(?:^|\/)(?:[^/]*\.(?:config|project)\.[cm]?[jt]s|\.[^/]+\.[cm]?js)$/;
 
-export const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock'] as const;
+export const LOCK_FILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock'] as const;
 
 export function isCode(path: string): boolean {
   return CODE.test(path);
@@ -56,9 +56,10 @@ export function inComponent(root: string, path: string): string {
   return root === '.' ? path : posix.relative(root, path);
 }
 
-/** A component-relative path made repository-relative. */
+/** A component-relative path (as a tool printed it, on any OS) made repository-relative. */
 export function inRepo(root: string, path: string): string {
-  return root === '.' ? path : posix.join(root, path);
+  const portable = path.replaceAll('\\', '/');
+  return root === '.' ? portable : posix.join(root, portable);
 }
 
 /** The component's tracked files (minus `exclude`), repository-relative. */

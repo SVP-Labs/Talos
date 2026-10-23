@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type Download, recentArtifacts } from './artifacts.js';
+import { recentArtifacts } from './artifacts.js';
 import { nameable } from './debt-issues.js';
 import {
   codeSpan,
@@ -12,16 +12,17 @@ import {
 } from './talos-issues.js';
 import { zipEntry } from './unzip.js';
 import type { GitHub } from '../github/api.js';
+import type { Download } from '../github/artifacts.js';
 import type { Identities } from '../github/identities.js';
 import { fileAt } from '../ticket/github.js';
 import { LABEL } from '../ticket/labels.js';
 import { clip } from '../ticket/payload.js';
 
 /** The gate uploads its compact verdict as this artifact, holding `verdict.json`. */
-export const VERDICT_ARTIFACT = 'talos-verdict';
+const VERDICT_ARTIFACT = 'talos-verdict';
 
 /** How far back each daily run looks; a run that failed one day is covered the next. */
-export const LOOKBACK_DAYS = 2;
+const SEEN_WITHIN_DAYS = 2;
 
 const MAX_ARTIFACTS = 50;
 const MAX_NEW = 5;
@@ -86,11 +87,20 @@ export function flakyIssue(c: FlakyCandidate): IssueDraft {
   const test = codeSpan(c.id);
   const where = c.pr === null ? '' : ` (on PR #${c.pr})`;
   const body = [
-    marker('flaky', { test: c.digest }),
+    marker('flaky', { test: c.digest, file: c.file }),
+    '',
     '### Goal',
     '',
-    `Make ${test} pass reliably. It failed and then passed on an immediate rerun, so the gate ` +
-      `let it through as flaky; last seen ${c.seenAt.slice(0, 10)}${where}.`,
+    `Make ${test} pass reliably, so the gate no longer has to let it through as flaky.`,
+    '',
+    '### Repro',
+    '',
+    `Run the tests of \`${c.file}\` repeatedly: the gate saw this test fail and then pass on ` +
+      `its immediate rerun, last on ${c.seenAt.slice(0, 10)}${where}.`,
+    '',
+    '### Expected / Actual',
+    '',
+    'Expected: it passes every time. Actual: it sometimes fails, and passes when run again.',
     '',
     '### Acceptance criteria',
     '',
@@ -126,7 +136,7 @@ async function sightings(
   repo: string,
   now: Date,
 ): Promise<{ found: FlakySighting[]; unreadable: number }> {
-  const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - SEEN_WITHIN_DAYS * 86_400_000);
   const artifacts = await recentArtifacts(deps.actions, repo, {
     name: VERDICT_ARTIFACT,
     since,

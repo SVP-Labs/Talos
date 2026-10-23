@@ -24,7 +24,7 @@ const DEAD_CODE_RULE = /^(?:knip|vulture|cargo-machete)\/|^(?:rustc|clippy)\/dea
 
 /** Dead code: a `<lang>/dead-code` check's finding, or a rule of a dead-code tool. */
 export function isDeadCode(finding: Pick<DebtFinding, 'rule' | 'check'>): boolean {
-  return /\/dead-?code$/.test(finding.check) || DEAD_CODE_RULE.test(finding.rule);
+  return finding.check.endsWith('/dead-code') || DEAD_CODE_RULE.test(finding.rule);
 }
 
 /** A path an issue can name exactly, as `` - `path` `` under Affected areas. */
@@ -114,7 +114,13 @@ export function debtIssue(candidate: DebtCandidate): IssueDraft {
   const what = candidate.kind === 'dead-code' ? 'Dead code' : 'Debt';
   const file = `\`${candidate.file}\``;
   const body = [
-    marker('debt', { file: candidate.file, findings: candidate.digest }),
+    marker('debt', {
+      file: candidate.file,
+      kind: candidate.kind,
+      count: String(n),
+      findings: candidate.digest,
+    }),
+    '',
     '### Goal',
     '',
     `Clear the ${n} finding(s) Talos reports in ${file} on the default branch, so the file ` +

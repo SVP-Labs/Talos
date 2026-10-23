@@ -203,7 +203,7 @@ ${configs(ignores)}`;
 }
 
 export function eslintProjectInitial(): string {
-  return `// The project's additions to the generated ESLint base (${ESLINT_BASE}); they may only tighten it.
+  return `// The project's additions to the generated ESLint base (${ESLINT_BASE}).
 export default {
   /** Paths ESLint skips beyond talos.yml's exclude. */
   ignores: [],

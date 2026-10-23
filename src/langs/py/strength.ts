@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   baseRuffText,
@@ -8,11 +8,11 @@ import {
   ruffConfigFile,
 } from './configs.js';
 import { componentDir, inRepo, pythonFiles } from './paths.js';
-import { pyrightWeakenings, resolvePyright } from './pyright-config.js';
+import { resolvePyright, weakerComments, weakerPyright } from './pyright-config.js';
 import {
   parseRuffSettings,
   type RuffSettings,
-  ruffWeakenings,
+  weakerRuff,
   type Weakening,
 } from './ruff-settings.js';
 import { type Bound, failed, runTool } from './run.js';
@@ -47,19 +47,39 @@ async function ruffStrength(ctx: Bound, file: string): Promise<Finding[]> {
     showSettings(ctx, base, file),
     showSettings(ctx, project, file),
   ]);
-  return ruffWeakenings(theirs, ours).map((w) => weaker(ctx, project, RUFF_BASE, w));
+  return weakerRuff(theirs, ours).map((w) => weaker(ctx, project, RUFF_BASE, w));
 }
 
 /** basedpyright prints no effective config, so Talos follows the `extends` chain itself. */
 async function pyrightStrength(ctx: Bound): Promise<Finding[]> {
   const project = await pyrightConfigFile(ctx);
   const resolved = await resolvePyright(join(componentDir(ctx), project));
-  return pyrightWeakenings(resolved).map((w) => weaker(ctx, project, PYRIGHT_BASE, w));
+  return weakerPyright(resolved).map((w) => weaker(ctx, project, PYRIGHT_BASE, w));
+}
+
+/** Files that loosen themselves with a `# pyright:` comment, which no config file can undo. */
+async function commentStrength(ctx: Bound, files: readonly string[]): Promise<Finding[]> {
+  const dir = componentDir(ctx);
+  const found = await Promise.all(
+    files.map(async (file) =>
+      weakerComments(await readFile(join(dir, file), 'utf8')).map((comment): Finding => ({
+        rule: 'config/weaker',
+        message: `This comment sets "${comment.directive}" for the file, which is weaker than ${PYRIGHT_BASE}.`,
+        location: { file: inRepo(ctx.component.root, file), line: comment.line },
+      })),
+    ),
+  );
+  return found.flat();
 }
 
 export async function strength(ctx: Bound): Promise<Finding[]> {
-  const [file] = pythonFiles(ctx);
+  const files = pythonFiles(ctx);
+  const [file] = files;
   if (file === undefined) throw new EngineError('py/config-strength ran with no Python files');
-  const found = await Promise.all([ruffStrength(ctx, file), pyrightStrength(ctx)]);
+  const found = await Promise.all([
+    ruffStrength(ctx, file),
+    pyrightStrength(ctx),
+    commentStrength(ctx, files),
+  ]);
   return found.flat();
 }

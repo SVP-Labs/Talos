@@ -85,15 +85,19 @@ function single(kind: string, file: string, entry: Item): Finding {
   return BY_NAME.has(kind) ? { ...finding, key: `${kind} ${entry.name ?? ''}` } : finding;
 }
 
+const list = z.array(z.unknown());
+
 function rowFindings(kind: string, file: string, value: unknown): Finding[] {
-  if (!Array.isArray(value)) return [];
+  const parsedList = list.safeParse(value);
+  if (!parsedList.success) return [];
+  const entries = parsedList.data;
   if (GROUPED.has(kind)) {
-    return value.flatMap((group): Finding[] => {
-      const entries = z.array(item).safeParse(group);
-      return entries.success && entries.data.length > 0 ? [grouped(kind, file, entries.data)] : [];
+    return entries.flatMap((group): Finding[] => {
+      const members = z.array(item).safeParse(group);
+      return members.success && members.data.length > 0 ? [grouped(kind, file, members.data)] : [];
     });
   }
-  return value.flatMap((entry): Finding[] => {
+  return entries.flatMap((entry): Finding[] => {
     const parsed = item.safeParse(entry);
     return parsed.success ? [single(kind, file, parsed.data)] : [];
   });

@@ -2,30 +2,66 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAX_COGNITIVE, parseComplexipySarif } from './complexipy.js';
 import { ruffConfigFile } from './configs.js';
-import { componentDir, fileExists, fromTool, inRepo, isTestPath, pythonFiles } from './paths.js';
+import {
+  componentDir,
+  fileExists,
+  fromTool,
+  inComponent,
+  inRepo,
+  isTestPath,
+  pythonFiles,
+} from './paths.js';
 import { parseRuffJson, sentence } from './ruff.js';
 import { failed, runTool, type ToolContext } from './run.js';
 import { sizeFindings } from './sizes.js';
-import { readSpans } from './spans.js';
+import { type FileSpans, type FunctionSpan, readSpans } from './spans.js';
 import type { CheckContext } from '../../core/check.js';
 import { EngineError } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
 
 type Lint = ToolContext & Pick<CheckContext, 'facts'>;
 
-async function ruffFindings(ctx: Lint, files: readonly string[]): Promise<Finding[]> {
+/** Rules about a whole function, which ruff reports on its name alone. */
+const FUNCTION_RULES = new Set(['C901', 'PLR0911', 'PLR0912', 'PLR0913', 'PLR0915', 'PLR0917']);
+
+/** The innermost function whose lines hold `line`: the one starting last at or before it. */
+export function enclosing(spans: FileSpans | undefined, line: number): FunctionSpan | undefined {
+  return spans?.functions
+    .filter((fn) => fn.start <= line && line <= fn.end)
+    .reduce<FunctionSpan | undefined>(
+      (best, fn) => (best && best.start > fn.start ? best : fn),
+      undefined,
+    );
+}
+
+async function ruffFindings(
+  ctx: Lint,
+  files: readonly string[],
+  spans: ReadonlyMap<string, FileSpans>,
+): Promise<Finding[]> {
   const config = await ruffConfigFile(ctx);
   const args = ['check', '--no-cache', '--no-fix', '--output-format', 'json', '--config', config];
   const result = await runTool(ctx, 'ruff', [...args, ...files]);
   if (result.code > 1 && !result.stdout.trimStart().startsWith('[')) {
     throw failed('ruff check', result);
   }
-  return parseRuffJson(result.stdout).map((d) => ({
-    rule: `ruff/${d.code}`,
-    message: sentence(d.message),
-    location: { file: fromTool(ctx, d.file), line: d.line, endLine: d.endLine, column: d.column },
-    ...(d.url === undefined ? {} : { docs: d.url }),
-  }));
+  return parseRuffJson(result.stdout).map((d) => {
+    const file = fromTool(ctx, d.file);
+    const fn = FUNCTION_RULES.has(d.code)
+      ? enclosing(spans.get(inComponent(ctx.component.root, file) ?? ''), d.line)
+      : undefined;
+    return {
+      rule: `ruff/${d.code}`,
+      message: sentence(d.message),
+      location: {
+        file,
+        line: d.line,
+        endLine: Math.max(d.endLine, fn?.end ?? 0),
+        column: d.column,
+      },
+      ...(d.url === undefined ? {} : { docs: d.url }),
+    };
+  });
 }
 
 /**
@@ -62,12 +98,11 @@ async function cognitiveFindings(ctx: Lint, files: readonly string[]): Promise<F
   }));
 }
 
-async function sizes(ctx: Lint, files: readonly string[]): Promise<Finding[]> {
-  const shipped = files.filter((file) => file.endsWith('.py') && !isTestPath(file));
-  const spans = await readSpans(ctx, shipped);
+async function sizes(ctx: Lint, spans: ReadonlyMap<string, FileSpans>): Promise<Finding[]> {
   const dir = componentDir(ctx);
+  const shipped = [...spans].filter(([file]) => !isTestPath(file));
   const findings = await Promise.all(
-    [...spans].map(async ([file, found]) =>
+    shipped.map(async ([file, found]) =>
       sizeFindings(
         inRepo(ctx.component.root, file),
         await readFile(join(dir, file), 'utf8'),
@@ -83,10 +118,11 @@ export async function lint(ctx: Lint): Promise<Finding[]> {
   const files = pythonFiles(ctx);
   if (files.length === 0) throw new EngineError('py/lint ran on a component with no Python files');
   const sources = files.filter((file) => file.endsWith('.py'));
+  const spans = await readSpans(ctx, sources);
   const found = await Promise.all([
-    ruffFindings(ctx, files),
+    ruffFindings(ctx, files, spans),
     sources.length > 0 ? cognitiveFindings(ctx, sources) : Promise.resolve([]),
-    sizes(ctx, files),
+    sizes(ctx, spans),
   ]);
   return found.flat();
 }

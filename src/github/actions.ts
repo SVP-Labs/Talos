@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { GitHub } from './api.js';
+import { runFields } from './checks.js';
 
 const workflowRunSchema = z.object({
   id: z.number().int(),
@@ -24,10 +25,7 @@ const jobSchema = z.object({
   id: z.number().int(),
   run_id: z.number().int(),
   name: z.string(),
-  status: z.string(),
-  conclusion: z.string().nullable(),
-  started_at: z.string().nullable().optional(),
-  completed_at: z.string().nullable().optional(),
+  ...runFields,
   html_url: z.string().nullable().optional(),
 });
 

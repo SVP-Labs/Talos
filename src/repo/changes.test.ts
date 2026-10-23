@@ -57,3 +57,23 @@ describe('parseDiff', () => {
     expect(touches(changes, { file: 'other.ts', line: 1 })).toBe(false);
   });
 });
+
+describe('parseDiff inside hunks', () => {
+  it('reads lines that look like headers as content', () => {
+    const changes = parseDiff(
+      [
+        'diff --git a/a.lua b/a.lua',
+        '--- a/a.lua',
+        '+++ b/a.lua',
+        '@@ -1 +1 @@',
+        '--- a comment removed',
+        '+++ counter',
+      ].join('\n'),
+    );
+    expect(changes.files.get('a.lua')).toMatchObject({
+      path: 'a.lua',
+      removedText: ['-- a comment removed'],
+      addedText: ['++ counter'],
+    });
+  });
+});

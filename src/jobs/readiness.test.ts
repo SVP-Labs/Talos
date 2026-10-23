@@ -124,14 +124,16 @@ describe('briefLinks', () => {
 
 describe('judgeReadiness', () => {
   it('passes a complete ticket', () => {
-    expect(judgeReadiness({ body: TICKET, labels: ['feature'], briefsDir: DIR, briefs: new Map() })).toEqual(
-      { ready: true, problems: [] },
-    );
+    expect(
+      judgeReadiness({ body: TICKET, labels: ['feature'], briefsDir: DIR, briefs: new Map() }),
+    ).toEqual({ ready: true, problems: [] });
     expect(judge(BUG, ['bug'])).toEqual([]);
   });
 
   it('asks for exactly one type label', () => {
-    expect(judge(TICKET, [])).toEqual([expect.stringMatching(/exactly one type label .*it has none$/)]);
+    expect(judge(TICKET, [])).toEqual([
+      expect.stringMatching(/exactly one type label .*it has none$/),
+    ]);
     expect(judge(TICKET, ['bug', 'chore'])[0]).toMatch(/it has bug, chore$/);
   });
 
@@ -156,9 +158,17 @@ describe('judgeReadiness', () => {
     expect(judge(none, ['feature'])).toEqual([
       'at least one `- [ ]` checkbox under Acceptance criteria',
     ]);
-    const six = TICKET.replace('- [ ] it is done', Array.from({ length: 6 }, (_, i) => `- [ ] c${i}`).join('\n'));
-    expect(judge(six, ['feature'])).toEqual(['at most 5 acceptance criteria, not 6: split the issue']);
-    const five = TICKET.replace('- [ ] it is done', Array.from({ length: 5 }, (_, i) => `- [x] c${i}`).join('\n'));
+    const six = TICKET.replace(
+      '- [ ] it is done',
+      Array.from({ length: 6 }, (_, i) => `- [ ] c${i}`).join('\n'),
+    );
+    expect(judge(six, ['feature'])).toEqual([
+      'at most 5 acceptance criteria, not 6: split the issue',
+    ]);
+    const five = TICKET.replace(
+      '- [ ] it is done',
+      Array.from({ length: 5 }, (_, i) => `- [x] c${i}`).join('\n'),
+    );
     expect(judge(five, ['feature'])).toEqual([]);
   });
 
@@ -213,14 +223,14 @@ describe('readinessLabels', () => {
 describe('readinessComment', () => {
   it('lists the problems under its marker', () => {
     const text = readinessComment(['a `## Goal` section', 'something']);
-    expect(readMarker(text, 'readiness')).toEqual({});
+    expect(readMarker(text, 'readiness')).toEqual({ ready: 'no', problems: '2' });
     expect(text).toContain('- a `## Goal` section\n- something\n');
     expect(text).toContain('Not ready yet');
   });
 
   it('says ready once nothing is missing', () => {
     const text = readinessComment([]);
-    expect(readMarker(text, 'readiness')).toEqual({});
+    expect(readMarker(text, 'readiness')).toEqual({ ready: 'yes', problems: '0' });
     expect(text).toContain('**Ready.**');
   });
 });

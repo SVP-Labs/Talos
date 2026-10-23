@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/typecov"],
+  "rules": ["typecov/untyped"]
+}

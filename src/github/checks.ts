@@ -1,14 +1,19 @@
 import { z } from 'zod';
 import type { GitHub } from './api.js';
 
-const checkRunSchema = z.object({
-  id: z.number().int(),
-  name: z.string(),
-  head_sha: z.string(),
+/** What a check run and a workflow job both report about running. */
+export const runFields = {
   status: z.string(),
   conclusion: z.string().nullable(),
   started_at: z.string().nullable().optional(),
   completed_at: z.string().nullable().optional(),
+};
+
+const checkRunSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  head_sha: z.string(),
+  ...runFields,
   details_url: z.string().nullable().optional(),
   external_id: z.string().nullable().optional(),
   app: z.object({ id: z.number().int(), slug: z.string().optional() }).nullable().optional(),
@@ -41,10 +46,10 @@ export async function listCheckRuns(
   return app === undefined ? runs : runs.filter((run) => run.app?.slug === app);
 }
 
-export type Conclusion =
+type Conclusion =
   'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required';
 
-export type Annotation = {
+type Annotation = {
   readonly path: string;
   readonly start_line: number;
   readonly end_line: number;
@@ -53,7 +58,7 @@ export type Annotation = {
   readonly title?: string;
 };
 
-export type CheckOutput = {
+type CheckOutput = {
   readonly title: string;
   readonly summary: string;
   readonly text?: string;

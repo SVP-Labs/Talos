@@ -17,6 +17,7 @@ describe('representatives', () => {
       'src/a.ts',
       'src/view.tsx',
       'src/a.test.ts',
+      'scripts/x.mjs',
       'eslint.config.js',
     ]);
   });

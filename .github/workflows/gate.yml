@@ -1,0 +1,299 @@
+# Talos's gate: the workflow the organisation's channel rulesets require, pinned to a release
+# commit. It runs the PR's code (its tests and tool configs), so it holds no secret, only produces
+# findings, and never cancels a run in progress. The jobs `verdict (talos <version>)` and
+# `engine (talos <version>)` carry the release in their names: the channel job counts gate runs
+# and engine errors under a release by them.
+name: talos
+
+on: # zizmor: ignore[concurrency-limits] the gate never cancels a run in progress (every commit is judged)
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pin:
+    name: pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # the repository's rulesets and a private repository's checkout
+    outputs:
+      sha: ${{ steps.find.outputs.sha }}
+      version: ${{ steps.launch.outputs.version }}
+    steps:
+      - name: Find the enforced Talos release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: |
+          # bootstrap/find-pin.sh, inlined (Talos isn't checked out yet); a test keeps them equal.
+          find_pin() {
+            set -euo pipefail
+
+            repo="${GITHUB_REPOSITORY:-}"
+            talos="${TALOS_REPO:-SVP-Labs/Talos}"
+            mode="${TALOS_LOOKUP:-rulesets}"
+            sha_pattern='^[0-9a-f]{40}$'
+
+            fail() {
+              echo "find-pin: $1" >&2
+              exit 1
+            }
+
+            api() {
+              gh api "$@" 2>/dev/null
+            }
+
+            by_rulesets() {
+              local talos_id ids id detail shas count=0 pin=""
+              talos_id="$(api "repos/$talos" | jq -r '.id')" || fail "cannot read the Talos repository"
+              ids="$(api --paginate "repos/$repo/rulesets?includes_parents=true" |
+                jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
+                fail "cannot list the repository's rulesets"
+              for id in $ids; do
+                detail="$(api "repos/$repo/rulesets/$id?includes_parents=true")" || fail "cannot read a ruleset"
+                shas="$(jq -r --argjson talos "$talos_id" '
+                  [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
+                    | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
+                  fail "cannot read a ruleset"
+                [[ -z "$shas" ]] && continue
+                count=$((count + 1))
+                [[ "$shas" == *$'\n'* ]] && fail "a ruleset pins Talos at several commits"
+                [[ "$shas" =~ $sha_pattern ]] || fail "a ruleset runs Talos at a ref, not a commit SHA"
+                pin="$shas"
+              done
+              [[ "$count" -eq 0 ]] && fail "no ruleset that applies to this repository runs the Talos gate"
+              [[ "$count" -gt 1 ]] && fail "$count Talos rulesets apply; exactly one must"
+              printf '%s\n' "$pin"
+            }
+
+            by_channels() {
+              local channel sha
+              channel="$(api "repos/$repo" | jq -r '.custom_properties.talos // empty')" ||
+                fail "cannot read the repository"
+              case "$channel" in
+                evaluate | canary | stable) ;;
+                *) fail "the talos property names no channel" ;;
+              esac
+              sha="$(api "repos/$talos/contents/channels.json?ref=channels" |
+                jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
+                fail "cannot read channels.json"
+              [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"
+              printf '%s\n' "$sha"
+            }
+
+            [[ -n "$repo" ]] || fail "GITHUB_REPOSITORY is not set"
+            case "$mode" in
+              rulesets) by_rulesets ;;
+              channels) by_channels ;;
+              *) fail "TALOS_LOOKUP must be rulesets or channels" ;;
+            esac
+          }
+          pin="$(find_pin)"
+          printf 'sha=%s\n' "$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ steps.find.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install and verify the release
+        id: launch
+        run: |
+          version="$(node talos-kit/bootstrap/launch.mjs version)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "talos: no release version" >&2; exit 1; }
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  plan:
+    name: plan
+    needs: pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # the repository's rulesets and a private repository's checkout
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ needs.pin.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Plan the runs
+        id: plan
+        working-directory: repo
+        run: |
+          node ../talos-kit/bootstrap/launch.mjs plan --out "$RUNNER_TEMP/talos-plan.json"
+          jq -r '"base=\(.base)", "head=\(.head)"' "$RUNNER_TEMP/talos-plan.json" >> "$GITHUB_OUTPUT"
+      - name: Keep the plan for the verdict
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: talos-plan
+          path: ${{ runner.temp }}/talos-plan.json
+          retention-days: 1
+          if-no-files-found: error
+
+  run:
+    name: run ${{ matrix.os }} ${{ matrix.tiers }} ${{ matrix.sha }}
+    needs: [pin, plan]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read # the repository's rulesets and a private repository's checkout
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.sha }}
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ needs.pin.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Run the checks
+        working-directory: repo
+        env:
+          TIERS: ${{ matrix.tiers }}
+          RUN_OS: ${{ matrix.os }}
+          RUN_SHA: ${{ matrix.sha }}
+          BASE: ${{ needs.plan.outputs.base }}
+          HEAD: ${{ needs.plan.outputs.head }}
+          INDEX: ${{ strategy.job-index }}
+        run: |
+          side='head'
+          [[ "$RUN_SHA" == "$BASE" ]] && side='base'
+          mkdir -p "$RUNNER_TEMP/talos-result"
+          node ../talos-kit/bootstrap/launch.mjs run --tiers "$TIERS" --os "$RUN_OS" \
+            --range "$BASE..$HEAD" --side "$side" --out "$RUNNER_TEMP/talos-result/result-$INDEX.json"
+      - name: Keep the result
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: talos-result-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/talos-result
+          retention-days: 1
+          if-no-files-found: error
+
+  verdict:
+    name: verdict (talos ${{ needs.pin.outputs.version }})
+    needs: [pin, plan, run]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # the repository's rulesets and a private repository's checkout
+    outputs:
+      code: ${{ steps.judge.outputs.code }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: SVP-Labs/Talos
+          ref: ${{ needs.pin.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Collect the plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: talos-plan
+          path: ${{ runner.temp }}/talos-plan
+      - name: Collect the results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: talos-result-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/talos-results
+      - name: Judge
+        id: judge
+        working-directory: repo
+        run: |
+          mkdir -p "$RUNNER_TEMP/talos-verdict"
+          code=0
+          node ../talos-kit/bootstrap/launch.mjs verdict \
+            --plan "$RUNNER_TEMP/talos-plan/talos-plan.json" --results "$RUNNER_TEMP/talos-results" \
+            --sarif "$RUNNER_TEMP/talos-verdict/talos.sarif" --json "$RUNNER_TEMP/talos-verdict/verdict.json" \
+            || code=$?
+          printf 'code=%s\n' "$code" >> "$GITHUB_OUTPUT"
+      - name: Keep the verdict
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: talos-verdict
+          path: |
+            ${{ runner.temp }}/talos-verdict/verdict.json
+            ${{ runner.temp }}/talos-verdict/talos.sarif
+          if-no-files-found: warn
+      - name: Fail on findings
+        env:
+          CODE: ${{ steps.judge.outputs.code }}
+        run: |
+          [[ "$CODE" == 0 ]] || { echo "talos: the gate is red (verdict exit $CODE)"; exit 1; }
+
+  engine:
+    name: engine (talos ${{ needs.pin.outputs.version }})
+    needs: [pin, verdict]
+    if: ${{ !cancelled() && needs.pin.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail on an engine error
+        env:
+          CODE: ${{ needs.verdict.outputs.code }}
+        run: |
+          case "$CODE" in
+            0 | 1) echo "talos: no engine error" ;;
+            *) echo "talos: engine error (no verdict, or verdict exit ${CODE:-none})"; exit 1 ;;
+          esac

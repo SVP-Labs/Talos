@@ -24,6 +24,10 @@ const COMMANDS: Readonly<Record<string, Entry>> = {
     summary: "a repository's state as compact JSON",
     load: async () => (await import('./status.js')).status,
   },
+  findings: {
+    summary: "a PR's latest gate verdict as compact JSON",
+    load: async () => (await import('./findings.js')).findings,
+  },
   why: {
     summary: 'the PR that last changed a path, and why',
     load: async () => (await import('./why.js')).why,

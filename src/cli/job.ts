@@ -10,9 +10,9 @@ import type { RunResult } from '../core/result.js';
 import { runAt } from '../engine/local.js';
 import { createEngine } from '../engine/session.js';
 import { github, type GitHub, type GitHubOptions } from '../github/api.js';
+import { downloader } from '../github/artifacts.js';
 import { identities } from '../github/identities.js';
 import type { AnalyzeDeps } from '../jobs/analyze.js';
-import { downloader } from '../jobs/artifacts.js';
 import type { JobContext, JobOutcome, JobPhase } from '../jobs/context.js';
 import { debtCheckIds, mutationCheckIds } from '../jobs/debt-report.js';
 import { type JobDeps, runJobs } from '../jobs/dispatch.js';
@@ -160,7 +160,12 @@ function depsOf(ctx: JobContext, io: Io, options: JobOptions, verbose: boolean):
   const workflowToken = tokenIn(io.env, 'GITHUB_TOKEN');
   const download =
     ctx.phase === 'act' && workflowToken !== undefined
-      ? { download: downloader(workflowToken, options.fetch) }
+      ? {
+          download: downloader(
+            workflowToken,
+            options.fetch === undefined ? {} : { fetch: options.fetch },
+          ),
+        }
       : {};
   const analyze =
     ctx.phase === 'analyze'

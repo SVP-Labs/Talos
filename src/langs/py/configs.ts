@@ -8,9 +8,9 @@ import type { ApplyContext } from '../../core/check.js';
 import type { Generated } from '../../core/pack.js';
 
 export const RUFF_BASE = 'ruff.talos.toml';
-export const RUFF_PROJECT = 'ruff.toml';
+const RUFF_PROJECT = 'ruff.toml';
 export const PYRIGHT_BASE = 'pyrightconfig.talos.json';
-export const PYRIGHT_PROJECT = 'pyrightconfig.json';
+const PYRIGHT_PROJECT = 'pyrightconfig.json';
 
 const FORMATTER_CONFLICTS =
   'W191 E111 E114 E117 D206 D300 Q000 Q001 Q002 Q003 COM812 COM819 ISC002';

@@ -36,7 +36,6 @@ export function renderStryker(ctx: RenderContext): string {
 
 const project = JSON.parse(readFileSync(new URL('./${STRYKER_PROJECT}', import.meta.url), 'utf8'));
 
-/** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   testRunner: 'vitest',
   coverageAnalysis: 'perTest',

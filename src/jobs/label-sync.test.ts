@@ -13,11 +13,15 @@ describe('parseLabels', () => {
   });
 
   it('refuses a name twice, a bad colour, or a long description', () => {
-    expect(() => parseLabels('- { name: a, color: "000000", description: x }\n- { name: A, color: "000000", description: y }')).toThrow(
-      /twice/,
-    );
+    expect(() =>
+      parseLabels(
+        '- { name: a, color: "000000", description: x }\n- { name: A, color: "000000", description: y }',
+      ),
+    ).toThrow(/twice/);
     expect(() => parseLabels('- { name: a, color: "#000000", description: x }')).toThrow();
-    expect(() => parseLabels(`- { name: a, color: "000000", description: ${'x'.repeat(101)} }`)).toThrow();
+    expect(() =>
+      parseLabels(`- { name: a, color: "000000", description: ${'x'.repeat(101)} }`),
+    ).toThrow();
     expect(() => parseLabels('[]')).toThrow();
   });
 });
@@ -51,7 +55,10 @@ describe('labelPlan', () => {
 describe('syncLabels', () => {
   it('applies the plan', async () => {
     const fake = new FakeGitHub();
-    fake.labels.push({ name: 'Bug', color: '000000', description: null }, { name: 'own', color: '111111', description: 'x' });
+    fake.labels.push(
+      { name: 'Bug', color: '000000', description: null },
+      { name: 'own', color: '111111', description: 'x' },
+    );
     const result = await syncLabels(fake.client(), 'o/r', [
       { name: 'bug', color: 'D73A4A', description: 'Type: broken.' },
       { name: 'status/ready', color: '0E8A16', description: 'Ready.' },

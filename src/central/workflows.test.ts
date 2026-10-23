@@ -1,0 +1,557 @@
+import { execFile } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { promisify } from 'node:util';
+import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import { z } from 'zod';
+
+/**
+ * The workflows Talos runs and ships, read as data: the rules every one keeps (pinned actions,
+ * least privilege, no expression in a script), the gate's and the caller's shape, and C30's
+ * rules for the central jobs in this public repository. The inline scripts that look a
+ * repository up are run against a fake `gh`.
+ */
+
+const ROOT = new URL('../../', import.meta.url);
+const text = (path: string): string => readFileSync(new URL(path, ROOT), 'utf8');
+
+const stepSchema = z.looseObject({
+  name: z.string().optional(),
+  id: z.string().optional(),
+  if: z.string().optional(),
+  uses: z.string().optional(),
+  run: z.string().optional(),
+  with: z.record(z.string(), z.unknown()).optional(),
+  env: z.record(z.string(), z.unknown()).optional(),
+});
+
+const jobSchema = z.looseObject({
+  name: z.string().optional(),
+  needs: z.union([z.string(), z.array(z.string())]).optional(),
+  if: z.string().optional(),
+  environment: z.string().optional(),
+  permissions: z.unknown(),
+  strategy: z.looseObject({ matrix: z.unknown() }).optional(),
+  steps: z.array(stepSchema),
+});
+
+const workflowSchema = z.looseObject({
+  on: z.unknown(),
+  permissions: z.unknown(),
+  concurrency: z.unknown().optional(),
+  jobs: z.record(z.string(), jobSchema),
+});
+
+type Job = z.infer<typeof jobSchema>;
+type Step = z.infer<typeof stepSchema>;
+
+const FILES = {
+  gate: '.github/workflows/gate.yml',
+  caller: '.github/workflows/talos.yml',
+  selfTest: '.github/workflows/self-test.yml',
+  release: '.github/workflows/release.yml',
+  channels: '.github/workflows/channels.yml',
+  sweep: '.github/workflows/runtime-sweep.yml',
+  drift: '.github/workflows/drift.yml',
+} as const;
+
+const CENTRAL = [FILES.channels, FILES.sweep, FILES.drift];
+
+const workflow = (path: string) => workflowSchema.parse(parse(text(path)));
+const jobsOf = (path: string): [string, Job][] => Object.entries(workflow(path).jobs);
+const stepsOf = (path: string): Step[] => jobsOf(path).flatMap(([, job]) => job.steps);
+const needsOf = (job: Job): string[] => (job.needs === undefined ? [] : [job.needs].flat());
+const tokenSteps = (job: Job): Step[] =>
+  job.steps.filter((s) => s.uses?.startsWith('actions/create-github-app-token@') === true);
+
+describe('every workflow', () => {
+  const paths = [...Object.values(FILES), 'assets/workflows/talos.yml'];
+
+  it('pins each action to a full commit, its version in a comment', () => {
+    for (const path of paths) {
+      const uses = text(path)
+        .split('\n')
+        .filter((line) => /^\s*(?:- )?uses:/.test(line));
+      expect(uses.length, path).toBeGreaterThan(0);
+      for (const line of uses) {
+        expect(line, path).toMatch(/uses: [\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+      }
+    }
+  });
+
+  it('grants nothing by default, and each job asks for what it needs', () => {
+    for (const path of paths) {
+      expect(workflow(path).permissions, path).toEqual({});
+      for (const [id, job] of jobsOf(path)) expect(job.permissions, `${path} ${id}`).toBeDefined();
+    }
+  });
+
+  it('passes no expression into a script: values reach scripts through env', () => {
+    for (const path of paths) {
+      for (const step of stepsOf(path)) {
+        expect(step.run ?? '', `${path} ${step.name ?? ''}`).not.toContain('${{');
+      }
+    }
+  });
+
+  it('checks out without leaving credentials behind', () => {
+    for (const path of paths) {
+      for (const step of stepsOf(path).filter(
+        (s) => s.uses?.startsWith('actions/checkout@') === true,
+      )) {
+        expect(step.with?.['persist-credentials'], path).toBe(false);
+      }
+    }
+  });
+
+  it("mints App tokens with the permissions they need, never all of the App's", () => {
+    for (const path of paths) {
+      for (const [, job] of jobsOf(path)) {
+        for (const step of tokenSteps(job)) {
+          const asked = Object.keys(step.with ?? {}).filter((k) => k.startsWith('permission-'));
+          expect(asked.length, `${path} ${step.name ?? ''}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('runs Talos through the launcher, which verifies the release first', () => {
+    for (const path of paths.filter((p) => p !== FILES.selfTest && p !== FILES.release)) {
+      const runs = stepsOf(path).flatMap((s) =>
+        s.run?.includes('launch.mjs') === true ? [s.run] : [],
+      );
+      expect(runs.length, path).toBeGreaterThan(0);
+      expect(
+        stepsOf(path).some((s) => /\bnpx\b|talos\.js/.test(s.run ?? '')),
+        path,
+      ).toBe(false);
+    }
+  });
+});
+
+const FIND_PIN = text('bootstrap/find-pin.sh');
+
+/** The lines that do something: no blank lines, no comment lines, no indentation. */
+function codeLines(script: string): string[] {
+  return script
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+}
+
+function inlinedFindPin(run: string): string[] {
+  const lines = run.split('\n');
+  const start = lines.indexOf('find_pin() {');
+  const end = lines.indexOf('}', start);
+  return start === -1 || end === -1 ? [] : codeLines(lines.slice(start + 1, end).join('\n'));
+}
+
+describe('the inlined pin lookup', () => {
+  it('is bootstrap/find-pin.sh, in every job that finds the enforced release', () => {
+    const fileLines = codeLines(FIND_PIN.slice(FIND_PIN.indexOf('set -euo pipefail')));
+    let copies = 0;
+    for (const path of [FILES.gate, FILES.caller, FILES.sweep, FILES.drift, FILES.channels]) {
+      for (const step of stepsOf(path).filter((s) => s.run?.includes('find_pin() {') === true)) {
+        expect(inlinedFindPin(step.run ?? ''), path).toEqual(fileLines);
+        expect(step.run, path).toContain('pin="$(find_pin)"');
+        copies += 1;
+      }
+    }
+    expect(copies).toBe(9);
+  });
+});
+
+describe('the gate', () => {
+  const gate = workflow(FILES.gate);
+  const jobs = gate.jobs;
+
+  it('runs on PRs, including when one leaves draft, and on the merge queue', () => {
+    expect(gate.on).toEqual({
+      pull_request: { types: ['opened', 'synchronize', 'reopened', 'ready_for_review'] },
+      merge_group: null,
+    });
+  });
+
+  it('never cancels a run and holds no secret', () => {
+    expect(gate.concurrency).toBeUndefined();
+    expect(text(FILES.gate)).not.toMatch(/cancel-in-progress|secrets\./);
+    for (const [, job] of Object.entries(jobs)) {
+      expect(
+        job.permissions === undefined || JSON.stringify(job.permissions).includes('write'),
+      ).toBe(false);
+    }
+  });
+
+  it('names the verdict and engine jobs after the release, so promotion can count them', () => {
+    expect(jobs.verdict?.name).toBe('verdict (talos ${{ needs.pin.outputs.version }})');
+    expect(jobs.engine?.name).toBe('engine (talos ${{ needs.pin.outputs.version }})');
+    expect(needsOf(jobs.engine!)).toEqual(['pin', 'verdict']);
+    expect(jobs.engine?.if).toContain('!cancelled()');
+    expect(jobs.engine?.steps[0]?.env?.CODE).toBe('${{ needs.verdict.outputs.code }}');
+    expect(jobs.engine?.steps[0]?.run).toMatch(/0 \| 1\) .*\n\s*\*\) .*exit 1/);
+  });
+
+  it('plans, runs a matrix of checkouts at each commit, and uploads the verdict', () => {
+    expect(needsOf(jobs.run!)).toEqual(['pin', 'plan']);
+    expect(jobs.run?.strategy?.matrix).toBe('${{ fromJSON(needs.plan.outputs.matrix) }}');
+    const checkout = jobs.run?.steps.find((s) => s.with?.ref === '${{ matrix.sha }}');
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
+    const upload = jobs.verdict?.steps.find((s) => s.with?.name === 'talos-verdict');
+    expect(String(upload?.with?.path)).toMatch(/verdict\.json[\s\S]*talos\.sarif/);
+    expect(upload?.if).toContain('!cancelled()');
+  });
+
+  it('runs every Talos command at the pin, checked out beside the repository', () => {
+    for (const [id, job] of Object.entries(jobs).filter(([id]) => id !== 'engine')) {
+      const kit = job.steps.find((s) => s.with?.path === 'talos-kit');
+      expect(kit?.with?.repository, id).toBe('SVP-Labs/Talos');
+    }
+  });
+});
+
+describe('the caller', () => {
+  const caller = workflow(FILES.caller);
+
+  it('is the same file Talos ships to every repository', () => {
+    expect(readFileSync(new URL(FILES.caller, ROOT))).toEqual(
+      readFileSync(new URL('assets/workflows/talos.yml', ROOT)),
+    );
+  });
+
+  it("runs on the events the brief lists, and on a PR's edits", () => {
+    expect(caller.on).toEqual({
+      pull_request_target: {
+        types: ['opened', 'synchronize', 'reopened', 'ready_for_review', 'edited'],
+      },
+      merge_group: null,
+      issues: null,
+      issue_comment: null,
+      pull_request_review: null,
+      schedule: [{ cron: '17 3 * * *' }],
+      workflow_dispatch: null,
+    });
+  });
+
+  it('analyzes only on the schedule or a dispatch, without any secret', () => {
+    const analyze = caller.jobs.analyze!;
+    expect(analyze.if).toBe(
+      "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+    );
+    expect(JSON.stringify(analyze)).not.toMatch(/secrets\.|create-github-app-token/);
+    expect(analyze.permissions).toEqual({ contents: 'read' });
+    expect(
+      analyze.steps.some((s) => s.run?.includes('job "$EVENT" --phase analyze') === true),
+    ).toBe(true);
+  });
+
+  it("acts with the reviewer's token for this repository, never checking out the PR", () => {
+    const act = caller.jobs.act!;
+    for (const step of act.steps.filter((s) => s.uses?.startsWith('actions/checkout@') === true)) {
+      expect(step.with?.repository).toBe('SVP-Labs/Talos');
+    }
+    const [token] = tokenSteps(act);
+    expect(token?.with?.owner).toBeUndefined();
+    expect(token?.with?.repositories).toBeUndefined();
+    expect(act.if).toMatch(/OWNER.*MEMBER.*COLLABORATOR/s);
+    const run = act.steps.at(-1);
+    expect(run?.run).toContain('job "$EVENT" --phase act');
+    expect(run?.env?.TALOS_REVIEWER_TOKEN).toBe('${{ steps.token.outputs.token }}');
+  });
+});
+
+describe('the central jobs in this public repository', () => {
+  it('pass no repository name through an expression: the matrix carries indices', () => {
+    for (const path of CENTRAL) {
+      const expressions = text(path).match(/\$\{\{[^}]*\}\}/g) ?? [];
+      for (const expression of expressions.filter((e) => e.includes('matrix'))) {
+        expect(expression, path).toMatch(
+          /^\$\{\{ (matrix\.index|fromJSON\(needs\.list\.outputs\.indices\)) \}\}$/,
+        );
+      }
+      for (const [id, job] of jobsOf(path).filter(([, j]) => j.strategy !== undefined)) {
+        expect(job.strategy?.matrix, `${path} ${id}`).toEqual({
+          index: '${{ fromJSON(needs.list.outputs.indices) }}',
+        });
+        expect(job.name, `${path} ${id}`).toBe(`${id}-\${{ strategy.job-index }}`);
+      }
+    }
+  });
+
+  it('look the repository up and mask it before minting a token limited to it', () => {
+    const matrixJobs = [FILES.sweep, FILES.drift].flatMap((path) =>
+      jobsOf(path).filter(([, j]) => j.strategy !== undefined),
+    );
+    expect(matrixJobs).toHaveLength(2);
+    for (const [id, job] of matrixJobs) {
+      const pick = job.steps.findIndex((s) => s.id === 'pick');
+      expect(pick, id).toBeGreaterThan(-1);
+      const scoped = [...job.steps.entries()].filter(([, s]) => s.with?.repositories !== undefined);
+      expect(scoped.length, id).toBeGreaterThan(0);
+      for (const [index, step] of scoped) {
+        expect(index, id).toBeGreaterThan(pick);
+        expect(step.with?.repositories).toBe('${{ steps.pick.outputs.name }}');
+      }
+    }
+  });
+
+  it('end with a privacy self-test that waits for every other job', () => {
+    for (const path of CENTRAL) {
+      const jobs = jobsOf(path);
+      const privacy = workflow(path).jobs.privacy!;
+      expect(privacy.if, path).toContain('!cancelled()');
+      expect(new Set(needsOf(privacy)), path).toEqual(
+        new Set(jobs.map(([id]) => id).filter((id) => id !== 'privacy')),
+      );
+      const run = privacy.steps.at(-1);
+      expect(run?.run, path).toBe('node talos-kit/bootstrap/launch.mjs central privacy --json');
+      expect(run?.env?.TALOS_PRIVACY_JOB, path).toBe(privacy.name);
+    }
+  });
+
+  it("use talos-release's key only in the main-only release environment", () => {
+    for (const path of [...CENTRAL, FILES.caller, FILES.gate, FILES.release, FILES.selfTest]) {
+      for (const [id, job] of jobsOf(path)) {
+        if (JSON.stringify(job).includes('TALOS_RELEASE_KEY')) {
+          expect(job.environment, `${path} ${id}`).toBe('release');
+        }
+      }
+    }
+  });
+
+  it('print JSON only', () => {
+    for (const path of CENTRAL) {
+      for (const step of stepsOf(path).filter(
+        (s) => s.run?.includes('launch.mjs central') === true,
+      )) {
+        expect(step.run, path).toMatch(/ --json$/);
+      }
+    }
+  });
+});
+
+describe('the release and channel workflows', () => {
+  it('publish from a v* tag, the OIDC permission on a job that runs no dependency', () => {
+    const release = workflow(FILES.release);
+    expect(release.on).toEqual({ push: { tags: ['v*'] } });
+    expect(release.jobs.build?.permissions).toEqual({ contents: 'read' });
+    expect(release.jobs.publish?.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
+    const publish = JSON.stringify(release.jobs.publish);
+    expect(publish).not.toMatch(/pnpm|npm install|NPM_TOKEN|NODE_AUTH_TOKEN/);
+    expect(publish).toContain('npm publish');
+    expect(publish).toContain('--provenance');
+    expect(text(FILES.release)).toContain(
+      'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main',
+    );
+  });
+
+  it('move pins hourly, on a regression and on the owner’s dispatch, from main only', () => {
+    const channels = workflow(FILES.channels);
+    expect(channels.on).toEqual({
+      schedule: [{ cron: '23 * * * *' }],
+      workflow_dispatch: null,
+      issues: { types: ['opened', 'labeled'] },
+    });
+    const job = channels.jobs.channels!;
+    expect(job.environment).toBe('release');
+    expect(job.if).toContain("github.event.label.name == 'regression'");
+    expect(job.steps[0]?.if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
+    expect(job.steps.at(-1)?.run).toBe(
+      'node talos-kit/bootstrap/launch.mjs central channels --json',
+    );
+  });
+
+  it('test the PR’s own engine on every OS', () => {
+    const selfTest = workflow(FILES.selfTest);
+    expect(selfTest.on).toEqual({ pull_request: null, push: { branches: ['main'] } });
+    const runs = stepsOf(FILES.selfTest).map((s) => s.run ?? '');
+    expect(runs).toContain('pnpm check');
+    expect(runs).toContain('node dist/bin/talos.js self-test test-projects');
+    expect(JSON.stringify(selfTest.jobs['self-test']?.strategy?.matrix)).toMatch(
+      /ubuntu.*windows.*macos/,
+    );
+  });
+});
+
+const exec = promisify(execFile);
+
+async function run(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ code: number; stdout: string }> {
+  try {
+    const { stdout } = await exec(command, args, { env });
+    return { code: 0, stdout };
+  } catch (error) {
+    const failure = error as { code?: unknown; stdout?: unknown };
+    return {
+      code: typeof failure.code === 'number' ? failure.code : 127,
+      stdout: typeof failure.stdout === 'string' ? failure.stdout : '',
+    };
+  }
+}
+
+const canRunScripts =
+  (await run('bash', ['--version'], process.env)).code === 0 &&
+  (await run('jq', ['--version'], process.env)).code === 0;
+
+/** `gh api [--paginate] <path>` answered from files; an unknown path fails as `gh` does. */
+function fakeGh(answers: Readonly<Record<string, unknown>>): string {
+  const directory = mkdtempSync(join(tmpdir(), 'talos-central-gh-'));
+  const answersDir = join(directory, 'answers');
+  mkdirSync(answersDir);
+  for (const [path, body] of Object.entries(answers)) {
+    const content = typeof body === 'string' ? body : JSON.stringify(body);
+    writeFileSync(join(answersDir, path.replaceAll(/[/?=&]/g, '_')), content);
+  }
+  const script = [
+    '#!/usr/bin/env bash',
+    'path=""',
+    'for arg in "$@"; do case "$arg" in api|--paginate) ;; *) path="$arg" ;; esac; done',
+    `file="${answersDir}/$(printf '%s' "$path" | tr '/?=&' '____')"`,
+    '[ -f "$file" ] || { echo "HTTP 404: $path (SVP-Labs/Secret)" >&2; exit 1; }',
+    'cat "$file"',
+  ].join('\n');
+  writeFileSync(join(directory, 'gh'), `${script}\n`);
+  chmodSync(join(directory, 'gh'), 0o755);
+  return directory;
+}
+
+function scriptOf(path: string, stepName: string): string {
+  const step = stepsOf(path).find((s) => s.name === stepName);
+  if (step?.run === undefined) throw new Error(`no step "${stepName}" in ${path}`);
+  return step.run;
+}
+
+async function runStep(
+  script: string,
+  answers: Readonly<Record<string, unknown>>,
+  env: Readonly<Record<string, string>>,
+): Promise<{ code: number; stdout: string; output: string }> {
+  const directory = mkdtempSync(join(tmpdir(), 'talos-central-step-'));
+  const file = join(directory, 'step.sh');
+  const output = join(directory, 'output');
+  writeFileSync(file, script);
+  writeFileSync(output, '');
+  const result = await run('bash', ['--noprofile', '--norc', '-eo', 'pipefail', file], {
+    PATH: `${fakeGh(answers)}${delimiter}${process.env.PATH ?? ''}`,
+    GITHUB_OUTPUT: output,
+    ...env,
+  });
+  return { ...result, output: readFileSync(output, 'utf8') };
+}
+
+const listing = (repos: { id: number; full_name: string; name: string }[]) => ({
+  total_count: repos.length,
+  repositories: repos,
+});
+
+describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
+  const PICK = 'Look the repository up by index and mask its name';
+  const pages = [
+    JSON.stringify(
+      listing([
+        { id: 30, full_name: 'SVP-Labs/Zeta', name: 'Zeta' },
+        { id: 10, full_name: 'SVP-Labs/Secret', name: 'Secret' },
+      ]),
+    ),
+    JSON.stringify(listing([{ id: 20, full_name: 'SVP-Labs/Other', name: 'Other' }])),
+  ].join('\n');
+
+  it('picks the repository by index in id order and masks it before printing anything', async () => {
+    for (const path of [FILES.sweep, FILES.drift]) {
+      const result = await runStep(
+        scriptOf(path, PICK),
+        { 'installation/repositories': pages },
+        { INDEX: '1' },
+      );
+      expect(result.code, path).toBe(0);
+      expect(result.stdout, path).toBe('::add-mask::SVP-Labs/Other\n::add-mask::Other\n');
+      expect(result.output, path).toBe('skip=false\nname=Other\n');
+    }
+  });
+
+  it('skips an index past the listing and prints no name', async () => {
+    const result = await runStep(
+      scriptOf(FILES.sweep, PICK),
+      { 'installation/repositories': pages },
+      { INDEX: '3' },
+    );
+    expect(result).toMatchObject({ code: 0, output: 'skip=true\n' });
+    expect(result.stdout).not.toMatch(/Secret|Zeta|Other/);
+  });
+
+  it('fails with one generic line when the API fails or the index is missing', async () => {
+    const failed = await runStep(scriptOf(FILES.sweep, PICK), {}, { INDEX: '0' });
+    expect(failed).toEqual({ code: 1, stdout: '', output: '' });
+    expect(
+      (
+        await runStep(
+          scriptOf(FILES.sweep, PICK),
+          { 'installation/repositories': pages },
+          { INDEX: 'x' },
+        )
+      ).code,
+    ).toBe(1);
+  });
+
+  it('counts the repositories into a matrix of indices, printing only the count', async () => {
+    const count = scriptOf(FILES.sweep, 'Count the repositories');
+    const result = await runStep(
+      count,
+      { 'installation/repositories?per_page=1': { total_count: 3, repositories: [] } },
+      {},
+    );
+    expect(result).toEqual({ code: 0, stdout: 'repositories: 3\n', output: 'indices=[0,1,2]\n' });
+    const none = await runStep(
+      count,
+      { 'installation/repositories?per_page=1': { total_count: 0, repositories: [] } },
+      {},
+    );
+    expect(none.output).toBe('indices=[]\n');
+    const tooMany = await runStep(
+      count,
+      { 'installation/repositories?per_page=1': { total_count: 300 } },
+      {},
+    );
+    expect(tooMany.code).toBe(1);
+    expect(scriptOf(FILES.drift, 'Count the repositories')).toBe(count);
+  });
+
+  it("finds stable's pin in the org rulesets or channels.json", async () => {
+    const find = scriptOf(FILES.channels, "Find stable's pin");
+    const A = 'a'.repeat(40);
+    const rule = (sha: string) => ({
+      rules: [{ type: 'workflows', parameters: { workflows: [{ repository_id: 1, sha }] } }],
+    });
+    const rulesets = {
+      'orgs/SVP-Labs/rulesets': [
+        { id: 4, name: 'talos-canary' },
+        { id: 5, name: 'talos-stable' },
+      ],
+      'orgs/SVP-Labs/rulesets/5': rule(A),
+    };
+    expect(await runStep(find, rulesets, { ORG: 'SVP-Labs' })).toEqual({
+      code: 0,
+      stdout: '',
+      output: `sha=${A}\n`,
+    });
+    const unpinned = await runStep(
+      find,
+      { ...rulesets, 'orgs/SVP-Labs/rulesets/5': rule('v1') },
+      { ORG: 'SVP-Labs' },
+    );
+    expect(unpinned.code).toBe(1);
+    const channels = {
+      'repos/SVP-Labs/Talos/contents/channels.json?ref=channels': {
+        content: Buffer.from(JSON.stringify({ evaluate: A, canary: A, stable: A })).toString(
+          'base64',
+        ),
+      },
+    };
+    const env = { TALOS_LOOKUP: 'channels', GITHUB_REPOSITORY: 'SVP-Labs/Talos' };
+    expect((await runStep(find, channels, env)).output).toBe(`sha=${A}\n`);
+  });
+});

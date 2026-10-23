@@ -1,7 +1,7 @@
 import { excludes, quote } from './shared.js';
 import { generatedHeader } from '../../../configs/header.js';
 import type { RenderContext } from '../../../core/pack.js';
-import { LOCKFILES } from '../files.js';
+import { LOCK_FILES } from '../files.js';
 
 export const PRETTIER_CONFIG = 'prettier.config.js';
 export const PRETTIER_IGNORE = '.prettierignore';
@@ -33,11 +33,11 @@ ${options}};
 }
 
 /**
- * Prettier skips lockfiles, the files Talos renders (it formats nothing a project can't edit),
+ * Prettier skips lock files, the files Talos renders (it formats nothing a project can't edit),
  * and `talos.yml`'s exclude, so an editor formats what the gate checks.
  */
 export function renderPrettierIgnore(ctx: RenderContext, generated: readonly string[]): string {
   const anchored = excludes(ctx).map((entry) => `/${entry}`);
-  const entries = [...LOCKFILES, ...generated.map((path) => `/${path}`), ...anchored];
+  const entries = [...LOCK_FILES, ...generated.map((path) => `/${path}`), ...anchored];
   return `${generatedHeader('#', ctx.version)}${entries.join('\n')}\n`;
 }

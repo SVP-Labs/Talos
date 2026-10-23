@@ -1,0 +1,12 @@
+# This project's additions to phpstan.neon, which may only tighten it.
+parameters:
+    paths:
+        - "src"
+        - "tests"
+    strictRules:
+        disallowedLooseComparison: false
+    universalObjectCratesClasses:
+        - Ledger\Ledger
+    ignoreErrors:
+        -
+            identifier: missingType.iterableValue

@@ -4,6 +4,7 @@ import { rootOf } from './files.js';
 import { TOOL_ENV, upwards } from './node.js';
 import { EngineError } from '../../core/check.js';
 import type { InstallContext } from '../../core/pack.js';
+import type { ExecResult } from '../../exec/exec.js';
 
 export type InstallCommand = {
   readonly lockfile: string;
@@ -23,7 +24,7 @@ export function installFor(present: ReadonlySet<string>): InstallCommand | undef
   return INSTALLS.find((install) => present.has(install.lockfile));
 }
 
-async function lockfilesIn(dir: string): Promise<Set<string>> {
+async function lockFilesIn(dir: string): Promise<Set<string>> {
   const found = await Promise.all(
     INSTALLS.map((install) =>
       access(join(dir, install.lockfile)).then(
@@ -42,10 +43,10 @@ async function lockfilesIn(dir: string): Promise<Set<string>> {
 export async function installTs(ctx: InstallContext): Promise<void> {
   const root = rootOf(ctx.component);
   for (const dir of upwards(resolve(ctx.root, root), resolve(ctx.root))) {
-    const install = installFor(await lockfilesIn(dir));
+    const install = installFor(await lockFilesIn(dir));
     if (install === undefined) continue;
     ctx.log.debug(`${root}: ${install.command} ${install.args.join(' ')}`);
-    let result;
+    let result: ExecResult;
     try {
       result = await ctx.exec(install.command, install.args, { cwd: dir, env: TOOL_ENV });
     } catch (error) {

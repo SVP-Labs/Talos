@@ -18,7 +18,7 @@ export type AnalyzeDeps = {
 
 export const DEBT_FILE = 'debt.json';
 export const MUTATION_FILE = 'mutation.json';
-export const MUTATION_SCHEMA = 'talos.mutation/1';
+const MUTATION_SCHEMA = 'talos.mutation/1';
 
 const LISTED = 20;
 

@@ -75,8 +75,8 @@ export function devOnlyDistributions(text: string): Set<string> | undefined {
 /** Top-level modules that only dev-only distributions provide. */
 export function devOnlyModules(devOnly: ReadonlySet<string>, env: Environment): string[] {
   return [...env.modules]
-    .filter(([module, dists]) => /^(?!__)[A-Za-z_]\w*$/.test(module) && dists.length > 0)
-    .filter(([, dists]) => dists.every((dist) => devOnly.has(dist)))
+    .filter(([module, providers]) => /^(?!__)[A-Za-z_]\w*$/.test(module) && providers.length > 0)
+    .filter(([, providers]) => providers.every((dist) => devOnly.has(dist)))
     .map(([module]) => module)
     .sort((a, b) => a.localeCompare(b));
 }

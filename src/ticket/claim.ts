@@ -9,7 +9,7 @@ import {
   openPullsFrom,
   refSha,
 } from './github.js';
-import { LABEL, UNCLAIMABLE } from './labels.js';
+import { LABEL, CLAIM_BLOCKERS } from './labels.js';
 import { ticketPayload } from './payload.js';
 import type { Comment, Issue } from './schemas.js';
 import { carriesApproval, isTrusted } from './trust.js';
@@ -86,7 +86,7 @@ export function claimRefusal(issue: Issue | undefined): string | undefined {
   if (issue.isPull) return 'not-an-issue';
   if (issue.state === 'closed') return 'closed';
   if (!issue.labels.includes(LABEL.ready)) return 'not-ready';
-  return UNCLAIMABLE.find((label) => issue.labels.includes(label));
+  return CLAIM_BLOCKERS.find((label) => issue.labels.includes(label));
 }
 
 /** The labels a ticket carries once its claim is released. */

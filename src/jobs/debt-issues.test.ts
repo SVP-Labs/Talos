@@ -53,7 +53,7 @@ function existing(fields: Record<string, string>, extra: Partial<TalosIssue> = {
 describe('isDeadCode', () => {
   it("recognises a dead-code check's findings and dead-code tools' rules", () => {
     expect(isDeadCode({ check: 'ts/dead-code', rule: 'knip/exports' })).toBe(true);
-    expect(isDeadCode({ check: 'py/deadcode', rule: 'x' })).toBe(true);
+    expect(isDeadCode({ check: 'py/dead-code', rule: 'x' })).toBe(true);
     expect(isDeadCode({ check: 'x', rule: 'vulture/unused-function' })).toBe(true);
     expect(isDeadCode({ check: 'x', rule: 'cargo-machete/unused' })).toBe(true);
     expect(isDeadCode({ check: 'x', rule: 'rustc/dead_code' })).toBe(true);
@@ -108,7 +108,9 @@ describe('debtCandidates', () => {
 });
 
 describe('pickDebtIssues', () => {
-  const report = reportOf(['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => finding('r/1', `src/${n}.ts`)));
+  const report = reportOf(
+    ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => finding('r/1', `src/${n}.ts`)),
+  );
   const candidates = debtCandidates(report);
 
   it(`files at most ${WEEKLY_BATCH} a week`, () => {
@@ -125,11 +127,23 @@ describe('pickDebtIssues', () => {
     const declined = candidates.find((c) => c.file === 'src/b.ts')?.digest ?? '';
     const picks = pickDebtIssues(candidates, [
       existing({ file: 'src/a.ts', findings: 'old' }),
-      existing({ file: 'src/b.ts', findings: declined }, { state: 'closed', stateReason: 'not_planned' }),
-      existing({ file: 'src/c.ts', findings: 'other' }, { state: 'closed', stateReason: 'not_planned' }),
+      existing(
+        { file: 'src/b.ts', findings: declined },
+        { state: 'closed', stateReason: 'not_planned' },
+      ),
+      existing(
+        { file: 'src/c.ts', findings: 'other' },
+        { state: 'closed', stateReason: 'not_planned' },
+      ),
       existing({ file: 'src/d.ts', findings: 'x' }, { state: 'closed', stateReason: 'completed' }),
     ]);
-    expect(picks.map((c) => c.file)).toEqual(['src/c.ts', 'src/d.ts', 'src/e.ts', 'src/f.ts', 'src/g.ts']);
+    expect(picks.map((c) => c.file)).toEqual([
+      'src/c.ts',
+      'src/d.ts',
+      'src/e.ts',
+      'src/f.ts',
+      'src/g.ts',
+    ]);
   });
 });
 
@@ -145,12 +159,27 @@ describe('debtIssue', () => {
     if (candidate === undefined) throw new Error('no candidate');
     const draft = debtIssue(candidate);
     expect(draft.labels).toEqual(['debt/other', 'status/ready', 'ai/eligible', 'priority/p3']);
-    expect(judgeReadiness({ body: draft.body, labels: draft.labels, briefsDir: 'docs', briefs: new Map() })).toEqual({
+    expect(
+      judgeReadiness({
+        body: draft.body,
+        labels: draft.labels,
+        briefsDir: 'docs',
+        briefs: new Map(),
+      }),
+    ).toEqual({
       ready: true,
       problems: [],
     });
     expect(affectedPaths(draft.body)).toEqual(['src/a.ts']);
-    expect(readMarker(draft.body, 'debt')).toEqual({ file: 'src/a.ts', findings: candidate.digest });
+    expect(readMarker(draft.body, 'debt')).toEqual({
+      file: 'src/a.ts',
+      kind: 'other',
+      count: '35',
+      findings: candidate.digest,
+    });
+    expect(draft.body.split('\n', 1)[0]).toMatch(
+      /^<!-- talos-debt\/1 file=src%2Fa\.ts kind=other count=35 findings=[0-9a-f]{12} -->$/,
+    );
     expect(draft.title).toBe('Debt in src/a.ts (35 findings)');
   });
 
@@ -163,9 +192,14 @@ describe('debtIssue', () => {
   });
 
   it('labels dead code as such', () => {
-    const [dead] = debtCandidates(reportOf([finding('knip/exports', 'src/d.ts', { check: 'ts/dead-code' })]));
+    const [dead] = debtCandidates(
+      reportOf([finding('knip/exports', 'src/d.ts', { check: 'ts/dead-code' })]),
+    );
     if (dead === undefined) throw new Error('no candidate');
-    expect(debtIssue(dead)).toMatchObject({ title: 'Dead code in src/d.ts (1 finding)', labels: ['debt/dead-code', 'status/ready', 'ai/eligible', 'priority/p3'] });
+    expect(debtIssue(dead)).toMatchObject({
+      title: 'Dead code in src/d.ts (1 finding)',
+      labels: ['debt/dead-code', 'status/ready', 'ai/eligible', 'priority/p3'],
+    });
   });
 });
 
@@ -178,20 +212,35 @@ describe('fileDebtIssues', () => {
       finding('knip/x', 'src/c.ts', { check: 'ts/dead-code' }),
     ]);
     const gh = fake.client('talos-reviewer[bot]');
-    expect(await fileDebtIssues(gh, { repo: 'o/r', who }, report)).toEqual({ filed: 3, candidates: 3 });
+    expect(await fileDebtIssues(gh, { repo: 'o/r', who }, report)).toEqual({
+      filed: 3,
+      candidates: 3,
+    });
     const filed = [...fake.issues.values()];
     expect(filed.map((i) => [i.user, i.labels[0]])).toEqual([
       ['talos-reviewer[bot]', 'debt/dead-code'],
       ['talos-reviewer[bot]', 'debt/other'],
       ['talos-reviewer[bot]', 'debt/other'],
     ]);
-    expect(await fileDebtIssues(gh, { repo: 'o/r', who }, report)).toEqual({ filed: 0, candidates: 3 });
+    expect(await fileDebtIssues(gh, { repo: 'o/r', who }, report)).toEqual({
+      filed: 0,
+      candidates: 3,
+    });
   });
 
-  it("files again for a file whose look-alike issue someone else wrote", async () => {
+  it('files again for a file whose look-alike issue someone else wrote', async () => {
     const fake = new FakeGitHub();
-    fake.addIssue({ number: 1, labels: ['debt/other'], body: '<!-- talos-debt/1 file=src/a.ts findings=x -->', user: 'SvenPGH' });
-    const result = await fileDebtIssues(fake.client(), { repo: 'o/r', who }, reportOf([finding('r/1', 'src/a.ts')]));
+    fake.addIssue({
+      number: 1,
+      labels: ['debt/other'],
+      body: '<!-- talos-debt/1 file=src/a.ts findings=x -->',
+      user: 'SvenPGH',
+    });
+    const result = await fileDebtIssues(
+      fake.client(),
+      { repo: 'o/r', who },
+      reportOf([finding('r/1', 'src/a.ts')]),
+    );
     expect(result.filed).toBe(1);
   });
 });

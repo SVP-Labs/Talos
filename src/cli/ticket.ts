@@ -1,5 +1,6 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { type Command, type Io, parse, required, UsageError } from './io.js';
-import { exec } from '../exec/exec.js';
 import { github, type GitHubOptions, repoFromRemote, tokenFromEnvironment } from '../github/api.js';
 import { identities } from '../github/identities.js';
 import {
@@ -12,7 +13,7 @@ import {
   type Ticketing,
 } from '../ticket/claim.js';
 import { configAt, defaultBranch } from '../ticket/github.js';
-import { TICKET_SCHEMA } from '../ticket/payload.js';
+import { CLAIM_SCHEMA, TICKET_SCHEMA } from '../ticket/payload.js';
 import { next, type NextResult } from '../ticket/queue.js';
 import { sweepStaleClaims } from '../ticket/stale.js';
 import { ticketStatus } from '../ticket/status.js';
@@ -38,8 +39,10 @@ async function repoOf(value: string | undefined, io: Io): Promise<string> {
     if (!REPO.test(named)) throw new UsageError(`--repo takes owner/name, not ${named}`);
     return named;
   }
-  const remote = await exec('git', ['remote', 'get-url', 'origin'], { cwd: io.cwd });
-  const fromRemote = remote.code === 0 ? repoFromRemote(remote.stdout) : undefined;
+  const remote = await promisify(execFile)('git', ['remote', 'get-url', 'origin'], {
+    cwd: io.cwd,
+  }).catch(() => undefined);
+  const fromRemote = remote === undefined ? undefined : repoFromRemote(remote.stdout);
   if (fromRemote === undefined) throw new UsageError('no repository: pass --repo owner/name');
   return fromRemote;
 }
@@ -79,48 +82,113 @@ const USAGE =
   'usage: talos ticket claim <issue> --agent <id> | next --agent <id> | ' +
   'release <issue> --reason <text> | status <issue>   [--repo owner/name]';
 
-type SubArgs = {
-  readonly issue: string | undefined;
-  readonly agent: string | undefined;
-  readonly reason: string | undefined;
-  readonly maxClaims: number;
-};
+/** A subcommand with its arguments checked, before anything touches GitHub. */
+export type TicketRequest =
+  | { readonly sub: 'claim'; readonly issue: number; readonly agent: string }
+  | { readonly sub: 'next'; readonly agent: string }
+  | { readonly sub: 'release'; readonly issue: number; readonly reason: string }
+  | { readonly sub: 'status'; readonly issue: number };
 
-async function runSub(
+export function ticketRequest(
+  sub: string | undefined,
+  args: {
+    readonly issue: string | undefined;
+    readonly agent: string | undefined;
+    readonly reason: string | undefined;
+  },
+): TicketRequest {
+  switch (sub) {
+    case 'claim': {
+      const agent = checked(required(args.agent, 'agent'), agentProblem);
+      return { sub, issue: issueNumber(args.issue), agent };
+    }
+    case 'next': {
+      return { sub, agent: checked(required(args.agent, 'agent'), agentProblem) };
+    }
+    case 'release': {
+      const reason = checked(required(args.reason, 'reason'), reasonProblem);
+      return { sub, issue: issueNumber(args.issue), reason };
+    }
+    case 'status': {
+      return { sub, issue: issueNumber(args.issue) };
+    }
+    default: {
+      throw new UsageError(USAGE);
+    }
+  }
+}
+
+type Outcome = (ClaimResult | ReleaseResult | NextResult) & { readonly issue?: number };
+
+/**
+ * `talos.claim/1`: a claimed ticket's fields at the top level, or `error` naming why there is
+ * none (`claimed` exits 3, `none` and `max-claims` exit 4, `refused` exits 1).
+ */
+export function claimContract(outcome: Outcome): Record<string, unknown> {
+  switch (outcome.result) {
+    case 'claimed': {
+      const { result: _result, ticket, ...rest } = outcome;
+      return { schema: CLAIM_SCHEMA, ...rest, ...ticket };
+    }
+    case 'taken': {
+      const { result: _result, ...rest } = outcome;
+      return { schema: CLAIM_SCHEMA, error: 'claimed', ...rest };
+    }
+    case 'empty': {
+      const { result: _result, ...rest } = outcome;
+      return { schema: CLAIM_SCHEMA, error: 'none', ...rest };
+    }
+    case 'max-claims':
+    case 'refused': {
+      const { result, ...rest } = outcome;
+      return { schema: CLAIM_SCHEMA, error: result, ...rest };
+    }
+    case 'released': {
+      const { result: _result, ...rest } = outcome;
+      return { schema: CLAIM_SCHEMA, released: true, ...rest };
+    }
+  }
+}
+
+async function runRequest(
   t: Ticketing,
-  sub: string,
-  args: SubArgs,
+  request: TicketRequest,
+  maxClaims: number,
 ): Promise<{ output: Record<string, unknown>; code: number }> {
-  if (sub === 'status') {
-    return { output: await ticketStatus(t, issueNumber(args.issue)), code: TICKET_EXIT.done };
+  switch (request.sub) {
+    case 'status': {
+      return { output: await ticketStatus(t, request.issue), code: TICKET_EXIT.done };
+    }
+    case 'release': {
+      const result = await release(t, request.issue, request.reason);
+      return { output: claimContract({ issue: request.issue, ...result }), code: exitOf(result) };
+    }
+    case 'claim': {
+      const result = await claim(t, request.issue, request.agent);
+      return { output: claimContract({ issue: request.issue, ...result }), code: exitOf(result) };
+    }
+    case 'next': {
+      const swept = await sweepStaleClaims({ gh: t.gh, refs: t.gh }, t);
+      const result = await next(t, request.agent, maxClaims);
+      return { output: { ...claimContract(result), swept: swept.released }, code: exitOf(result) };
+    }
   }
-  if (sub === 'release') {
-    const reason = checked(required(args.reason, 'reason'), reasonProblem);
-    const result = await release(t, issueNumber(args.issue), reason);
-    return { output: { issue: Number(args.issue), ...result }, code: exitOf(result) };
-  }
-  const agent = checked(required(args.agent, 'agent'), agentProblem);
-  if (sub === 'claim') {
-    const result = await claim(t, issueNumber(args.issue), agent);
-    return { output: { issue: Number(args.issue), ...result }, code: exitOf(result) };
-  }
-  const swept = await sweepStaleClaims({ gh: t.gh, refs: t.gh }, t);
-  const result = await next(t, agent, args.maxClaims);
-  return { output: { ...result, swept: swept.released }, code: exitOf(result) };
 }
 
 /** `talos ticket` with a GitHub client of the caller's choosing (tests pass a fake fetch). */
 export function ticketWith(options: GitHubOptions): Command {
   return async (argv, io) => {
     const [sub, ...rest] = argv;
-    if (sub === undefined || !['claim', 'next', 'release', 'status'].includes(sub)) {
-      throw new UsageError(USAGE);
-    }
     const { values, positionals } = parse(
       rest,
       { agent: { type: 'string' }, reason: { type: 'string' }, repo: { type: 'string' } },
       true,
     );
+    const request = ticketRequest(sub, {
+      issue: positionals[0],
+      agent: values.agent,
+      reason: values.reason,
+    });
     const repo = await repoOf(values.repo, io);
     const gh = github(await tokenFromEnvironment(io.env), options);
     const config = await configAt(gh, repo, await defaultBranch(gh, repo));
@@ -131,13 +199,8 @@ export function ticketWith(options: GitHubOptions): Command {
       who: identities(io.env),
       now: new Date(),
     };
-    const { output, code } = await runSub(t, sub, {
-      issue: positionals[0],
-      agent: values.agent,
-      reason: values.reason,
-      maxClaims: config.agents.max_claims,
-    });
-    io.out(`${JSON.stringify({ schema: TICKET_SCHEMA, repo, ...output }, null, 2)}\n`);
+    const { output, code } = await runRequest(t, request, config.agents.max_claims);
+    io.out(`${JSON.stringify({ schema: TICKET_SCHEMA, ...output, repo }, null, 2)}\n`);
     return code;
   };
 }

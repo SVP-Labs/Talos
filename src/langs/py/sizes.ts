@@ -2,7 +2,7 @@ import type { FileSpans } from './spans.js';
 import type { Finding } from '../../core/finding.js';
 
 export const MAX_FILE_LINES = 400;
-export const MAX_FUNCTION_LINES = 60;
+const MAX_FUNCTION_LINES = 60;
 
 /**
  * Which lines count towards a size limit, by 1-based line number: blank lines, comments and

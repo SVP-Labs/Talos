@@ -13,7 +13,11 @@ function drift(file: string): ReturnType<typeof finding> {
   return finding('config/drift', file, { check: 'configs/drift' });
 }
 
-function chore(files: string[], labels: string[] = [], state: 'open' | 'closed' = 'open'): TalosIssue {
+function chore(
+  files: string[],
+  labels: string[] = [],
+  state: 'open' | 'closed' = 'open',
+): TalosIssue {
   return {
     number: 9,
     title: '',
@@ -32,7 +36,12 @@ function chore(files: string[], labels: string[] = [], state: 'open' | 'closed' 
 
 describe('staleCopies', () => {
   it('lists each stale generated copy once, sorted', () => {
-    const report = reportOf([drift('tsconfig.talos.json'), drift('eslint.config.js'), drift('eslint.config.js'), finding('r/1', 'src/a.ts')]);
+    const report = reportOf([
+      drift('tsconfig.talos.json'),
+      drift('eslint.config.js'),
+      drift('eslint.config.js'),
+      finding('r/1', 'src/a.ts'),
+    ]);
     expect(staleCopies(report)).toEqual(['eslint.config.js', 'tsconfig.talos.json']);
   });
 });
@@ -43,9 +52,14 @@ describe('syncChore', () => {
     expect(draft.title).toBe('Sync 2 generated configs with the enforced Talos version');
     expect(draft.labels).toEqual(['chore', 'sync', 'status/ready', 'ai/eligible', 'priority/p3']);
     expect(affectedPaths(draft.body)).toEqual(['eslint.config.js', 'ruff.toml']);
-    expect(readMarker(draft.body, 'sync')).toEqual({});
-    expect(judgeReadiness({ body: draft.body, labels: draft.labels, briefsDir: 'd', briefs: new Map() }).ready).toBe(true);
-    expect(syncChore(['a.js']).title).toBe('Sync 1 generated config with the enforced Talos version');
+    expect(readMarker(draft.body, 'sync')).toEqual({ files: '2' });
+    expect(
+      judgeReadiness({ body: draft.body, labels: draft.labels, briefsDir: 'd', briefs: new Map() })
+        .ready,
+    ).toBe(true);
+    expect(syncChore(['a.js']).title).toBe(
+      'Sync 1 generated config with the enforced Talos version',
+    );
   });
 });
 
@@ -57,9 +71,16 @@ describe('syncPlan', () => {
   });
 
   it('keeps an open one current unless someone holds it', () => {
-    expect(syncPlan(['b.js', 'a.js'].sort(), [chore(['a.js', 'b.js'])])).toEqual({ action: 'current' });
-    expect(syncPlan(['a.js', 'c.js'], [chore(['a.js', 'b.js'])])).toEqual({ action: 'update', issue: 9 });
-    expect(syncPlan(['a.js'], [chore(['a.js', 'b.js'], ['ai/claimed'])])).toEqual({ action: 'claimed' });
+    expect(syncPlan(['a.js', 'b.js'], [chore(['a.js', 'b.js'])])).toEqual({
+      action: 'current',
+    });
+    expect(syncPlan(['a.js', 'c.js'], [chore(['a.js', 'b.js'])])).toEqual({
+      action: 'update',
+      issue: 9,
+    });
+    expect(syncPlan(['a.js'], [chore(['a.js', 'b.js'], ['ai/claimed'])])).toEqual({
+      action: 'claimed',
+    });
   });
 });
 
@@ -67,9 +88,15 @@ describe('keepSyncChore', () => {
   it('files, then updates, the one sync chore', async () => {
     const fake = new FakeGitHub();
     const gh = fake.client();
-    expect(await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js')]))).toEqual({ action: 'create' });
-    expect(await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js')]))).toEqual({ action: 'current' });
-    expect(await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js'), drift('b.js')]))).toEqual({
+    expect(await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js')]))).toEqual({
+      action: 'create',
+    });
+    expect(await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js')]))).toEqual({
+      action: 'current',
+    });
+    expect(
+      await keepSyncChore(gh, { repo: 'o/r', who }, reportOf([drift('a.js'), drift('b.js')])),
+    ).toEqual({
       action: 'update',
       issue: 1,
     });

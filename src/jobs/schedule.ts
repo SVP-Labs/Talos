@@ -11,3 +11,16 @@ export function isDue(cadence: Cadence, event: string, now: Date): boolean {
   if (event !== 'schedule') return false;
   return cadence === 'daily' || now.getUTCDay() === MONDAY;
 }
+
+/**
+ * Whether a scheduled or dispatched run is on the default branch. A manual dispatch can name any
+ * branch, and its caller and checkout then come from there; when the payload doesn't say which
+ * branch is the default, the run is taken to be on it.
+ */
+export function onDefaultBranch(
+  ref: string | undefined,
+  defaultBranch: string | undefined,
+): boolean {
+  if (ref === undefined || defaultBranch === undefined) return true;
+  return ref === `refs/heads/${defaultBranch}`;
+}

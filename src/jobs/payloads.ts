@@ -27,6 +27,16 @@ const reviewEvent = z.object({
   sender: actor,
 });
 
+const withRepository = z.object({
+  repository: z.object({ default_branch: z.string().min(1) }),
+});
+
+/** The default branch an event's payload names, when it names one. */
+export function defaultBranchOf(payload: unknown): string | undefined {
+  const parsed = withRepository.safeParse(payload);
+  return parsed.success ? parsed.data.repository.default_branch : undefined;
+}
+
 export type Admission =
   { readonly admit: true } | { readonly admit: false; readonly reason: string };
 

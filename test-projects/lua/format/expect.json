@@ -1,0 +1,1 @@
+{ "checks": ["lua/format"], "rules": ["stylua/format"] }

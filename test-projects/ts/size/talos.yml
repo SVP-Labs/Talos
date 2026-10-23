@@ -1,0 +1,5 @@
+name: Case
+prefix: CA
+components:
+  - { lang: ts }
+size: .size-limit.json

@@ -34,7 +34,10 @@ function entryText(entry: WhyEntry): string {
     const text = entry[section];
     if (text !== null) lines.push(`  ${section}:`, ...text.split('\n').map((l) => `    ${l}`));
   }
-  if (SECTIONS.every((section) => entry[section] === null)) lines.push('  (no history section)');
+  if (SECTIONS.every((section) => entry[section] === null)) {
+    lines.push('  (no Problem, Discussion or Solution section)');
+    if (entry.summary !== null) lines.push(...entry.summary.split('\n').map((l) => `    ${l}`));
+  }
   return lines.join('\n');
 }
 
@@ -46,6 +49,7 @@ function compact(entry: WhyEntry): Record<string, unknown> {
     problem: entry.problem === null ? null : clip(entry.problem, MAX_SECTION),
     discussion: entry.discussion === null ? null : clip(entry.discussion, MAX_SECTION),
     solution: entry.solution === null ? null : clip(entry.solution, MAX_SECTION),
+    summary: entry.summary === null ? null : clip(entry.summary, MAX_SECTION),
   };
 }
 

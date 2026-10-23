@@ -26,7 +26,8 @@ export function staleCopies(report: DebtReport): string[] {
  */
 export function syncChore(files: readonly string[]): IssueDraft {
   const body = [
-    marker('sync'),
+    marker('sync', { files: String(files.length) }),
+    '',
     '### Goal',
     '',
     'Bring the generated tool configs back in line with the Talos version this repository ' +

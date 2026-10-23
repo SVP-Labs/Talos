@@ -4,7 +4,7 @@ import { type Check, type CheckContext, EngineError, skip, APPLIES } from '../..
 import type { Finding } from '../../../core/finding.js';
 import { GENERATED_PATHS } from '../configs/index.js';
 import { PRETTIER_CONFIG } from '../configs/prettier.js';
-import { componentFiles, inComponent, inRepo, LOCKFILES, rootOf } from '../files.js';
+import { componentFiles, inComponent, inRepo, LOCK_FILES, rootOf } from '../files.js';
 import { withoutGenerated } from '../generated.js';
 import { batches, componentDir, nodeTool, runTool, tail } from '../node.js';
 
@@ -33,13 +33,13 @@ const FORMATTED = new Set([
   '.gql',
 ]);
 
-/** Files Prettier formats, minus lockfiles and the files Talos renders (component-relative). */
+/** Files Prettier formats, minus lock files and the files Talos renders (component-relative). */
 export function formatTargets(files: readonly string[], root: string): string[] {
   return files
     .map((file) => inComponent(root, file))
     .filter((file) => FORMATTED.has(extname(file)))
     .filter((file) => !GENERATED_PATHS.includes(file))
-    .filter((file) => !(LOCKFILES as readonly string[]).includes(posix.basename(file)));
+    .filter((file) => !(LOCK_FILES as readonly string[]).includes(posix.basename(file)));
 }
 
 export type PrettierError = {

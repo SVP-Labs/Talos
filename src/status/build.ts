@@ -38,8 +38,8 @@ export type StatusInput = {
 function isGateSuite(suite: Suite, talosRepo: string, path: string | null): boolean {
   const file = suite.workflowRun?.file;
   if (file === null || file === undefined) return false;
-  const fromTalos = file.repositoryName.toLowerCase().endsWith(talosRepo.toLowerCase());
-  return fromTalos && (path === null || file.path === path);
+  const name = file.repositoryName.toLowerCase().replace(/^https:\/\/github\.com\//, '');
+  return name === talosRepo.toLowerCase() && (path === null || file.path === path);
 }
 
 function newest(suites: readonly Suite[]): Suite | undefined {

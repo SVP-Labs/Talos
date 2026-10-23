@@ -40,25 +40,34 @@ function event(
 describe('eventSkip', () => {
   it('judges an owner, member, collaborator or Thea opening or editing an issue', () => {
     for (const action of ['opened', 'edited', 'reopened', 'labeled', 'unlabeled']) {
-      const parsed = { action, issue: { number: 1, user: { login: 'x' }, author_association: 'MEMBER' } };
+      const parsed = {
+        action,
+        issue: { number: 1, user: { login: 'x' }, author_association: 'MEMBER' },
+      };
       expect(eventSkip({ ...parsed, sender: { login: 'x' } }, who)).toBeUndefined();
     }
-    const thea = { action: 'opened', issue: { number: 1, user: { login: 'thea-svp[bot]' }, author_association: 'NONE' } };
+    const thea = {
+      action: 'opened',
+      issue: { number: 1, user: { login: 'thea-svp[bot]' }, author_association: 'NONE' },
+    };
     expect(eventSkip(thea, who)).toBeUndefined();
   });
 
   it('skips other actions, its own changes, strangers and its own issues', () => {
     const base = { number: 1, user: { login: 'x' }, author_association: 'OWNER' };
     expect(eventSkip({ action: 'closed', issue: base }, who)).toMatch(/closed/);
-    expect(eventSkip({ action: 'labeled', issue: base, sender: { login: who.reviewer } }, who)).toMatch(
-      /own change/,
-    );
+    expect(
+      eventSkip({ action: 'labeled', issue: base, sender: { login: who.reviewer } }, who),
+    ).toMatch(/own change/);
     expect(
       eventSkip({ action: 'opened', issue: { ...base, author_association: 'CONTRIBUTOR' } }, who),
     ).toBe('author not trusted');
     expect(
       eventSkip(
-        { action: 'opened', issue: { number: 1, user: { login: who.reviewer }, author_association: 'NONE' } },
+        {
+          action: 'opened',
+          issue: { number: 1, user: { login: who.reviewer }, author_association: 'NONE' },
+        },
         who,
       ),
     ).toBe('filed by Talos');
@@ -79,23 +88,26 @@ describe('readinessJob', () => {
   }
 
   it('flags an issue that is not ready, once, and follows its edits', async () => {
-    fake.addIssue({ number: 4, body: '### Goal\n\nx', labels: ['feature', 'status/ready'] });
+    const issue = fake.addIssue({
+      number: 4,
+      body: '### Goal\n\nx',
+      labels: ['feature', 'status/ready'],
+    });
     expect(await run(event('opened', 4))).toBe('done: not ready: 3 problem(s)');
-    const issue = fake.issues.get(4);
-    expect(issue?.labels).toEqual(['feature', 'needs-spec']);
-    expect(issue?.comments).toHaveLength(1);
-    expect(issue?.comments[0]?.body).toContain('a `## Out of scope` section');
+    expect(issue.labels).toEqual(['feature', 'needs-spec']);
+    expect(issue.comments).toHaveLength(1);
+    expect(issue.comments[0]?.body).toContain('a `## Out of scope` section');
 
-    if (issue !== undefined) issue.body = READY_BODY.replace('- [ ] done', 'done');
+    issue.body = READY_BODY.replace('- [ ] done', 'done');
     expect(await run(event('edited', 4))).toBe('done: not ready: 1 problem(s)');
-    expect(issue?.comments).toHaveLength(1);
-    expect(issue?.comments[0]?.body).toContain('at least one `- [ ]` checkbox');
+    expect(issue.comments).toHaveLength(1);
+    expect(issue.comments[0]?.body).toContain('at least one `- [ ]` checkbox');
 
-    if (issue !== undefined) issue.body = READY_BODY;
+    issue.body = READY_BODY;
     expect(await run(event('edited', 4))).toBe('done: ready');
-    expect(issue?.labels).toEqual(['feature', 'status/ready']);
-    expect(issue?.comments).toHaveLength(1);
-    expect(issue?.comments[0]?.body).toContain('**Ready.**');
+    expect(issue.labels).toEqual(['feature', 'status/ready']);
+    expect(issue.comments).toHaveLength(1);
+    expect(issue.comments[0]?.body).toContain('**Ready.**');
 
     const before = fake.writes().length;
     expect(await run(event('edited', 4))).toBe('done: ready');
@@ -113,7 +125,7 @@ describe('readinessJob', () => {
     fake.addIssue({ number: 6, body: '### Goal\n\nx', labels: ['feature'] });
     fake.issues.get(6)?.comments.push({
       id: 1,
-      body: '<!-- talos-readiness/1 -->\nfake',
+      body: 'talos-readiness/1 ready=no problems=1\nfake',
       user: 'SvenPGH',
       author_association: 'OWNER',
       created_at: fake.now,
@@ -124,7 +136,8 @@ describe('readinessJob', () => {
   });
 
   it('checks the brief of an epic on the default branch', async () => {
-    const body = '### Goal\n\nAll.\n\n### Brief\n\ndocs/requirements/20261023-billing.md\n\n### Out of scope\n\nLater.';
+    const body =
+      '### Goal\n\nAll.\n\n### Brief\n\ndocs/requirements/20261023-billing.md\n\n### Out of scope\n\nLater.';
     fake.addIssue({ number: 7, body, labels: ['epic'] });
     expect(await run(event('opened', 7))).toBe('done: not ready: 1 problem(s)');
     fake.files.set('docs/requirements/20261023-billing.md', '# Billing');

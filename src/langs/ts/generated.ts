@@ -1,6 +1,7 @@
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { GENERATED_PATHS } from './configs/index.js';
+import { mapInChunks } from './node.js';
 import { GENERATED_MARKER } from '../../configs/header.js';
 
 /** Whether a file's first lines carry the generated-file marker (any pack's). */
@@ -22,6 +23,6 @@ export async function carriesMarker(path: string): Promise<boolean> {
 export async function withoutGenerated(dir: string, files: readonly string[]): Promise<string[]> {
   const known = new Set(GENERATED_PATHS);
   const candidates = files.filter((file) => !known.has(file));
-  const marked = await Promise.all(candidates.map((file) => carriesMarker(join(dir, file))));
+  const marked = await mapInChunks(candidates, (file) => carriesMarker(join(dir, file)));
   return candidates.filter((_, index) => marked[index] !== true);
 }

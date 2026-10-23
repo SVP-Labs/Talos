@@ -1,0 +1,5 @@
+<!-- This project's additions to phpmd.xml, which may only tighten it. -->
+<ruleset name="Project">
+    <description>Rules this project adds to the Talos base.</description>
+    <exclude-pattern>*/Legacy/*</exclude-pattern>
+</ruleset>

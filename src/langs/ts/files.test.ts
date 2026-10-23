@@ -53,6 +53,7 @@ describe('component paths', () => {
     expect(inComponent('.', 'src/a.ts')).toBe('src/a.ts');
     expect(inRepo('apps/web', 'src/a.ts')).toBe('apps/web/src/a.ts');
     expect(inRepo('.', 'src/a.ts')).toBe('src/a.ts');
+    expect(inRepo('apps/web', String.raw`src\a.ts`)).toBe('apps/web/src/a.ts');
   });
 
   it('keeps the excludes under a component, relative to it', () => {

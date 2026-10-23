@@ -1,5 +1,4 @@
 import { type Command, parse } from './io.js';
-import { PACKS } from '../core/registry.js';
 import { exec } from '../exec/exec.js';
 import { type DoctorItem, doctorReport } from '../status/doctor.js';
 import { ownVersion, requiredNode } from '../version/self.js';
@@ -28,7 +27,7 @@ export const doctor: Command = async (argv, io) => {
     exec,
     node: { version: process.versions.node, range: requiredNode() },
     running: ownVersion(),
-    packs: PACKS,
+    loadPacks: async () => (await import('../core/registry.js')).PACKS,
   });
   const ok = items.every((i) => i.status !== 'fail');
   if (values.json) {

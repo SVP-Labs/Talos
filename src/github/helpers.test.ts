@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { crc32 } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { listRunArtifacts, listRunJobs, listWorkflowRuns } from './actions.js';
@@ -17,9 +19,25 @@ import {
   propertyOf,
 } from './repos.js';
 import { getRuleset, listRulesets, requiredWorkflows } from './rulesets.js';
-import { exec, type Exec } from '../exec/exec.js';
+import { type Exec, ExecError } from '../exec/exec.js';
 
 type Call = { method: string; path: string; body?: unknown };
+
+/** The system's programs, without writing to their stdin; tests only. */
+const exec: Exec = async (command, args, options) => {
+  try {
+    const { stdout, stderr } = await promisify(execFile)(command, [...args], {
+      cwd: options.cwd,
+      encoding: 'utf8',
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    const failure = error as { code?: unknown; stdout?: string; stderr?: string };
+    if (typeof failure.code === 'string') throw new ExecError(`${command} could not start`);
+    const code = typeof failure.code === 'number' ? failure.code : 1;
+    return { code, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
+  }
+};
 
 /** A GitHub whose answers are keyed by `METHOD path`; anything else fails the test. */
 function fakeGitHub(answers: Record<string, unknown>, calls: Call[] = []): GitHub {
@@ -123,7 +141,7 @@ describe('readFileAt', () => {
 
   it('encodes each path segment and the ref', async () => {
     const gh = fakeGitHub({
-      'GET repos/o/r/contents/docs/a%20b.md?ref=refs%2Fheads%2Fx': {
+      [`GET repos/o/r/contents/docs/a%20b.md?ref=${encodeURIComponent('refs/heads/x')}`]: {
         type: 'file',
         encoding: 'base64',
         content: `${content.slice(0, 4)}\n${content.slice(4)}`,
@@ -274,11 +292,12 @@ const checkRunJson = {
 describe('check runs', () => {
   it('lists the latest runs on a ref, by name and App', async () => {
     const gh = fakeGitHub({
-      'GET repos/o/r/commits/abc/check-runs?filter=latest&check_name=talos%2Freview': [
-        checkRunJson,
-        { ...checkRunJson, id: 6, app: { id: 4, slug: 'impostor' } },
-        { ...checkRunJson, id: 7, app: null },
-      ],
+      [`GET repos/o/r/commits/abc/check-runs?filter=latest&check_name=${encodeURIComponent('talos/review')}`]:
+        [
+          checkRunJson,
+          { ...checkRunJson, id: 6, app: { id: 4, slug: 'impostor' } },
+          { ...checkRunJson, id: 7, app: null },
+        ],
     });
     const runs = await listCheckRuns(gh, 'o/r', 'abc', {
       name: 'talos/review',
@@ -472,7 +491,6 @@ describe('extractFile', () => {
   });
 
   it('falls back to tar when unzip is missing', async () => {
-    const { ExecError } = await import('../exec/exec.js');
     const tar =
       (code: number, stdout: string, stderr: string): Exec =>
       (command) =>

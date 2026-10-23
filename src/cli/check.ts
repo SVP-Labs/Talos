@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { type Command, parse } from './io.js';
 import { currentOs } from './run.js';
 import { loadConfig } from '../config/load.js';
@@ -10,6 +12,7 @@ import type { Engine } from '../engine/run.js';
 import { createEngine } from '../engine/session.js';
 import { decide, exitCode } from '../engine/verdict.js';
 import { type Git, git, revParse } from '../repo/git.js';
+import { toSarif } from '../sarif/sarif.js';
 
 async function defaultBase(repo: Git): Promise<string> {
   for (const ref of ['origin/HEAD', 'origin/main', 'main']) {
@@ -46,7 +49,8 @@ async function runAll(
 /**
  * `talos check`: what the gate would say, locally, before a push. The working tree is judged
  * against the base branch; `--commits` judges every commit against its parent as a ready PR's
- * gate does. `--json` prints the compact verdict an agent reads (`talos.verdict/1`).
+ * gate does. `--json` prints the compact verdict an agent reads (`talos.verdict/1`); every finding,
+ * past the twenty it lists, is in `.talos/check/talos.sarif`.
  */
 export const check: Command = async (argv, io) => {
   const { values } = parse(argv, {
@@ -76,6 +80,12 @@ export const check: Command = async (argv, io) => {
     results,
     await Promise.all(comparisons),
     await commitFindings(repo, plan, config),
+  );
+  const reports = join(io.cwd, '.talos', 'check');
+  await mkdir(reports, { recursive: true });
+  await writeFile(
+    join(reports, 'talos.sarif'),
+    JSON.stringify(toSarif(decided.findings, engine.version)),
   );
   if (values.json) {
     const compact = compactVerdict(decided, {

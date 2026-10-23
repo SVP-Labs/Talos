@@ -71,12 +71,12 @@ function weakening(key: string, value: unknown): string | undefined {
   if (MUST_BE_ON.has(key)) return value === false ? shown : undefined;
   if (key === 'enableTypeIgnoreComments') return value === true ? shown : undefined;
   if (key === 'ignore' || key === 'allowedUntypedLibraries') {
-    return Array.isArray(value) && value.length > 0 ? shown : undefined;
+    return z.array(z.unknown()).min(1).safeParse(value).success ? shown : undefined;
   }
   return undefined;
 }
 
-function weakenings(entries: Settings, where: string): Weakening[] {
+function weakerSettings(entries: Settings, where: string): Weakening[] {
   return Object.entries(entries).flatMap(([key, value]) => {
     const shown = weakening(key, value);
     return shown === undefined
@@ -88,7 +88,7 @@ function weakenings(entries: Settings, where: string): Weakening[] {
 const environment = z.object({ root: z.string() }).catchall(z.unknown());
 
 /** Every way resolved basedpyright settings are weaker than "all" with nothing switched off. */
-export function pyrightWeakenings(resolved: Settings): Weakening[] {
+export function weakerPyright(resolved: Settings): Weakening[] {
   const mode = resolved.typeCheckingMode;
   const modeWeakening =
     mode === 'all'
@@ -101,7 +101,34 @@ export function pyrightWeakenings(resolved: Settings): Weakening[] {
         ];
   const environments = z.array(environment).safeParse(resolved.executionEnvironments);
   const scoped = (environments.success ? environments.data : []).flatMap(({ root, ...rest }) =>
-    weakenings(rest, `executionEnvironments[${root}].`),
+    weakerSettings(rest, `executionEnvironments[${root}].`),
   );
-  return [...modeWeakening, ...weakenings(resolved, ''), ...scoped];
+  return [...modeWeakening, ...weakerSettings(resolved, ''), ...scoped];
+}
+
+const MODES = new Set(['off', 'basic', 'standard', 'strict', 'recommended', 'all']);
+
+/** A file-level `# pyright:` comment's directive that loosens the file, with its 1-based line. */
+export type WeakerComment = { readonly line: number; readonly directive: string };
+
+function loosens(part: string): boolean {
+  const [key = '', value] = part.split('=').map((piece) => piece.trim());
+  if (value === undefined) return MODES.has(key) && key !== 'all';
+  const parsed = value === 'true' || value === 'false' ? value === 'true' : value;
+  return weakening(key, parsed) !== undefined;
+}
+
+/**
+ * File-level `# pyright:` comments that loosen a file: a mode other than "all", or a rule set
+ * below an error. basedpyright honours them over any config file. `# pyright: ignore[...]` is a
+ * suppression on its line, not a file setting.
+ */
+export function weakerComments(text: string): WeakerComment[] {
+  return text.split(/\r?\n/).flatMap((raw, index) => {
+    const directive = /^#\s*pyright:(.*)$/.exec(raw.trim())?.[1]?.trim();
+    if (directive === undefined || directive === '' || /^ignore\b/.test(directive)) return [];
+    return directive.split(',').some((part) => loosens(part))
+      ? [{ line: index + 1, directive }]
+      : [];
+  });
 }

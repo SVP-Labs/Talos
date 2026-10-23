@@ -1,0 +1,6 @@
+{
+  "name": "talos-case-javascript",
+  "private": true,
+  "type": "module",
+  "devDependencies": {}
+}

@@ -51,12 +51,7 @@ export async function addLabels(
 }
 
 /** Removing a label the issue doesn't carry is not an error. */
-export async function removeLabel(
-  gh: GitHub,
-  repo: string,
-  n: number,
-  label: string,
-): Promise<void> {
+async function removeLabel(gh: GitHub, repo: string, n: number, label: string): Promise<void> {
   await gh.request('DELETE', `repos/${repo}/issues/${n}/labels/${encodeURIComponent(label)}`, {
     allowMissing: true,
   });
@@ -138,7 +133,8 @@ export async function fileAt(
 /** `talos.yml` as it is at a ref, read through the API. */
 export async function configAt(gh: GitHub, repo: string, ref: string): Promise<TalosConfig> {
   const text = await fileAt(gh, repo, 'talos.yml', ref);
-  if (text === undefined)
-    {throw new Error(`talos.yml not found at ${ref}: the repository is not governed`);}
+  if (text === undefined) {
+    throw new Error(`talos.yml not found at ${ref}: the repository is not governed`);
+  }
   return parseConfig(text);
 }

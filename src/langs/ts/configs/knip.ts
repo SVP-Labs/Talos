@@ -1,10 +1,15 @@
 import { excludeGlobs, excludes, lines, quote } from './shared.js';
 import { generatedHeader } from '../../../configs/header.js';
 import type { RenderContext } from '../../../core/pack.js';
-import { RUN_BY_TALOS } from '../devtools.js';
 
 export const KNIP_BASE = 'knip.config.js';
 export const KNIP_PROJECT = 'knip.project.json';
+
+/**
+ * Tools Talos runs that nothing in a project refers to, so Knip would call them unused; its
+ * plugins see the others through their config files.
+ */
+export const UNSEEN_BY_KNIP = ['type-coverage'] as const;
 
 /** Keys of the project's file that could only hide unused code, which the base doesn't allow. */
 export const KNIP_WEAKENING_KEYS = [
@@ -16,8 +21,8 @@ export const KNIP_WEAKENING_KEYS = [
 
 /**
  * Knip's own defaults are the strict part: every issue type is an error. The base adds
- * `talos.yml`'s exclude and the tools Talos runs (no project code imports them); the project's
- * JSON names its entry points and project files.
+ * `talos.yml`'s exclude and the tools only Talos runs; the project's JSON names its entry
+ * points and project files.
  */
 export function renderKnip(ctx: RenderContext): string {
   const ignore = excludes(ctx).flatMap((entry) => excludeGlobs(entry).slice(-1));
@@ -32,7 +37,7 @@ export default {
 ${lines(ignore.map(quote), '    ')}    ...(project.ignore ?? []),
   ],
   ignoreDependencies: [
-${lines(RUN_BY_TALOS.map(quote), '    ')}    ...(project.ignoreDependencies ?? []),
+${lines(UNSEEN_BY_KNIP.map(quote), '    ')}    ...(project.ignoreDependencies ?? []),
   ],
 };
 `;

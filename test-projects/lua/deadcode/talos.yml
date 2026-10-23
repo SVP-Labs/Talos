@@ -1,0 +1,4 @@
+name: Dead
+prefix: DC
+components:
+  - { lang: lua }

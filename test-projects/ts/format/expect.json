@@ -1,0 +1,5 @@
+{
+  "checks": ["ts/format"],
+  "rules": ["prettier/unformatted", "prettier/syntax-error"],
+  "os": ["linux", "windows"]
+}

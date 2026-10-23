@@ -29,6 +29,8 @@ type Draft = {
   removed: LineRange[];
   addedText: string[];
   removedText: string[];
+  /** Header lines come only before a file's first hunk; inside hunks `--- x` is a removed line. */
+  inHunks: boolean;
 };
 
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -48,6 +50,7 @@ function startFile(line: string): Draft {
     removed: [],
     addedText: [],
     removedText: [],
+    inHunks: false,
   };
 }
 
@@ -64,7 +67,7 @@ function readHunk(draft: Draft, line: string): void {
   if (added) draft.added.push(added);
 }
 
-function readHeader(draft: Draft, line: string): boolean {
+function readHeader(draft: Draft, line: string): void {
   if (line.startsWith('new file mode')) draft.status = 'added';
   else if (line.startsWith('deleted file mode')) draft.status = 'deleted';
   else if (line.startsWith('rename from ')) {
@@ -75,13 +78,14 @@ function readHeader(draft: Draft, line: string): boolean {
     draft.oldPath = stripPrefix(line.slice(4));
   } else if (line.startsWith('+++ ') && line !== '+++ /dev/null') {
     draft.path = stripPrefix(line.slice(4));
-  } else return false;
-  return true;
+  }
 }
 
 function readLine(draft: Draft, line: string): void {
-  if (line.startsWith('@@')) readHunk(draft, line);
-  else if (readHeader(draft, line)) return;
+  if (line.startsWith('@@')) {
+    draft.inHunks = true;
+    readHunk(draft, line);
+  } else if (!draft.inHunks) readHeader(draft, line);
   else if (line.startsWith('+')) draft.addedText.push(line.slice(1));
   else if (line.startsWith('-')) draft.removedText.push(line.slice(1));
 }

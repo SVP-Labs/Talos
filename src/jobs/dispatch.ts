@@ -11,9 +11,9 @@ import {
 } from './act.js';
 import { type AnalyzeDeps, debtRun, mutationReport } from './analyze.js';
 import type { JobContext, JobOutcome } from './context.js';
-import { admission } from './payloads.js';
+import { admission, defaultBranchOf } from './payloads.js';
 import { readinessJob } from './readiness-job.js';
-import { type Cadence, isDue } from './schedule.js';
+import { type Cadence, isDue, onDefaultBranch } from './schedule.js';
 import { ConfigError } from '../config/load.js';
 import { GitHubError } from '../github/api.js';
 import { defaultBranch } from '../ticket/github.js';
@@ -89,6 +89,9 @@ async function actEnv(ctx: JobContext, deps: JobDeps): Promise<ActEnv> {
 
 async function scheduled(ctx: JobContext, deps: JobDeps): Promise<JobOutcome[]> {
   const due = SCHEDULED.filter((s) => s.phase === ctx.phase);
+  if (!onDefaultBranch(ctx.env.GITHUB_REF, defaultBranchOf(ctx.payload))) {
+    return due.flatMap((job) => skipped(job.name, 'not run from the default branch'));
+  }
   const outcomes: JobOutcome[] = [];
   let env: ActEnv | undefined;
   for (const job of due) {

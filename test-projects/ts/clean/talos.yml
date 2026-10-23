@@ -1,0 +1,4 @@
+name: Clean
+prefix: CL
+components:
+  - { lang: ts, os: [linux, windows] }

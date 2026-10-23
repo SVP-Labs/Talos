@@ -5,8 +5,8 @@ import type { GitHub } from '../github/api.js';
 import { readFileAt } from '../github/contents.js';
 
 /** An exact `X.Y.Z` with an optional pre-release: what a release tag's `package.json` holds. */
-export const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-export const COMMIT = /^[0-9a-f]{40}$/;
+const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const COMMIT = /^[0-9a-f]{40}$/;
 
 export type Release = { readonly version: string; readonly sha: string };
 

@@ -72,7 +72,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /** The virtual environment `install()` creates in the component's root. */
-export function venvDir(place: Pick<Place, 'root' | 'component'>): string {
+function venvDir(place: Pick<Place, 'root' | 'component'>): string {
   return join(componentDir(place), '.venv');
 }
 

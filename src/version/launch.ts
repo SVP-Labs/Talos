@@ -65,7 +65,8 @@ export type LaunchDeps = {
   readonly run: (bin: string, argv: readonly string[], env: Env) => Promise<number>;
 };
 
-function runNode(bin: string, argv: readonly string[], env: Env): Promise<number> {
+/** Runs a Talos entry point with this Node, its output on this terminal; resolves its exit code. */
+export function runNode(bin: string, argv: readonly string[], env: Env): Promise<number> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [bin, ...argv], { stdio: 'inherit', env });
     child.on('error', reject);

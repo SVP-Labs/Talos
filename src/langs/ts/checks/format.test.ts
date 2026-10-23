@@ -24,7 +24,7 @@ describe('parsePrettier', () => {
 });
 
 describe('formatTargets', () => {
-  it("keeps the files Prettier formats, without lockfiles or Talos's rendered files", () => {
+  it("keeps the files Prettier formats, without lock files or Talos's rendered files", () => {
     const files = [
       'apps/web/src/a.ts',
       'apps/web/README.md',

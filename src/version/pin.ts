@@ -19,7 +19,7 @@ import { getRuleset, listRulesets, requiredWorkflows, type Ruleset } from '../gi
  */
 export type LookupMode = 'rulesets' | 'channels';
 
-export const CHANNELS = ['evaluate', 'canary', 'stable'] as const;
+const CHANNELS = ['evaluate', 'canary', 'stable'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export type Pin = {
@@ -134,17 +134,21 @@ export type PinFinder = (repo: string | Repository) => Promise<PinLookup>;
 export function pinFinder(gh: GitHub, talosRepo: string, mode: LookupMode): PinFinder {
   let talosId: Promise<number> | undefined;
   let channels: Promise<unknown> | undefined;
+  // Each shared read is awaited alongside the call's own, so a failure in either is handled.
   const byRulesets = async (repo: string): Promise<PinLookup> => {
     talosId ??= getRepository(gh, talosRepo).then((r) => r.id);
-    const summaries = await listRulesets(gh, repo);
+    const [id, summaries] = await Promise.all([talosId, listRulesets(gh, repo)]);
     const live = summaries.filter((summary) => summary.enforcement !== 'disabled');
     const details = await Promise.all(live.map((summary) => getRuleset(gh, repo, summary.id)));
-    return selectPin(details, await talosId);
+    return selectPin(details, id);
   };
   const byChannels = async (repo: string | Repository): Promise<PinLookup> => {
     channels ??= readFileAt(gh, talosRepo, CHANNELS_FILE, CHANNELS_BRANCH).then(parseJson);
-    const repository = typeof repo === 'string' ? await getRepository(gh, repo) : repo;
-    return selectChannelPin(propertyOf(repository, 'talos'), await channels);
+    const [file, repository] = await Promise.all([
+      channels,
+      typeof repo === 'string' ? getRepository(gh, repo) : repo,
+    ]);
+    return selectChannelPin(propertyOf(repository, 'talos'), file);
   };
   return (repo) => {
     if (mode === 'channels') return byChannels(repo);

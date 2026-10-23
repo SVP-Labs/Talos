@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DEBT_FILE } from './analyze.js';
-import type { Download } from './artifacts.js';
 import type { JobContext, JobOutcome } from './context.js';
 import { fileDebtIssues } from './debt-issues.js';
 import { type DebtReport, parseDebtReport } from './debt-report.js';
@@ -10,6 +9,7 @@ import { type DesiredLabel, syncLabels } from './label-sync.js';
 import { keepSyncChore } from './sync-chore.js';
 import type { TalosConfig } from '../config/schema.js';
 import type { GitHub } from '../github/api.js';
+import type { Download } from '../github/artifacts.js';
 import { sweepStaleClaims } from '../ticket/stale.js';
 
 /** What the act phase's scheduled jobs need beyond the job context. */

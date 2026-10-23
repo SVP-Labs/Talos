@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
-import { RUN_BY_TALOS, TS_DEV_TOOLS } from './devtools.js';
+import { UNSEEN_BY_KNIP } from './configs/knip.js';
+import { TS_DEV_TOOLS } from './devtools.js';
 
 const lockfile = z.object({
   importers: z.object({
@@ -26,6 +27,6 @@ describe('the pinned TypeScript toolchain', () => {
   );
 
   it('pins every tool Talos runs', () => {
-    for (const name of RUN_BY_TALOS) expect(TS_DEV_TOOLS.packages).toHaveProperty(name);
+    for (const name of UNSEEN_BY_KNIP) expect(TS_DEV_TOOLS.packages).toHaveProperty(name);
   });
 });

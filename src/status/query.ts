@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** The labels the state reads. */
-export const LABELS = {
+const LABELS = {
   security: 'security',
   debt: ['debt/dead-code', 'debt/other'],
   drift: 'drift',

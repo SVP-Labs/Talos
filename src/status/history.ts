@@ -1,9 +1,9 @@
-import type { GitHub } from '../github/api.js';
-import { pullsForCommit } from '../github/pulls.js';
+import { type GitHub, GitHubError } from '../github/api.js';
+import { pullsForCommit, type PullSummary } from '../github/pulls.js';
 import type { Git } from '../repo/git.js';
 
 export const SECTIONS = ['problem', 'discussion', 'solution'] as const;
-export type Section = (typeof SECTIONS)[number];
+type Section = (typeof SECTIONS)[number];
 export type Sections = Readonly<Record<Section, string | null>>;
 
 const HEADING = /^ {0,3}(#{1,6})[ \t](.*)$/;
@@ -63,7 +63,35 @@ export type WhyEntry = Sections & {
   readonly title: string;
   readonly merged: string | null;
   readonly url: string;
+  /** The text before the first heading, for a PR written without the three sections. */
+  readonly summary: string | null;
 };
+
+/** The text of a body before its first heading, HTML comments dropped. */
+export function leadOf(body: string): string | null {
+  const lines: string[] = [];
+  for (const line of body
+    .replaceAll(/<!--[\s\S]*?-->/g, '')
+    .replaceAll('\r\n', '\n')
+    .split('\n')) {
+    if (headingOf(line) !== undefined) break;
+    lines.push(line);
+  }
+  return joined(lines);
+}
+
+function entryOf(pull: PullSummary): WhyEntry {
+  const sections = historySections(pull.body);
+  const none = SECTIONS.every((section) => sections[section] === null);
+  return {
+    number: pull.number,
+    title: pull.title,
+    merged: pull.mergedAt,
+    url: pull.url,
+    ...sections,
+    summary: none ? leadOf(pull.body) : null,
+  };
+}
 
 export type WhyQuery = {
   readonly gh: GitHub;
@@ -82,23 +110,27 @@ export async function commitsFor(git: Git, path: string, isFile: boolean): Promi
   return out.split('\n').filter((line) => /^[0-9a-f]{40}$/.test(line));
 }
 
+/** A commit GitHub doesn't know (not pushed yet) belongs to no PR. */
+async function pullsOf(query: WhyQuery, sha: string): Promise<PullSummary[]> {
+  try {
+    return await pullsForCommit(query.gh, query.repo, sha);
+  } catch (error) {
+    if (error instanceof GitHubError && (error.status === 404 || error.status === 422)) return [];
+    throw error;
+  }
+}
+
 /** The merged PRs behind the commits that last changed a path, newest first, one per PR. */
 export async function whyFor(query: WhyQuery, commits: readonly string[]): Promise<WhyEntry[]> {
   const entries = new Map<number, WhyEntry>();
   for (const sha of commits) {
     if (entries.size >= query.limit) break;
-    const pulls = await pullsForCommit(query.gh, query.repo, sha);
+    const pulls = await pullsOf(query, sha);
     for (const pull of pulls) {
       if (pull.mergedAt === null || entries.has(pull.number) || entries.size >= query.limit) {
         continue;
       }
-      entries.set(pull.number, {
-        number: pull.number,
-        title: pull.title,
-        merged: pull.mergedAt,
-        url: pull.url,
-        ...historySections(pull.body),
-      });
+      entries.set(pull.number, entryOf(pull));
     }
   }
   return [...entries.values()];

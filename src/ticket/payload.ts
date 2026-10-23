@@ -1,9 +1,13 @@
+import { priorityOf } from './labels.js';
 import type { Comment, Issue } from './schemas.js';
 import { isTrusted } from './trust.js';
 import type { Identities } from '../github/identities.js';
 
-/** The version of every JSON object `talos ticket` prints. */
+/** `talos ticket status`'s JSON. */
 export const TICKET_SCHEMA = 'talos.ticket/1';
+
+/** What `talos ticket claim`, `next` and `release` print: the contract Thea's hub reads. */
+export const CLAIM_SCHEMA = 'talos.claim/1';
 
 const BODY_MAX = 3000;
 const COMMENT_MAX = 300;
@@ -28,6 +32,8 @@ export function ticketPayload(
     number: issue.number,
     title: issue.title,
     labels: [...issue.labels],
+    priority: `p${priorityOf(issue.labels)}`,
+    author_association: issue.association ?? 'NONE',
     body: clip(issue.body, BODY_MAX),
     bodyTruncated: issue.body.length > BODY_MAX,
     comments: recent.map((c) => ({

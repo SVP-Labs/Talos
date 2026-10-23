@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { rootOf } from './files.js';
@@ -22,6 +22,13 @@ export type NodeTool = {
   readonly name: string;
   readonly script: string;
 };
+
+export async function exists(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  );
+}
 
 /** Absolute path of the component's root in the checkout. */
 export function componentDir(ctx: Pick<CheckContext, 'root' | 'component'>): string {
@@ -132,6 +139,19 @@ export function unreadable(tool: string, result: ExecResult): EngineError {
   return new EngineError(
     `${tool} exited ${result.code} without a report Talos can read:\n${tail(result)}`,
   );
+}
+
+/** Maps in chunks, so reading thousands of files never runs out of file handles. */
+export async function mapInChunks<T, R>(
+  items: readonly T[],
+  work: (item: T) => Promise<R>,
+  size = 64,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let start = 0; start < items.length; start += size) {
+    results.push(...(await Promise.all(items.slice(start, start + size).map(work))));
+  }
+  return results;
 }
 
 /** Splits arguments into runs that keep each command line well under Windows' limit. */

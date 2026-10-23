@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "ts/format",
+    "ts/lint",
+    "ts/types",
+    "ts/deadcode",
+    "ts/typecov",
+    "ts/arch",
+    "ts/config-strength",
+    "ts/toolchain"
+  ],
+  "clean": true,
+  "os": ["linux", "windows"]
+}

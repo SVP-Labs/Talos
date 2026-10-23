@@ -28,14 +28,3 @@ export const TS_DEV_TOOLS: DevTools = {
     vitest: '5.0.5',
   },
 };
-
-/** Tools Talos runs itself, which a project's own code never imports. */
-export const RUN_BY_TALOS = [
-  '@stryker-mutator/core',
-  '@stryker-mutator/vitest-runner',
-  '@vitest/coverage-v8',
-  'dependency-cruiser',
-  'knip',
-  'prettier',
-  'type-coverage',
-] as const;

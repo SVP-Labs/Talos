@@ -6,9 +6,12 @@ import { clip } from '../ticket/payload.js';
 import { type Issue, parseIssue, parseIssues } from '../ticket/schemas.js';
 
 /**
- * The issues and comments Talos writes carry a hidden first line, `<!-- talos-<kind>/1 … -->`,
- * so a later run finds its own work again: to update one comment in place, or to file an issue
- * only once.
+ * The issues and comments Talos files for its own bookkeeping open with a hidden line in the
+ * grammar of every machine-readable line Talos writes (the reviewer's `talos-review/1`, the
+ * sweep's `talos-security/1`): `talos-<kind>/1` and `key=value` fields, here inside an HTML
+ * comment so people reading the issue don't see it. Thea's hub reads both forms the same way,
+ * and a later run finds its own work again by it: to update one comment in place, or to file an
+ * issue only once.
  */
 export type MarkerKind = 'debt' | 'flaky' | 'sync' | 'readiness';
 
@@ -18,7 +21,7 @@ export function marker(kind: MarkerKind, fields: Readonly<Record<string, string>
   return `<!-- ${[head, ...pairs].join(' ')} -->`;
 }
 
-const MARKER_LINE = /^<!-- talos-([a-z]+)\/1((?: [a-z]+=\S*)*) -->$/;
+const MARKER_LINE = /^talos-([a-z]+)\/1((?: [a-z]+=\S*)*)$/;
 
 function decoded(value: string): string | undefined {
   try {
@@ -28,12 +31,20 @@ function decoded(value: string): string | undefined {
   }
 }
 
-/** The fields of the marker of `kind` on a body's first line, or `undefined` when there is none. */
+/** A first line without its HTML comment, when it is wrapped in one. */
+function unwrapped(line: string): string {
+  return line.startsWith('<!--') && line.endsWith('-->') ? line.slice(4, -3).trim() : line;
+}
+
+/**
+ * The fields of the marker of `kind` on a body's first line, hidden or visible, or `undefined`
+ * when there is none.
+ */
 export function readMarker(
   body: string,
   kind: MarkerKind,
 ): Readonly<Record<string, string>> | undefined {
-  const match = MARKER_LINE.exec(body.split(/\r?\n/, 1)[0]?.trim() ?? '');
+  const match = MARKER_LINE.exec(unwrapped(body.split(/\r?\n/, 1)[0]?.trim() ?? ''));
   if (match?.[1] !== kind) return undefined;
   const fields: Record<string, string> = {};
   for (const pair of (match[2] ?? '').trim().split(' ').filter(Boolean)) {

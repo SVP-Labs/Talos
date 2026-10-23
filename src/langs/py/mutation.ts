@@ -1,5 +1,7 @@
 import { cp, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { parse as parseToml, stringify } from 'smol-toml';
+import { z } from 'zod';
 import {
   type MutmutMutant,
   type MutmutReport,
@@ -108,16 +110,57 @@ async function readTargets(ctx: Bound, files: readonly string[]): Promise<Map<st
   return new Map(entries);
 }
 
+/** What mutmut should mutate when the project doesn't say: `src`, or each file's top directory. */
+export function sourcePaths(files: readonly string[]): string[] {
+  return [
+    ...new Set(files.map((file) => (file.includes('/') ? (file.split('/')[0] ?? file) : file))),
+  ];
+}
+
+const table = z.record(z.string(), z.unknown());
+
 /**
- * mutmut on the requested files, in a copy of the component so its `mutants/` directory never
- * meets a concurrent test run. mutmut forks its workers, so it runs on Linux and macOS only.
+ * The copy's pyproject.toml with `[tool.mutmut] source_paths` set, since mutmut otherwise guesses
+ * from the directory's name, which in the copy means nothing. Undefined when the project
+ * configures mutmut itself or its pyproject.toml can't be read.
  */
+export function withSourcePaths(
+  pyproject: string | undefined,
+  paths: readonly string[],
+): string | undefined {
+  try {
+    const parsed = pyproject === undefined ? {} : parseToml(pyproject);
+    const tool = table.safeParse(parsed.tool ?? {});
+    if (!tool.success || 'mutmut' in tool.data) return undefined;
+    return stringify({ ...parsed, tool: { ...tool.data, mutmut: { source_paths: [...paths] } } });
+  } catch {
+    return undefined;
+  }
+}
+
+async function readOptional(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+async function configure(work: string, targets: ReadonlyMap<string, Target>): Promise<void> {
+  if ((await readOptional(join(work, 'setup.cfg')))?.includes('[mutmut]') === true) return;
+  const path = join(work, 'pyproject.toml');
+  const files = [...targets.values()].map((target) => target.file);
+  const patched = withSourcePaths(await readOptional(path), sourcePaths(files));
+  if (patched !== undefined) await writeFile(path, patched);
+}
+
 async function mutate(ctx: Bound, targets: ReadonlyMap<string, Target>): Promise<MutmutMutant[]> {
   const patterns = [...targets.keys()].flatMap((module) => [`${module}.x_*`, `${module}.xǁ*`]);
   if (patterns.length === 0) return [];
   const work = join(ctx.scratch, 'work');
   const filter = (path: string): boolean => !SKIPPED.has(basename(path));
   await cp(componentDir(ctx), work, { recursive: true, filter });
+  await configure(work, targets);
   const timeoutMs = 3 * 60 * 60 * 1000;
   const result = await runTool(ctx, 'mutmut', ['run', ...patterns], { cwd: work, timeoutMs });
   if (`${result.stdout}${result.stderr}`.includes('nothing matches')) return [];

@@ -1,0 +1,1 @@
+{ "checks": ["rust/types"], "rules": ["rustc/E0308"], "os": ["linux", "windows"] }

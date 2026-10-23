@@ -9,6 +9,7 @@ export const LABEL = {
   claimed: 'ai/claimed',
   needsSpec: 'needs-spec',
   needsDecision: 'needs-decision',
+  needsHuman: 'needs-human',
   blocked: 'blocked',
   legacy: 'legacy',
   decision: 'decision',
@@ -36,11 +37,12 @@ export const TYPE_LABELS: readonly string[] = [
 ];
 
 /** Labels that keep an issue out of every claim, whatever its status. */
-export const UNCLAIMABLE: readonly string[] = [
+export const CLAIM_BLOCKERS: readonly string[] = [
   LABEL.blocked,
   LABEL.legacy,
   LABEL.needsSpec,
   LABEL.needsDecision,
+  LABEL.needsHuman,
   LABEL.epic,
 ];
 

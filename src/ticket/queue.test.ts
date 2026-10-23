@@ -60,7 +60,13 @@ describe('next and openClaims', () => {
 
   beforeEach(() => {
     fake = new FakeGitHub();
-    t = { gh: fake.client('thea-svp[bot]'), repo: 'o/r', prefix: 'T', who, now: new Date(fake.now) };
+    t = {
+      gh: fake.client('thea-svp[bot]'),
+      repo: 'o/r',
+      prefix: 'T',
+      who,
+      now: new Date(fake.now),
+    };
   });
 
   it('counts the ticket branches whose issue is open', async () => {

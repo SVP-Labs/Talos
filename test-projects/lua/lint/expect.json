@@ -1,0 +1,13 @@
+{
+  "checks": ["lua/lint"],
+  "rules": [
+    "luacheck/W111",
+    "luacheck/W113",
+    "luacheck/W561",
+    "talos/max-lines",
+    "talos/max-lines-per-function",
+    "talos/max-params",
+    "talos/max-depth",
+    "talos/cognitive-complexity"
+  ]
+}

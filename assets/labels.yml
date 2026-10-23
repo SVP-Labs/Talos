@@ -20,7 +20,7 @@
   color: 'BFD4F2'
   description: 'Type: restructuring that keeps behaviour; the existing tests pass unchanged.'
 - name: spike
-  color: 'FBCA04'
+  color: 'F9C513'
   description: 'Type: a time-boxed question; the answer is a comment on the issue, not shipped code.'
 - name: debt/dead-code
   color: '5319E7'
@@ -45,6 +45,9 @@
 - name: needs-decision
   color: 'E99695'
   description: 'Waits for the owner to settle an open choice; not claimable meanwhile.'
+- name: needs-human
+  color: 'B60205'
+  description: 'The reviewer asked for changes twice; a person decides. Remove it to let the reviewer review again.'
 - name: blocked
   color: 'B60205'
   description: 'Waits on something outside the ticket; not claimable meanwhile.'
@@ -71,7 +74,7 @@
   color: 'D93F0B'
   description: 'High: next after p0.'
 - name: priority/p2
-  color: 'FBCA04'
+  color: 'F9C513'
   description: 'Normal; Talos files flaky tests at p2.'
 - name: priority/p3
   color: 'C2E0C6'
@@ -85,7 +88,7 @@
   color: 'B60205'
   description: "A security release or advisory to fix at once; filed by Talos's runtime sweep."
 - name: flaky
-  color: 'FBCA04'
+  color: 'F9C513'
   description: 'A test that failed, then passed on one rerun; filed by Talos to fix the cause.'
 - name: sync
   color: 'C2E0C6'

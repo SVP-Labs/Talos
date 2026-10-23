@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/coverage", "ts/mutation"],
+  "rules": ["coverage/uncovered", "mutation/survived"]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "talos-case-typecov",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "type-coverage": "2.30.4",
+    "typescript": "6.0.3",
+    "@types/node": "22.20.5"
+  }
+}

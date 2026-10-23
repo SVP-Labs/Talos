@@ -6,7 +6,7 @@ import { checkboxCount, hasContent, sections } from '../ticket/sections.js';
  * Issue readiness: whether an issue is written well enough for anyone, person or agent, to pick
  * up. Pure; `readiness-job.ts` reads the issue and applies the verdict.
  */
-export const MAX_CRITERIA = 5;
+const MAX_CRITERIA = 5;
 
 const HEADINGS: Readonly<Record<string, string>> = {
   goal: 'Goal',
@@ -155,10 +155,12 @@ export function readinessLabels(
 /** The one comment readiness keeps on an issue, rewritten in place as the issue changes. */
 export function readinessComment(problems: readonly string[]): string {
   if (problems.length === 0) {
-    return `${marker('readiness')}\n**Ready.** This issue passes Talos's readiness check now.\n`;
+    const line = marker('readiness', { ready: 'yes', problems: '0' });
+    return `${line}\n\n**Ready.** This issue passes Talos's readiness check now.\n`;
   }
   return [
-    marker('readiness'),
+    marker('readiness', { ready: 'no', problems: String(problems.length) }),
+    '',
     "**Not ready yet.** Talos's readiness check needs:",
     '',
     ...problems.map((p) => `- ${p}`),

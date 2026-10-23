@@ -30,6 +30,10 @@ function severityOf(value: unknown): number {
   return typeof value === 'string' ? (named[value] ?? 0) : 0;
 }
 
+function isList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -49,7 +53,7 @@ export function splitLimit(options: readonly unknown[]): { limit?: number; rest:
 /** `ignore*`, `skip*` and `allow*` switches may turn off (stricter), never on. */
 function lenientEqual(base: unknown, effective: unknown): boolean {
   if (isDeepStrictEqual(base, effective)) return true;
-  if (Array.isArray(base) && Array.isArray(effective)) {
+  if (isList(base) && isList(effective)) {
     return (
       base.length === effective.length && base.every((item, i) => lenientEqual(item, effective[i]))
     );
@@ -89,11 +93,11 @@ function compareOptions(
 }
 
 function asEntry(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [value];
+  return isList(value) ? [...value] : [value];
 }
 
 /** Every rule the base turns on that the effective config switches off, softens or loosens. */
-export function ruleWeakenings(
+export function weakerRules(
   base: Readonly<Record<string, unknown>>,
   effective: Readonly<Record<string, unknown>>,
 ): Weakening[] {
@@ -113,7 +117,7 @@ export function ruleWeakenings(
 }
 
 /** Compiler flags the effective tsconfig (as `tsc --showConfig` prints it) lacks or reverses. */
-export function flagWeakenings(options: Readonly<Record<string, unknown>>): Weakening[] {
+export function weakerFlags(options: Readonly<Record<string, unknown>>): Weakening[] {
   const pinned = Object.entries(TSC_FLAGS).flatMap(([flag, value]): Weakening[] =>
     options[flag] === value
       ? []

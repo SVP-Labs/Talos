@@ -1,0 +1,6 @@
+name: Case
+prefix: CA
+components:
+  - { lang: ts }
+tests:
+  full: [e2e]

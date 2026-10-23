@@ -15,7 +15,7 @@ import { releaseFromEnvironment, versionAt } from '../version/release.js';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-export type DoctorStatus = 'ok' | 'warn' | 'fail' | 'skip';
+type DoctorStatus = 'ok' | 'warn' | 'fail' | 'skip';
 export type DoctorItem = {
   readonly id: string;
   readonly status: DoctorStatus;
@@ -30,7 +30,8 @@ export type DoctorDeps = {
   readonly node: { readonly version: string; readonly range: string };
   /** The Talos version running this. */
   readonly running: string;
-  readonly packs: readonly Pack[];
+  /** Talos's check packs, loaded only when the components are checked. */
+  loadPacks(): Promise<readonly Pack[]>;
   readonly client?: (token: string) => GitHub;
 };
 
@@ -148,11 +149,17 @@ async function githubItems(deps: DoctorDeps): Promise<DoctorItem[]> {
   }
 }
 
-function componentItems(deps: DoctorDeps, config: TalosConfig): Promise<DoctorItem[]> {
+async function componentItems(deps: DoctorDeps, config: TalosConfig): Promise<DoctorItem[]> {
+  let packs: readonly Pack[];
+  try {
+    packs = await deps.loadPacks();
+  } catch (error) {
+    return [item('tools', 'fail', `Talos's check packs did not load: ${messageOf(error)}`)];
+  }
   return Promise.all(
     config.components.map(async (component) => {
       const id = `tools:${component.lang}@${component.root}`;
-      const devTools = deps.packs.find((pack) => pack.lang === component.lang)?.devTools;
+      const devTools = packs.find((pack) => pack.lang === component.lang)?.devTools;
       if (devTools === undefined) return item(id, 'skip', 'the pack declares no editor tools');
       const root = join(deps.cwd, component.root);
       const missing = await missingTools(devTools, {

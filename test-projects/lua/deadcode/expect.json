@@ -1,0 +1,1 @@
+{ "checks": ["lua/deadcode"], "rules": ["luacheck/W211", "luacheck/W212", "luacheck/W511"] }
