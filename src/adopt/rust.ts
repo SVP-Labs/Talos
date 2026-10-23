@@ -273,9 +273,10 @@ export function rustToolchain(draft: Draft, component: Component): void {
   const text = draft.read(found) ?? '';
   if (posix.basename(found) === 'rust-toolchain') {
     const legacy = text.trim();
+    const toml = legacy.includes('[') ? (pinToolchain(text).text ?? text) : undefined;
     const channel = EXACT.test(legacy) ? legacy : RUST_CHANNEL;
     draft.remove(found, 'migrated');
-    draft.write(`${found}.toml`, toolchainText(channel, COMPONENTS), 'toolchain');
+    draft.write(`${found}.toml`, toml ?? toolchainText(channel, COMPONENTS), 'toolchain');
     return;
   }
   const edit = pinToolchain(text);

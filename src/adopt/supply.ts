@@ -157,8 +157,9 @@ export function supplyChain(
         `in ${dir}: pnpm-workspace.yaml is not YAML Talos can read; set its guards by hand`,
       );
     }
-    if (next !== undefined) {
-      draft.write(path, next, 'supply-chain');
+    if (next !== undefined) draft.write(path, next, 'supply-chain');
+    // pnpm records its patches in the lockfile, so a frozen install fails until it is refreshed.
+    if (next !== undefined && pointsAtPatch(next) && !pointsAtPatch(text)) {
       draft.next(npmLockStep(dir, draft.files()));
     }
     const patchPath = posix.join(dir, 'patches', RUNNER_PATCH);
