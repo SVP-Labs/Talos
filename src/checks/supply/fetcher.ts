@@ -7,7 +7,7 @@ export type HttpRequest = {
   readonly body?: string;
 };
 
-export type HttpResponse = { readonly status: number; readonly body: string };
+type HttpResponse = { readonly status: number; readonly body: string };
 
 /** Answers any HTTP status; throws only when the server can't be reached. */
 export type Fetcher = (request: HttpRequest) => Promise<HttpResponse>;

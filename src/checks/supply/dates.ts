@@ -6,7 +6,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const MAX_ALLOW_DAYS = 7;
 
 /** The minimum age of a release, in hours. */
-export const MIN_AGE_HOURS = 24;
+const MIN_AGE_HOURS = 24;
 
 /** A UTC calendar date, `YYYY-MM-DD`. */
 export function isoDay(at: Date): string {

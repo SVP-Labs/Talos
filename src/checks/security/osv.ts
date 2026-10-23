@@ -51,7 +51,7 @@ const output = z.looseObject({
     .default([]),
 });
 
-export type Advisory = {
+type Advisory = {
   readonly id: string;
   readonly severe: boolean;
   readonly summary: string;
@@ -77,9 +77,9 @@ function groupId(found: z.infer<typeof group>): string {
 }
 
 /** High or critical: GitHub's rating says so, or the CVSS score is 7.0 or more. */
-function severe(found: z.infer<typeof group>, vulns: readonly z.infer<typeof vulnerability>[]) {
-  const rated = vulns.some((vuln) => {
-    const rating = vuln.database_specific?.severity;
+function severe(found: z.infer<typeof group>, entries: readonly z.infer<typeof vulnerability>[]) {
+  const rated = entries.some((entry) => {
+    const rating = entry.database_specific?.severity;
     return rating === 'HIGH' || rating === 'CRITICAL';
   });
   const score = Number.parseFloat(found.max_severity);
@@ -88,16 +88,16 @@ function severe(found: z.infer<typeof group>, vulns: readonly z.infer<typeof vul
 
 function advisoryOf(found: z.infer<typeof group>, pkg: Scanned): Advisory {
   const members = new Set([...found.ids, ...found.aliases]);
-  const vulns = pkg.vulnerabilities.filter((vuln) => members.has(vuln.id));
-  const fixed = vulns
-    .flatMap((vuln) => vuln.affected)
+  const entries = pkg.vulnerabilities.filter((entry) => members.has(entry.id));
+  const fixed = entries
+    .flatMap((entry) => entry.affected)
     .filter((entry) => entry.package?.name === pkg.package.name)
     .flatMap((entry) => entry.ranges.flatMap((range) => range.events))
     .flatMap((event) => (event.fixed === undefined ? [] : [event.fixed]));
   return {
     id: groupId(found),
-    severe: severe(found, vulns),
-    summary: vulns.find((vuln) => vuln.summary !== '')?.summary ?? '',
+    severe: severe(found, entries),
+    summary: entries.find((entry) => entry.summary !== '')?.summary ?? '',
     fixed: [...new Set(fixed)],
   };
 }
@@ -132,7 +132,7 @@ function sentence(text: string): string {
   return text.trim().replace(/\.$/, '');
 }
 
-export function vulnerabilityFinding(pkg: ScannedPackage, advisory: Advisory): Finding {
+function vulnerabilityFinding(pkg: ScannedPackage, advisory: Advisory): Finding {
   const about = advisory.summary === '' ? '' : `, ${sentence(advisory.summary)}`;
   const fix =
     advisory.fixed.length === 0 ? 'no fixed release yet' : `fixed in ${advisory.fixed.join(', ')}`;

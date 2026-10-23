@@ -13,7 +13,7 @@ const NOW = new Date('2026-10-23T12:00:00Z');
 const HOURS_AGO = (hours: number): string =>
   new Date(NOW.getTime() - hours * 3_600_000).toISOString();
 
-// Trimmed from the live registries (semver's packument, OSV's lodash advisory) and made up
+// Trimmed from the live registries (npm's semver document, OSV's lodash advisory) and made up
 // where a release had to be young.
 const ROUTES: Readonly<Record<string, unknown>> = {
   'https://registry.npmjs.org/left-pad': { time: { '1.3.0': '2018-04-09T01:10:45.796Z' } },
@@ -60,8 +60,8 @@ const ROUTES: Readonly<Record<string, unknown>> = {
 };
 
 const CRATES = [
-  JSON.stringify({ name: 'itoa', vers: '1.0.11', pubtime: HOURS_AGO(6) }),
-  JSON.stringify({ name: 'itoa', vers: '1.0.10' }),
+  JSON.stringify({ name: 'either', vers: '1.0.11', pubtime: HOURS_AGO(6) }),
+  JSON.stringify({ name: 'either', vers: '1.0.10' }),
 ].join('\n');
 
 function osvBatch(request: HttpRequest): unknown {
@@ -74,7 +74,7 @@ const fetcher: Fetcher = (request) => {
   if (request.url === 'https://api.osv.dev/v1/querybatch') {
     return Promise.resolve({ status: 200, body: JSON.stringify(osvBatch(request)) });
   }
-  if (request.url === 'https://index.crates.io/it/oa/itoa') {
+  if (request.url === 'https://index.crates.io/ei/th/either') {
     return Promise.resolve({ status: 200, body: CRATES });
   }
   const body = ROUTES[request.url];
@@ -133,14 +133,14 @@ describe('supply/release-age', () => {
           ],
         }),
         'rs/Cargo.lock':
-          '[[package]]\nname = "itoa"\nversion = "1.0.11"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+          '[[package]]\nname = "either"\nversion = "1.0.11"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
         'talos.yml': `${MINIMAL_CONFIG}supply_chain:\n  allow:\n    "six@1.17.0": { reason: needed, expires: 2026-10-25 }\n`,
       },
       ['supply/release-age'],
     );
     expect(errors(result)).toEqual([]);
     expect(rules(result).sort((a, b) => a.localeCompare(b))).toEqual([
-      'supply/young-release itoa@1.0.11',
+      'supply/young-release either@1.0.11',
       'supply/young-release psr/log@3.0.2',
       'supply/young-release young@2.0.0',
     ]);

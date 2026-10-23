@@ -14,7 +14,7 @@ export type NpmPackage = {
   readonly trust: ReadonlyMap<string, Trust>;
 };
 
-const packument = z.looseObject({
+const npmDocument = z.looseObject({
   time: z.record(z.string(), z.string()).default({}),
   versions: z
     .record(
@@ -42,7 +42,7 @@ export async function npmPackage(lookup: Lookup, name: string): Promise<NpmPacka
     const url = `https://registry.npmjs.org/${name.replace('/', '%2F')}`;
     const raw = await getJson(lookup.fetcher, { url }, `npm's registry (${name})`);
     if (raw === undefined) return undefined;
-    const parsed = packument.parse(raw);
+    const parsed = npmDocument.parse(raw);
     const trust = new Map<string, Trust>();
     for (const [version, manifest] of Object.entries(parsed.versions)) {
       const level = manifest.dist?.attestations === undefined ? 0 : 1;

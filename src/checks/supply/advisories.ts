@@ -3,7 +3,7 @@ import { getJson, inPool, type Lookup } from './fetcher.js';
 import type { Ecosystem } from './lockfiles/index.js';
 
 /** OSV's names for the ecosystems. */
-export const OSV_ECOSYSTEM: Readonly<Record<Ecosystem, string>> = {
+const OSV_ECOSYSTEM: Readonly<Record<Ecosystem, string>> = {
   npm: 'npm',
   pypi: 'PyPI',
   packagist: 'Packagist',

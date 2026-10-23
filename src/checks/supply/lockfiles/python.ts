@@ -10,7 +10,7 @@ import {
   type Source,
 } from './locked.js';
 
-const PYPI = /^https:\/\/pypi\.org\/simple\/?$/;
+const PUBLIC_INDEX = /^https:\/\/pypi\.org\/simple\/?$/;
 
 const uvSource = z.looseObject({
   registry: z.string().optional(),
@@ -33,7 +33,7 @@ const uvLock = z.looseObject({
 
 function uvSourceOf(source: z.infer<typeof uvSource> | undefined): Source {
   if (source?.registry !== undefined) {
-    return { kind: 'registry', public: PYPI.test(source.registry) };
+    return { kind: 'registry', public: PUBLIC_INDEX.test(source.registry) };
   }
   if (source?.git !== undefined) return fromGit(source.git);
   if (source?.url !== undefined) return fromUrl(source.url);

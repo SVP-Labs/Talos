@@ -10,11 +10,11 @@ import type { Finding } from '../../core/finding.js';
  * `sha256sum`), so the report on disk holds nothing to leak. `--redact` would hash the word
  * REDACTED instead, so the scan runs without it.
  */
-export const REPORT_TEMPLATE =
+const REPORT_TEMPLATE =
   '[{{ range $i, $f := . }}{{ if $i }},{{ end }}' +
   '{"rule":{{ $f.RuleID | toJson }},"file":{{ $f.File | toJson }},' +
   '"line":{{ $f.StartLine }},"commit":{{ $f.Commit | toJson }},' +
-  '"secret":{{ $f.Secret | sha256sum | toJson }}}{{ end }}]\n';
+  '"hash":{{ $f.Secret | sha256sum | toJson }}}{{ end }}]\n';
 
 const report = z.array(
   z.object({
@@ -22,7 +22,7 @@ const report = z.array(
     file: z.string(),
     line: z.number(),
     commit: z.string(),
-    secret: z.string().regex(/^[0-9a-f]{64}$/),
+    hash: z.string().regex(/^[0-9a-f]{64}$/),
   }),
 );
 
@@ -42,7 +42,7 @@ export function parseGitleaksReport(text: string): Finding[] {
   if (!parsed.success) throw new EngineError("gitleaks' report is not in the expected form");
   return parsed.data.map((leak) => ({
     rule: `gitleaks/${leak.rule}`,
-    key: `${leak.rule} ${leak.secret.slice(0, 16)}`,
+    key: `${leak.rule} ${leak.hash.slice(0, 16)}`,
     message:
       `A secret (${leak.rule}) was committed to ${leak.file} at line ${leak.line} in ` +
       `${leak.commit.slice(0, 8)}; revoke it, then remove it.`,
@@ -63,7 +63,7 @@ export async function scanHistory(
   tool: string,
   config: string,
 ): Promise<Finding[]> {
-  const template = join(ctx.scratch, 'report.tmpl');
+  const template = join(ctx.scratch, 'report-template.txt');
   const output = join(ctx.scratch, 'gitleaks.json');
   await writeFile(template, REPORT_TEMPLATE);
   const args = [
@@ -75,7 +75,7 @@ export async function scanHistory(
     '--report-format=template',
     `--report-template=${template}`,
     `--report-path=${output}`,
-    `--log-opts=--full-history --diff-filter=tuxdb ${ctx.sha}`,
+    `--log-opts=--full-history ${ctx.sha}`,
     '.',
   ];
   const result = await ctx.exec(tool, args, { cwd: ctx.root });

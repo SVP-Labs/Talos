@@ -5,7 +5,7 @@ import { EngineError } from '../../../core/check.js';
 import { repoFacts } from '../../../repo/facts.js';
 
 // Recorded from pnpm 10.28, npm 10.9, Yarn 1.22 and 4.9, uv 0.11, Poetry 2.2, Composer 2 and
-// Cargo 1.97, trimmed; the git repositories were local ones.
+// Cargo 1.97, then trimmed and renamed; the git repositories were local ones.
 const PNPM = `lockfileVersion: '9.0'
 
 packages:
@@ -13,8 +13,8 @@ packages:
   '@isaacs/string-locale-compare@1.1.0':
     resolution: {integrity: sha512-SQ7K}
 
-  gitpkg@git+file:///work/gitpkg#c44855938e715b615bc3e754ce13580b886f5fd6:
-    resolution: {commit: c44855938e715b615bc3e754ce13580b886f5fd6, repo: file:///work/gitpkg, type: git}
+  widget@git+file:///work/widget#c44855938e715b615bc3e754ce13580b886f5fd6:
+    resolution: {commit: c44855938e715b615bc3e754ce13580b886f5fd6, repo: file:///work/widget, type: git}
     version: 1.0.0
 
   is-odd@3.0.1:
@@ -40,9 +40,9 @@ const NPM = JSON.stringify({
         'https://registry.npmjs.org/@isaacs/string-locale-compare/-/string-locale-compare-1.1.0.tgz',
       license: 'ISC',
     },
-    'node_modules/gitpkg': {
+    'node_modules/widget': {
       version: '1.0.0',
-      resolved: 'git+ssh://git@example.com/gitpkg.git#c44855938e715b615bc3e754ce13580b886f5fd6',
+      resolved: 'git+ssh://git@example.com/widget.git#c44855938e715b615bc3e754ce13580b886f5fd6',
     },
     'node_modules/remote': { version: '2.0.0', resolved: 'https://example.com/remote.tgz' },
     'node_modules/@acme/own': { resolved: 'packages/own', link: true },
@@ -57,9 +57,9 @@ const YARN_V1 = `# yarn lockfile v1
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@isaacs/string-locale-compare/-/string-locale-compare-1.1.0.tgz#291c227e93fd407a96ecd59879a35809120e432b"
 
-"gitpkg@git+file:///work/gitpkg":
+"widget@git+file:///work/widget":
   version "1.0.0"
-  resolved "git+file:///work/gitpkg#c44855938e715b615bc3e754ce13580b886f5fd6"
+  resolved "git+file:///work/widget#c44855938e715b615bc3e754ce13580b886f5fd6"
 
 is-number@^6.0.0, is-number@^6.0.1:
   version "6.0.0"
@@ -82,17 +82,17 @@ const YARN_BERRY = `__metadata:
   version: 1.3.0
   resolution: "left-pad@patch:left-pad@npm%3A1.3.0#~/.yarn/patches/left-pad.patch::version=1.3.0"
 
-"tarpkg@file:./tarpkg-2.0.0.tgz::locator=y4%40workspace%3A.":
+"bundle@file:./bundle-2.0.0.tgz::locator=app%40workspace%3A.":
   version: 2.0.0
-  resolution: "tarpkg@file:./tarpkg-2.0.0.tgz#./tarpkg-2.0.0.tgz::hash=130275&locator=y4%40workspace%3A."
+  resolution: "bundle@file:./bundle-2.0.0.tgz#./bundle-2.0.0.tgz::hash=130275&locator=app%40workspace%3A."
 
-"gitpkg@https://github.com/acme/gitpkg.git#commit=abc123":
+"widget@https://github.com/acme/widget.git#commit=abc123":
   version: 1.0.0
-  resolution: "gitpkg@https://github.com/acme/gitpkg.git#commit=abc123"
+  resolution: "widget@https://github.com/acme/widget.git#commit=abc123"
 
-"y4@workspace:.":
+"app@workspace:.":
   version: 0.0.0-use.local
-  resolution: "y4@workspace:."
+  resolution: "app@workspace:."
 `;
 
 const UV = `version = 1
@@ -102,14 +102,14 @@ revision = 3
 exclude-newer-span = "P1D"
 
 [[package]]
-name = "idna"
-version = "3.10"
-source = { url = "https://files.pythonhosted.org/packages/76/c6/idna-3.10-py3-none-any.whl" }
+name = "requests"
+version = "2.32.3"
+source = { url = "https://files.pythonhosted.org/packages/76/c6/requests-2.32.3-py3-none-any.whl" }
 
 [[package]]
-name = "pygit"
+name = "widget"
 version = "0.3.0"
-source = { git = "https://token:secret@example.com/pygit?rev=main#32c63364" }
+source = { git = "https://token:secret@example.com/widget?rev=main#32c63364" }
 
 [[package]]
 name = "six"
@@ -128,20 +128,20 @@ source = { virtual = "." }
 `;
 
 const POETRY = `[[package]]
-name = "idna"
-version = "3.10"
+name = "requests"
+version = "2.32.3"
 
 [package.source]
 type = "url"
-url = "https://files.pythonhosted.org/packages/76/c6/idna-3.10-py3-none-any.whl"
+url = "https://files.pythonhosted.org/packages/76/c6/requests-2.32.3-py3-none-any.whl"
 
 [[package]]
-name = "pygit"
+name = "widget"
 version = "0.3.0"
 
 [package.source]
 type = "git"
-url = "https://example.com/pygit.git"
+url = "https://example.com/widget.git"
 reference = "HEAD"
 resolved_reference = "32c63364239f8572683df5dcdc2f7c6c7394ae59"
 
@@ -156,9 +156,9 @@ lock-version = "2.1"
 const COMPOSER = JSON.stringify({
   packages: [
     {
-      name: 'acme/phpgit',
+      name: 'acme/widget',
       version: 'dev-master',
-      source: { type: 'git', url: '/work/phpgit', reference: '43c75f3d' },
+      source: { type: 'git', url: '/work/widget', reference: '43c75f3d' },
       license: ['MIT'],
     },
     {
@@ -178,7 +178,7 @@ const COMPOSER = JSON.stringify({
 const CARGO = `version = 4
 
 [[package]]
-name = "itoa"
+name = "either"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
@@ -187,9 +187,9 @@ name = "rs"
 version = "0.1.0"
 
 [[package]]
-name = "rsgit"
+name = "widget"
 version = "0.2.0"
-source = "git+file:///work/rsgit#bee88911f58f78c6f560c302d1d87e0235a161ec"
+source = "git+file:///work/widget#bee88911f58f78c6f560c302d1d87e0235a161ec"
 `;
 
 const summary = (path: string, text: string): string[] =>
@@ -203,7 +203,7 @@ describe('parseLockfile', () => {
   it('reads pnpm-lock.yaml', () => {
     expect(summary('pnpm-lock.yaml', PNPM)).toEqual([
       '@isaacs/string-locale-compare@1.1.0 registry',
-      'gitpkg@1.0.0 git file:///work/gitpkg',
+      'widget@1.0.0 git file:///work/widget',
       'is-odd@3.0.1 registry',
       'remote@2.0.0 url https://example.com/remote-2.0.0.tgz',
       'linked@0.1.0 local',
@@ -213,7 +213,7 @@ describe('parseLockfile', () => {
   it('reads package-lock.json with its licences', () => {
     expect(summary('app/package-lock.json', NPM)).toEqual([
       '@isaacs/string-locale-compare@1.1.0 registry',
-      'gitpkg@1.0.0 git git+ssh://example.com/gitpkg.git#c44855938e715b615bc3e754ce13580b886f5fd6',
+      'widget@1.0.0 git git+ssh://example.com/widget.git#c44855938e715b615bc3e754ce13580b886f5fd6',
       'remote@2.0.0 url https://example.com/remote.tgz',
       '@acme/own@0.0.0 local',
       '@acme/own@0.1.0 local',
@@ -237,37 +237,37 @@ describe('parseLockfile', () => {
   it('reads both yarn.lock formats', () => {
     expect(summary('yarn.lock', YARN_V1)).toEqual([
       '@isaacs/string-locale-compare@1.1.0 registry',
-      'gitpkg@1.0.0 git git+file:///work/gitpkg#c44855938e715b615bc3e754ce13580b886f5fd6',
+      'widget@1.0.0 git git+file:///work/widget#c44855938e715b615bc3e754ce13580b886f5fd6',
       'is-number@6.0.0 registry',
     ]);
     expect(summary('yarn.lock', YARN_BERRY)).toEqual([
       'is-odd@3.0.1 registry',
       'left-pad@1.3.0 registry',
       'left-pad@1.3.0 registry',
-      'tarpkg@2.0.0 url ./tarpkg-2.0.0.tgz',
-      'gitpkg@1.0.0 git https://github.com/acme/gitpkg.git#commit=abc123',
-      'y4@0.0.0-use.local local',
+      'bundle@2.0.0 url ./bundle-2.0.0.tgz',
+      'widget@1.0.0 git https://github.com/acme/widget.git#commit=abc123',
+      'app@0.0.0-use.local local',
     ]);
   });
 
   it('reads uv.lock and poetry.lock, credentials and queries left out', () => {
     expect(summary('uv.lock', UV)).toEqual([
-      'idna@3.10 url https://files.pythonhosted.org/packages/76/c6/idna-3.10-py3-none-any.whl',
-      'pygit@0.3.0 git https://example.com/pygit#32c63364',
+      'requests@2.32.3 url https://files.pythonhosted.org/packages/76/c6/requests-2.32.3-py3-none-any.whl',
+      'widget@0.3.0 git https://example.com/widget#32c63364',
       'six@1.17.0 registry',
       'private@1.0 registry private',
       'uvp@0.1.0 local',
     ]);
     expect(summary('poetry.lock', POETRY)).toEqual([
-      'idna@3.10 url https://files.pythonhosted.org/packages/76/c6/idna-3.10-py3-none-any.whl',
-      'pygit@0.3.0 git https://example.com/pygit.git',
+      'requests@2.32.3 url https://files.pythonhosted.org/packages/76/c6/requests-2.32.3-py3-none-any.whl',
+      'widget@0.3.0 git https://example.com/widget.git',
       'six@1.17.0 registry',
     ]);
   });
 
   it('reads composer.lock: Packagist, a VCS repository and a path repository', () => {
     expect(summary('composer.lock', COMPOSER)).toEqual([
-      'acme/phpgit@dev-master git /work/phpgit',
+      'acme/widget@dev-master git /work/widget',
       'psr/log@3.0.2 registry',
       'acme/tools@dev-main local',
     ]);
@@ -276,9 +276,9 @@ describe('parseLockfile', () => {
 
   it('reads Cargo.lock', () => {
     expect(summary('crates/Cargo.lock', CARGO)).toEqual([
-      'itoa@1.0.11 registry',
+      'either@1.0.11 registry',
       'rs@0.1.0 local',
-      'rsgit@0.2.0 git file:///work/rsgit#bee88911f58f78c6f560c302d1d87e0235a161ec',
+      'widget@0.2.0 git file:///work/widget#bee88911f58f78c6f560c302d1d87e0235a161ec',
     ]);
   });
 

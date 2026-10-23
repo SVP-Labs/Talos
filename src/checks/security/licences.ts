@@ -5,7 +5,7 @@ import type { TalosConfig } from '../../config/schema.js';
  * dedications, and attribution-only data licences. A project adds others under `licences` in
  * `talos.yml`, each with its reason.
  */
-export const ORG_LICENCES: readonly string[] = [
+const ORG_LICENCES: readonly string[] = [
   '0BSD',
   'Apache-2.0',
   'BlueOak-1.0.0',

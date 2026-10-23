@@ -94,11 +94,11 @@ export function dependabotGaps(text: string | undefined, wanted: readonly Ecosys
   } catch {
     return [{ key: 'dependabot file', message: 'cannot be read as a Dependabot configuration.' }];
   }
-  const unheld = parsed.updates
+  const loose = parsed.updates
     .filter((entry) => !holdsADay(entry.cooldown))
     .map((entry) => ({
       key: `dependabot cooldown ${entry['package-ecosystem']} ${entry.directory ?? ''}`,
       message: `lets ${entry['package-ecosystem']} updates through before they are a day old: give the entry a cooldown with default-days of 1 or more and no exclusions.`,
     }));
-  return [...unheld, ...missingEcosystems(parsed.updates, wanted)];
+  return [...loose, ...missingEcosystems(parsed.updates, wanted)];
 }

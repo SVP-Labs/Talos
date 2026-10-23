@@ -4,7 +4,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 /** The minimum release age pnpm must hold, in minutes: a day. */
-export const MIN_RELEASE_AGE_MINUTES = 1440;
+const MIN_RELEASE_AGE_MINUTES = 1440;
 
 export type PnpmSettings = {
   readonly minimumReleaseAge?: number;
@@ -19,7 +19,7 @@ const workspace = z.looseObject({
 });
 
 /** `.npmrc` is `key=value` lines; `#` and `;` start comments. */
-export function npmrcValues(text: string): Map<string, string> {
+function npmrcValues(text: string): Map<string, string> {
   const values = new Map<string, string>();
   for (const line of text.split(/\r?\n/)) {
     const equals = line.indexOf('=');

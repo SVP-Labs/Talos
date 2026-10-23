@@ -144,7 +144,7 @@ describe('registries and fetching', () => {
     expect(crateIndexPath('a')).toBe('1/a');
     expect(crateIndexPath('ab')).toBe('2/ab');
     expect(crateIndexPath('Syn')).toBe('3/s/syn');
-    expect(crateIndexPath('itoa')).toBe('it/oa/itoa');
+    expect(crateIndexPath('either')).toBe('ei/th/either');
   });
 
   it('reads JSON, a 404 as nothing, and anything else as an engine error', async () => {

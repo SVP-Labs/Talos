@@ -24,8 +24,8 @@ import type { Locked } from '../supply/lockfiles/index.js';
 // Recorded from gitleaks 8.30.1 with the report template, over a repository with a Slack
 // token and a project rule's token committed.
 const GITLEAKS_REPORT = `[
-{"rule":"slack-bot-token","file":"more.ts","line":2,"commit":"4a812074f0c063e0ccc4976fae9c73febc9c41d8","secret":"cc6589719cb48effb43e7b4b43e06cac0333e3bb108f722723df664e7eb94179"},
-{"rule":"talos-test-token","file":"leak.ts","line":1,"commit":"ccf91ac62c25b9d6ac87f6e5e15df5eb72103c56","secret":"aca6116df658b7d16a290c3676841e7fcaa42467ac90e9a74ddcdfaab266484e"}
+{"rule":"slack-bot-token","file":"more.ts","line":2,"commit":"4a812074f0c063e0ccc4976fae9c73febc9c41d8","hash":"cc6589719cb48effb43e7b4b43e06cac0333e3bb108f722723df664e7eb94179"},
+{"rule":"talos-test-token","file":"leak.ts","line":1,"commit":"ccf91ac62c25b9d6ac87f6e5e15df5eb72103c56","hash":"aca6116df658b7d16a290c3676841e7fcaa42467ac90e9a74ddcdfaab266484e"}
 ]
 `;
 
@@ -149,7 +149,7 @@ describe('gitleaks', () => {
   });
 
   it("finds what weakens gitleaks' defaults in the project file", () => {
-    expect(readGitleaksProject('[extend]\nuseDefault = true\n').weakenings).toEqual([]);
+    expect(readGitleaksProject('[extend]\nuseDefault = true\n').faults).toEqual([]);
     const weak = readGitleaksProject(
       [
         '[extend]',
@@ -164,17 +164,14 @@ describe('gitleaks', () => {
         "regexes = ['''own_test''']",
       ].join('\n'),
     );
-    expect(weak.weakenings.map((w) => w.key)).toEqual([
-      'disabled generic-api-key',
-      'global allowlist',
-    ]);
+    expect(weak.faults.map((w) => w.key)).toEqual(['disabled generic-api-key', 'global allowlist']);
     expect(weak.rules.map((rule) => rule.id)).toEqual(['own']);
-    expect(readGitleaksProject('').weakenings.map((w) => w.key)).toEqual(['useDefault']);
-    expect(readGitleaksProject('[extend]\npath = "x.toml"').weakenings.map((w) => w.key)).toEqual([
+    expect(readGitleaksProject('').faults.map((w) => w.key)).toEqual(['useDefault']);
+    expect(readGitleaksProject('[extend]\npath = "x.toml"').faults.map((w) => w.key)).toEqual([
       'useDefault',
       'extend',
     ]);
-    expect(readGitleaksProject('[[rules]').weakenings.map((w) => w.key)).toEqual(['unreadable']);
+    expect(readGitleaksProject('[[rules]').faults.map((w) => w.key)).toEqual(['unreadable']);
     expect(redefinitions(new Set(['aws-access-token']))[0]?.how).toMatch(/redefines/);
   });
 
@@ -277,7 +274,7 @@ describe('osv-scanner', () => {
 
   it('allows the org licences, the project additions and SPDX expressions', () => {
     const allowed = allowedLicences(
-      parseConfig(`${MINIMAL_CONFIG}licences: { MPL-2.0: lightningcss }\n`),
+      parseConfig(`${MINIMAL_CONFIG}licences: { MPL-2.0: a parser }\n`),
     );
     expect(allowed).toContain('MPL-2.0');
     expect(allowed).toContain('Apache-2.0');

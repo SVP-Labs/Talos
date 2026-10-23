@@ -9,7 +9,7 @@ const KINDS: Readonly<Record<'git' | 'url', string>> = {
 };
 
 /** A dependency from git or a URL, anywhere in a lockfile's tree. */
-export function exoticFindings(path: string, locked: readonly Locked[]): Finding[] {
+function exoticFindings(path: string, locked: readonly Locked[]): Finding[] {
   return locked.flatMap((entry): Finding[] => {
     const source = entry.source;
     if (source.kind !== 'git' && source.kind !== 'url') return [];

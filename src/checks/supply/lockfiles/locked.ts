@@ -34,7 +34,7 @@ export function before(text: string, marks: readonly string[]): string {
 }
 
 /** Whether a path or URL names an archive rather than a directory. */
-export function isArchive(path: string): boolean {
+function isArchive(path: string): boolean {
   return ARCHIVE.test(before(path, ['?', '#']));
 }
 
@@ -92,7 +92,6 @@ export function unreadable(path: string, error: unknown): EngineError {
   return new EngineError(`${path} could not be read as a lockfile: ${reason.trim()}`);
 }
 
-export const isRegistry = (locked: Locked): boolean => locked.source.kind === 'registry';
 export const isPublic = (locked: Locked): boolean =>
   locked.source.kind === 'registry' && locked.source.public;
 

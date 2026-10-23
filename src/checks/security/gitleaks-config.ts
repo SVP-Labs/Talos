@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { generatedHeader } from '../../configs/header.js';
 import type { Generated } from '../../core/pack.js';
 
-export const GITLEAKS_BASE = '.gitleaks.toml';
+const GITLEAKS_BASE = '.gitleaks.toml';
 export const GITLEAKS_PROJECT = '.gitleaks.project.toml';
 
 /**
@@ -61,10 +61,10 @@ export type Weakening = { readonly key: string; readonly how: string };
 
 export type GitleaksProject = {
   readonly rules: readonly ProjectRule[];
-  readonly weakenings: readonly Weakening[];
+  readonly faults: readonly Weakening[];
 };
 
-function extendWeakenings(extend: z.infer<typeof project>['extend']): Weakening[] {
+function extendFaults(extend: z.infer<typeof project>['extend']): Weakening[] {
   const found: Weakening[] = [];
   if (extend?.useDefault !== true) {
     found.push({
@@ -93,17 +93,17 @@ export function readGitleaksProject(text: string): GitleaksProject {
   } catch {
     return {
       rules: [],
-      weakenings: [{ key: 'unreadable', how: 'cannot be read as a gitleaks configuration' }],
+      faults: [{ key: 'unreadable', how: 'cannot be read as a gitleaks configuration' }],
     };
   }
-  const weakenings = extendWeakenings(parsed.extend);
+  const faults = extendFaults(parsed.extend);
   if (parsed.allowlist !== undefined || parsed.allowlists !== undefined) {
-    weakenings.push({
+    faults.push({
       key: 'global allowlist',
       how: "adds an allowlist outside its own rules, which gitleaks' rules would honour too",
     });
   }
-  return { rules: parsed.rules, weakenings };
+  return { rules: parsed.rules, faults };
 }
 
 /** A project rule that reuses a default rule's id replaces that rule's pattern. */

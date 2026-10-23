@@ -24,7 +24,7 @@ async function weaker(ctx: CheckContext, file: string, found: Weakening): Promis
   };
 }
 
-async function gitleaksWeakenings(ctx: CheckContext): Promise<Weakening[]> {
+async function gitleaksFaults(ctx: CheckContext): Promise<Weakening[]> {
   const project = await gitleaksProject(ctx);
   if (project === undefined) return [];
   const ids = project.rules.map((rule) => rule.id);
@@ -32,7 +32,7 @@ async function gitleaksWeakenings(ctx: CheckContext): Promise<Weakening[]> {
     ids.length === 0
       ? new Set<string>()
       : await defaultRuleIds(ctx, await ctx.tools.path('gitleaks'), ids);
-  return [...project.weakenings, ...redefinitions(redefined)];
+  return [...project.faults, ...redefinitions(redefined)];
 }
 
 /** Ignore files below the root, which the tools honour for the files under them. */
@@ -76,7 +76,7 @@ export function strengthCheck(): Check {
         ? APPLIES
         : skip('the repository has no project-owned security tool configuration'),
     run: async (ctx) => {
-      const gitleaks = await gitleaksWeakenings(ctx);
+      const gitleaks = await gitleaksFaults(ctx);
       return Promise.all([
         ...gitleaks.map((found) => weaker(ctx, GITLEAKS_PROJECT, found)),
         ...nestedIgnores(ctx).map((item) => weaker(ctx, item.file, item.found)),

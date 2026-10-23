@@ -18,12 +18,12 @@ const lineCount = (ranges: readonly LineRange[]): number =>
  */
 export function baseText(head: string, change: FileChange): BaseText {
   if (change.status === 'added') return { known: true, text: undefined };
-  const hunkless =
+  const noHunks =
     change.status === 'modified' && change.added.length === 0 && change.removed.length === 0;
   const consistent =
     lineCount(change.added) === change.addedText.length &&
     lineCount(change.removed) === change.removedText.length;
-  if (hunkless || !consistent) return { known: false };
+  if (noHunks || !consistent) return { known: false };
   const kept = head.split('\n').filter((_, index) => !inside(change.added, index + 1));
   const removed = change.removedText;
   const lines: string[] = [];

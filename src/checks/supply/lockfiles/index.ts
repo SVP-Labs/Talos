@@ -9,8 +9,8 @@ import { parsePoetryLock, parseUvLock } from './python.js';
 import { parseYarnLock } from './yarn.js';
 import type { RepoFacts } from '../../../repo/facts.js';
 
-export type { Ecosystem, Locked, Source } from './locked.js';
-export { isPublic, isRegistry, spec } from './locked.js';
+export type { Ecosystem, Locked } from './locked.js';
+export { isPublic, spec } from './locked.js';
 
 /** Each lockfile Talos reads, by file name, and how. */
 const PARSERS: Readonly<Record<string, (text: string) => Locked[]>> = {
