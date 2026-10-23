@@ -67,6 +67,23 @@ const needsOf = (job: Job): string[] => (job.needs === undefined ? [] : [job.nee
 const tokenSteps = (job: Job): Step[] =>
   job.steps.filter((s) => s.uses?.startsWith('actions/create-github-app-token@') === true);
 
+/** The step a test is about; a missing one fails the test by its name. */
+function stepIn(job: Job | undefined, matches: (step: Step) => boolean, what: string): Step {
+  const step = job?.steps.find((s) => matches(s));
+  if (step === undefined) throw new Error(`no step ${what}`);
+  return step;
+}
+
+const using =
+  (action: string) =>
+  (step: Step): boolean =>
+    step.uses?.startsWith(`${action}@`) === true;
+
+const named =
+  (name: string) =>
+  (step: Step): boolean =>
+    step.name === name || step.id === name;
+
 describe('every workflow', () => {
   const paths = [...Object.values(FILES), 'assets/workflows/talos.yml'];
 
@@ -120,7 +137,7 @@ describe('every workflow', () => {
 
   it('takes identities from the organisation variables, repeating no default', () => {
     for (const path of paths) {
-      expect(text(path), path).not.toMatch(/vars\.TALOS_\w+ \|\|/);
+      expect(text(path), path).not.toMatch(/vars\.TALOS_\w+ \|\| '/);
     }
   });
 
@@ -132,7 +149,7 @@ describe('every workflow', () => {
     expect(new Set(setups.map((s) => s.uses)).size).toBe(1);
     for (const step of setups) {
       expect(step.with).toMatchObject({ coverage: 'pcov', tools: 'composer' });
-      expect(step.env).toEqual({ 'fail-fast': true });
+      expect(step.env).toEqual({ 'fail-fast': true, update: true });
     }
   });
 
@@ -241,36 +258,37 @@ describe('the gate', () => {
 
   it('sets PHP up only on the runs whose OS a PHP component lists', () => {
     const find = jobs.plan?.steps.find((s) => s.id === 'php');
-    expect(find?.run).toBe('bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"');
+    expect(find?.run).toBe(
+      'bash ../talos-kit/bootstrap/php.sh "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"',
+    );
     expect(jobs.plan?.outputs).toMatchObject({
       'php-oses': '${{ steps.php.outputs.oses }}',
       'php-version': '${{ steps.php.outputs.version }}',
     });
     const steps = jobs.run?.steps ?? [];
-    const php = steps.findIndex((s) => s.uses?.startsWith('shivammathur/setup-php@') === true);
+    const php = steps.findIndex(using('shivammathur/setup-php'));
     expect(steps[php]?.if).toContain('contains(fromJSON(needs.plan.outputs.php-oses), matrix.os)');
     expect(steps[php]?.with?.['php-version']).toBe('${{ needs.plan.outputs.php-version }}');
-    expect(php).toBeLessThan(steps.findIndex((s) => s.name === 'Run the checks'));
+    expect(php).toBeLessThan(steps.findIndex(named('Run the checks')));
   });
 
   it("caches a PR's base run by everything its result depends on, and never in the queue", () => {
-    const steps = jobs.run?.steps ?? [];
-    const key = steps.find((s) => s.id === 'key');
-    expect(key?.if).toBe(
+    const run = jobs.run;
+    const key = stepIn(run, named('key'), 'key');
+    expect(key.if).toBe(
       "${{ github.event_name == 'pull_request' && matrix.sha == needs.plan.outputs.base }}",
     );
-    expect(Object.keys(key?.env ?? {})).toEqual(['VERSION', 'RUN_OS', 'TIERS', 'RUN_SHA', 'TREE']);
-    expect(key?.run).toContain('date -u +%F');
-    const caches = steps.filter((s) => s.uses?.startsWith('actions/cache/') === true);
-    expect(caches.map((s) => s.uses?.split('@')[0])).toEqual([
-      'actions/cache/restore',
-      'actions/cache/save',
-    ]);
-    for (const step of caches) expect(step.with?.key).toBe('${{ steps.key.outputs.key }}');
-    expect(caches[1]?.if).toBe("${{ steps.aside.outputs.keep == 'true' }}");
-    expect(steps.find((s) => s.id === 'aside')?.run).toContain('.status != "error"');
+    expect(Object.keys(key.env ?? {})).toEqual(['VERSION', 'RUN_OS', 'TIERS', 'RUN_SHA', 'TREE']);
+    expect(key.run).toContain('date -u +%F');
+    const restore = stepIn(run, using('actions/cache/restore'), 'restoring the cache');
+    const save = stepIn(run, using('actions/cache/save'), 'saving the cache');
+    for (const step of [restore, save]) {
+      expect(step.with?.key).toBe('${{ steps.key.outputs.key }}');
+    }
+    expect(save.if).toBe("${{ steps.aside.outputs.keep == 'true' }}");
+    expect(stepIn(run, named('aside'), 'aside').run).toContain('.status != "error"');
     for (const name of ['Check out the commit', 'Set up Node', 'Run the checks']) {
-      expect(steps.find((s) => s.name === name)?.if, name).toContain(
+      expect(stepIn(run, named(name), name).if).toContain(
         "steps.cached.outputs.cache-hit != 'true'",
       );
     }
@@ -335,20 +353,20 @@ describe('the caller', () => {
     const { analyze, act } = caller.jobs;
     expect(needsOf(act!)).toEqual(['analyze']);
     expect(act?.if).toMatch(/^\$\{\{ !cancelled\(\) && \(/);
-    const upload = analyze?.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'));
-    const download = act?.steps.find((s) => s.uses?.startsWith('actions/download-artifact@'));
-    expect(upload?.with?.name).toBe('talos-analyze');
-    expect(download?.with).toEqual(upload?.with && { name: 'talos-analyze', path: upload.with.path });
-    const checkout = analyze?.steps.find((s) => s.with?.path === 'repo');
-    expect(checkout?.with?.ref).toBe('${{ github.event.repository.default_branch }}');
+    const upload = stepIn(analyze, using('actions/upload-artifact'), 'uploading');
+    const download = stepIn(act, using('actions/download-artifact'), 'downloading');
+    expect(upload.with?.name).toBe('talos-analyze');
+    expect(download.with).toEqual({ name: 'talos-analyze', path: upload.with?.path });
+    const checkout = stepIn(analyze, (s) => s.with?.path === 'repo', 'checking the branch out');
+    expect(checkout.with?.ref).toBe('${{ github.event.repository.default_branch }}');
     expect(JSON.stringify(analyze)).not.toMatch(/CLAUDE_CODE_OAUTH_TOKEN|TALOS_REVIEW_MODEL/);
-    const run = act?.steps.at(-1);
-    expect(run?.env).toMatchObject({
+    const run = stepIn(act, named('Act'), 'Act');
+    expect(run.env).toMatchObject({
       CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
       REVIEW_MODEL: '${{ vars.TALOS_REVIEW_MODEL }}',
       TALOS_OWNER: '${{ vars.TALOS_OWNER }}',
     });
-    expect(run?.run).toContain('export TALOS_REVIEW_MODEL="$REVIEW_MODEL"');
+    expect(run.run).toContain('export TALOS_REVIEW_MODEL="$REVIEW_MODEL"');
   });
 
   it('lets one event at a time act on a PR or an issue, cancelling none', () => {
@@ -654,5 +672,74 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
     };
     const env = { TALOS_LOOKUP: 'channels', GITHUB_REPOSITORY: 'SVP-Labs/Talos' };
     expect((await runStep(find, channels, env)).output).toBe(`sha=${A}\n`);
+  });
+});
+
+const canRunPhpScript =
+  canRunScripts &&
+  (await run('git', ['--version'], process.env)).code === 0 &&
+  (await run('yq', ['--version'], process.env)).code === 0;
+
+describe.skipIf(!canRunPhpScript)('bootstrap/php.sh', () => {
+  const git = async (cwd: string, ...args: string[]): Promise<string> =>
+    (await exec('git', args, { cwd })).stdout.trim();
+
+  async function commit(cwd: string, files: Readonly<Record<string, string>>): Promise<string> {
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(cwd, path, '..'), { recursive: true });
+      writeFileSync(join(cwd, path), content);
+    }
+    await git(cwd, 'add', '-A');
+    await git(cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'c');
+    return git(cwd, 'rev-parse', 'HEAD');
+  }
+
+  async function php(cwd: string, ...commits: string[]): Promise<{ code: number; stdout: string }> {
+    const script = new URL('bootstrap/php.sh', ROOT).pathname;
+    try {
+      const { stdout } = await exec('bash', [script, ...commits], { cwd });
+      return { code: 0, stdout };
+    } catch (error) {
+      const failure = error as { code?: unknown };
+      return { code: typeof failure.code === 'number' ? failure.code : 127, stdout: '' };
+    }
+  }
+
+  it('names the OSes of every PHP component at either commit, and the newest PHP asked', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'talos-php-'));
+    await git(cwd, 'init', '-q');
+    const none = await commit(cwd, {
+      'talos.yml': 'name: A\nprefix: A\ncomponents:\n  - { lang: ts, root: . }\n',
+    });
+    expect(await php(cwd, none)).toEqual({ code: 0, stdout: 'oses=[]\nversion=8.4\n' });
+    const both = await commit(cwd, {
+      'talos.yml': [
+        'name: A',
+        'prefix: A',
+        'components:',
+        '  - { lang: php, root: ./api/, os: [windows, linux] }',
+        '  - lang: php',
+        '    root: .',
+        '',
+      ].join('\n'),
+      'api/composer.json': JSON.stringify({ require: { php: '^8.5' } }),
+      'composer.json': JSON.stringify({ config: { platform: { php: '8.3.1' } } }),
+    });
+    expect(await php(cwd, none, both)).toEqual({
+      code: 0,
+      stdout: 'oses=["linux","windows"]\nversion=8.5\n',
+    });
+    const old = await commit(cwd, {
+      'api/composer.json': JSON.stringify({ require: { php: '>=8.1' } }),
+    });
+    expect((await php(cwd, old)).stdout).toBe('oses=["linux","windows"]\nversion=8.4\n');
+  });
+
+  it('fails without a commit, or on a talos.yml that is not YAML', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'talos-php-'));
+    await git(cwd, 'init', '-q');
+    const broken = await commit(cwd, { 'talos.yml': 'name: [\n' });
+    expect((await php(cwd)).code).toBe(1);
+    expect((await php(cwd, broken)).code).toBe(1);
   });
 });

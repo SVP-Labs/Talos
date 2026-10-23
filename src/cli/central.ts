@@ -3,7 +3,7 @@ import { runChannels } from '../central/channels-job.js';
 import { dispatchAllowed } from '../central/channels.js';
 import { expectedFromAssets, runChannelsFileDrift, runDrift } from '../central/drift-job.js';
 import { runPrivacy } from '../central/privacy.js';
-import { packAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
+import { runtimeAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
 import { runSweep } from '../central/sweep-job.js';
 import { github, type GitHubOptions } from '../github/api.js';
 import { downloader } from '../github/artifacts.js';
@@ -77,7 +77,7 @@ async function sweep(env: Env, options: CentralOptions): Promise<Outcome> {
   const report = await runSweep({
     gh: github(token(env, 'TALOS_REVIEWER_TOKEN'), options),
     who: identities(env),
-    assess: options.assess ?? packAssessor(),
+    assess: options.assess ?? runtimeAssessor(),
   });
   return { ok: report.errors === 0, report };
 }
@@ -117,7 +117,8 @@ async function privacy(io: Io, options: CentralOptions): Promise<Outcome> {
     },
     canary: optionalToken(env, 'TALOS_PRIVACY_CANARY_SHA256')?.toLowerCase(),
   });
-  return { ok: report.leaks === 0 && report.canary !== false, report };
+  // Without the canary watched, a clean search proves nothing: it may have watched no private name.
+  return { ok: report.leaks === 0 && report.canary === true, report };
 }
 
 function run(job: Job, io: Io, options: CentralOptions, flags: Flags): Promise<Outcome> {

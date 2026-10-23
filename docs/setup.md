@@ -76,7 +76,7 @@ App**, each with:
   | Actions        | Read-only | promotion counts gate runs on canary repositories (C17) |
   | Metadata       | Read-only | required                                                |
 
-  Contents stays off unless the first smoke test (step 6) turns on the `channels.json` fallback;
+  Contents stays off unless smoke test 1 or 5 (step 6) turns on the `channels.json` fallback;
   then it is **Read and write**, and its jobs mint contents tokens for the Talos repository only.
 
 - **Its key:** generate a private key; it becomes the `release` environment's secret

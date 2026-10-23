@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { RUN_FLAGS, targetRepository } from './govern.js';
 import { type Command, type Io, parse, UsageError } from './io.js';
 import { loadAdoptAssets } from '../adopt/assets.js';
-import { type ClaudeRenderer, renderClaudeMd } from '../adopt/claude.js';
 import { AdoptRefusal } from '../adopt/config.js';
 import type { OsOverride } from '../adopt/detect.js';
 import {
@@ -27,8 +26,15 @@ import type { Lang, Os } from '../core/check.js';
 import type { Pack } from '../core/pack.js';
 import { PACKS } from '../core/registry.js';
 import { exec as realExec, type Exec } from '../exec/exec.js';
-import { github, type GitHub, type GitHubOptions, tokenFromEnvironment } from '../github/api.js';
+import {
+  github,
+  type GitHub,
+  GitHubError,
+  type GitHubOptions,
+  tokenFromEnvironment,
+} from '../github/api.js';
 import { identities } from '../github/identities.js';
+import { type PrefixUse, prefixesInUse } from '../govern/create.js';
 import { capped, clip } from '../govern/output.js';
 import { branchFor } from '../ticket/claim.js';
 import { ownVersion } from '../version/self.js';
@@ -78,7 +84,6 @@ function issueOf(value: string | undefined): number {
 export type AdoptDeps = GitHubOptions & {
   readonly assets?: () => Promise<AdoptAssets>;
   readonly packs?: readonly Pack[];
-  readonly claude?: ClaudeRenderer;
   readonly now?: () => Date;
   readonly exec?: Exec;
 };
@@ -99,7 +104,10 @@ type Session = {
   readonly repo: string;
 };
 
-async function planHere(session: Session, args: Args): Promise<AdoptPlan> {
+/** What the organisation knows of prefixes: `undefined` when the plan can't consult it. */
+type Prefixes = readonly PrefixUse[] | undefined;
+
+async function planHere(session: Session, args: Args, prefixes?: Prefixes): Promise<AdoptPlan> {
   const tree = await readTree(session.io.cwd, session.run);
   const brief =
     args.brief === undefined
@@ -117,7 +125,7 @@ async function planHere(session: Session, args: Args): Promise<AdoptPlan> {
     version: ownVersion(),
     packs: session.deps.packs ?? PACKS,
     assets: await (session.deps.assets ?? loadAdoptAssets)(),
-    claude: session.deps.claude ?? renderClaudeMd,
+    prefixesInUse: prefixes,
   };
   return adoptPlan(input);
 }
@@ -138,6 +146,20 @@ function planJson(plan: AdoptPlan): Record<string, unknown> {
 
 async function client(session: Session): Promise<GitHub> {
   return github(await tokenFromEnvironment(session.io.env), session.deps);
+}
+
+/**
+ * The prefixes the organisation's other repositories use, as `talos new` reads them; `undefined`
+ * when the token can't read the organisation, and then the prefix goes unchecked.
+ */
+async function orgPrefixes(session: Session): Promise<Prefixes> {
+  const org = session.repo.split('/')[0] ?? session.repo;
+  try {
+    return await prefixesInUse(await client(session), org);
+  } catch (error) {
+    if (error instanceof GitHubError && [401, 403, 404].includes(error.status)) return undefined;
+    throw error;
+  }
 }
 
 function bootstrapText(plan: AdoptPlan): {
@@ -182,11 +204,17 @@ async function everything(session: Session, args: Args, agent: string) {
   if (!(await isClean(session.io.cwd, session.run))) {
     throw new AdoptRefusal('the working tree has changes: commit or stash them first');
   }
-  const started = await start(session, await planHere(session, args), agent);
+  const prefixes = await orgPrefixes(session);
+  const started = await start(session, await planHere(session, args, prefixes), agent);
   await checkoutClaim(session.io.cwd, session.run, started.branch);
-  const plan = await planHere(session, args);
+  const plan = await planHere(session, args, prefixes);
   await applyPlan(session.io.cwd, plan);
-  const base = { step: 'adopt', ...started, ...planJson(plan) };
+  const base = {
+    step: 'adopt',
+    ...started,
+    ...planJson(plan),
+    prefixChecked: prefixes !== undefined,
+  };
   if (plan.next.length > 0) {
     const next = [...plan.next, ...commitSteps(plan, started.issue)];
     return { ...base, done: false, next: capped(next.map((s) => clip(s))) };
@@ -210,7 +238,13 @@ async function dispatch(sub: string | undefined, session: Session, args: Args, v
       return { step: 'plan', ...planJson(await planHere(session, args)) };
     }
     case 'start': {
-      return { step: 'start', ...(await start(session, await planHere(session, args), agent)) };
+      const prefixes = await orgPrefixes(session);
+      const plan = await planHere(session, args, prefixes);
+      return {
+        step: 'start',
+        ...(await start(session, plan, agent)),
+        prefixChecked: prefixes !== undefined,
+      };
     }
     case 'files': {
       const issue = issueOf(values.issue);
@@ -300,9 +334,10 @@ export function adoptWith(deps: AdoptDeps): Command {
 
 /**
  * `talos adopt`: brings a repository's files under Talos, and touches no setting, so Thea's App
- * can run it. `plan` (or `--dry-run`) prints what it would do; `start` labels the repository,
- * marks the old backlog `legacy` and files and claims the bootstrap issue; `files` writes the
- * working tree (no token needed); `pr` opens the bootstrap PR. Without a step it does them all,
- * stopping before the commit when lock files must be refreshed first.
+ * can run it. `plan` (or `--dry-run`) prints what it would do; `start` refuses a prefix another
+ * repository of the organisation uses, labels the repository, marks the old backlog `legacy`
+ * and files and claims the bootstrap issue; `files` writes the working tree (no token needed);
+ * `pr` opens the bootstrap PR. Without a step it does them all, stopping before the commit when
+ * lock files must be refreshed first.
  */
 export const adopt: Command = adoptWith({});

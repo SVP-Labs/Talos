@@ -14,7 +14,14 @@ import {
   type TomlSection,
 } from './toml-text.js';
 import type { Component } from '../core/check.js';
-import { BASE_LINTS, type BaseLint, isLevel, type Level, lintsBlock, weakerThan } from '../langs/rust/lints.js';
+import {
+  BASE_LINTS,
+  type BaseLint,
+  isLevel,
+  type Level,
+  lintsBlock,
+  weakerThan,
+} from '../langs/rust/lints.js';
 import { toolchainFile } from '../langs/rust/toolchain.js';
 
 /**
@@ -103,12 +110,14 @@ function expected(parsed: Table, path: readonly string[], all: readonly Needs[])
   const copy: Table = structuredClone(parsed);
   let at: Table = copy;
   for (const key of path) {
-    const inner = isTable(at[key]) ? at[key] : {};
+    const value = at[key];
+    const inner: Table = isTable(value) ? value : {};
     at[key] = inner;
     at = inner;
   }
   for (const needs of all) {
-    const tool = isTable(at[needs.tool]) ? at[needs.tool] : {};
+    const value = at[needs.tool];
+    const tool: Table = isTable(value) ? value : {};
     for (const lint of needs.lints) tool[lint.name] = entryValue(lint);
     at[needs.tool] = tool;
   }
@@ -129,7 +138,10 @@ export function withLints(text: string, table: 'lints' | 'workspace.lints'): Edi
   if (all.length === 0) return {};
   let next: string;
   if (current === undefined) {
-    next = joinToml(appended(splitToml(text), lintsBlock(table).trimEnd().split('\n')), eolOf(text));
+    next = joinToml(
+      appended(splitToml(text), lintsBlock(table).trimEnd().split('\n')),
+      eolOf(text),
+    );
   } else {
     let sections: TomlSection[] | undefined = splitToml(text);
     for (const needs of all) {
@@ -194,7 +206,9 @@ export function rustLints(draft: Draft, component: Component): void {
   }
   for (const member of members(component.root, workspace, draft.files())) {
     const memberText = draft.read(member);
-    if (memberText !== undefined) apply(draft, member, withWorkspaceLints(memberText), component.root);
+    if (memberText !== undefined) {
+      apply(draft, member, withWorkspaceLints(memberText), component.root);
+    }
   }
 }
 
@@ -217,7 +231,8 @@ export function pinToolchain(text: string): Edit {
   if (parsed === undefined || table === undefined) {
     return { manual: 'its rust-toolchain.toml has no [toolchain] table' };
   }
-  const channel = typeof table.channel === 'string' && EXACT.test(table.channel) ? table.channel : RUST_CHANNEL;
+  const channel =
+    typeof table.channel === 'string' && EXACT.test(table.channel) ? table.channel : RUST_CHANNEL;
   const have = strings(table.components);
   const components = [...have, ...COMPONENTS.filter((c) => !have.includes(c))];
   if (channel === table.channel && components.length === have.length) return {};
@@ -231,7 +246,8 @@ export function pinToolchain(text: string): Edit {
     for (const key of ['channel', 'components'] as const) {
       const at = keyLine(out, key);
       const header = out.lines.findIndex((line, i) => out.top[i] && /^\s*\[/.test(line));
-      out = at === -1 ? insertLines(out, header + 1, [lines[key]]) : replaceLine(out, at, lines[key]);
+      out =
+        at === -1 ? insertLines(out, header + 1, [lines[key]]) : replaceLine(out, at, lines[key]);
     }
     return out;
   });
@@ -264,5 +280,7 @@ export function rustToolchain(draft: Draft, component: Component): void {
   }
   const edit = pinToolchain(text);
   if (edit.text !== undefined) draft.write(found, edit.text, 'toolchain');
-  if (edit.manual !== undefined) draft.next(`in ${component.root}: pin the toolchain by hand: ${edit.manual}`);
+  if (edit.manual !== undefined) {
+    draft.next(`in ${component.root}: pin the toolchain by hand: ${edit.manual}`);
+  }
 }

@@ -137,6 +137,7 @@ jobs:
           tools: composer
         env:
           fail-fast: true
+          update: true # the newest patch of the cycle, which the PHP pack insists on
       - name: Analyze
         working-directory: repo
         env:

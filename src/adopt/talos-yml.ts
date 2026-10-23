@@ -1,4 +1,5 @@
-import { parse } from 'yaml';
+import { type Document, isMap, parse, parseDocument } from 'yaml';
+import type { Additions } from './security.js';
 import type { Component } from '../core/check.js';
 
 /**
@@ -52,7 +53,8 @@ const PREFIX = /^[A-Z][A-Z0-9]{0,5}$/;
 
 /**
  * A prefix from a name, used when none is given: the initials of its words, `LoreLock` → `LL`,
- * `Thea` → `T`. Whether it is free in the organisation is `talos new`'s to check.
+ * `Thea` → `T`. Whether it is free in the organisation is checked where the organisation can be
+ * read.
  */
 export function derivePrefix(name: string): string {
   const words = name
@@ -78,4 +80,35 @@ export function isSeed(text: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Makes the map at `path` a block, created when missing; `false` when it isn't a map. */
+function asBlock(doc: Document, path: readonly string[]): boolean {
+  if (!doc.hasIn(path)) doc.setIn(path, doc.createNode({}));
+  const node = doc.getIn(path, true);
+  if (!isMap(node)) return false;
+  node.flow = false;
+  return true;
+}
+
+function addMissing(
+  doc: Document,
+  path: readonly string[],
+  entries: Readonly<Record<string, unknown>>,
+): boolean {
+  const fresh = Object.entries(entries).filter(([key]) => !doc.hasIn([...path, key]));
+  if (fresh.length === 0 || !asBlock(doc, path)) return false;
+  for (const [key, value] of fresh) doc.setIn([...path, key], doc.createNode(value));
+  return true;
+}
+
+/**
+ * `talos.yml` with the exceptions and licences a repository's own scanner settings held, each
+ * added unless `talos.yml` already has an entry of that name. The rest of the file stays as it is.
+ */
+export function withAdditions(text: string, additions: Additions): string {
+  const doc = parseDocument(text);
+  const exceptions = addMissing(doc, ['supply_chain', 'exceptions'], additions.exceptions);
+  const licences = addMissing(doc, ['licences'], additions.licences);
+  return exceptions || licences ? doc.toString({ lineWidth: 0, singleQuote: true }) : text;
 }

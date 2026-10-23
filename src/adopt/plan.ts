@@ -1,24 +1,25 @@
 import { posix } from 'node:path';
-import type { ClaudeRenderer } from './claude.js';
-import { type ConfigInput, resolveConfig } from './config.js';
-import { DEPENDABOT_PATH, dependabotYml, ecosystems, type UpdateDefaults } from './dependabot.js';
-import { isScaffoldClaude, fromScaffold, scaffoldLeftovers } from './scaffold.js';
+import { checkPrefix, type ConfigInput, parsed, resolveConfig } from './config.js';
+import { type Deletion, type Draft, type PlannedFile, startDraft } from './draft.js';
+import { type KitAssets, kitFiles } from './kit.js';
+import { type LanguageAssets, languageSteps } from './languages.js';
+import type { Seed } from './python.js';
+import { fromScaffold, scaffoldLeftovers } from './scaffold.js';
+import { securityMigration } from './security.js';
+import { withAdditions } from './talos-yml.js';
 import { briefPath } from './texts.js';
-import { type PlannedFile, toolPins } from './tool-pins.js';
+import { GITLEAKS_PROJECT } from '../checks/security/gitleaks-config.js';
 import type { TalosConfig } from '../config/schema.js';
-import type { ApplyContext, Component } from '../core/check.js';
-import type { Pack, RenderContext } from '../core/pack.js';
-import { generatedTargets, targetPath } from '../engine/prepare.js';
-import { type RepoFacts, repoFacts } from '../repo/facts.js';
+import { renderConfigs } from '../configs/files.js';
+import type { ApplyContext } from '../core/check.js';
+import type { Pack } from '../core/pack.js';
+import type { PrefixUse } from '../govern/create.js';
+import { repoFacts } from '../repo/facts.js';
+
+export type { Deletion, PlannedFile } from './draft.js';
 
 /** What adoption copies into every repository from Talos's assets. */
-export type AdoptAssets = {
-  /** `assets/issue-forms/*`, by file name. */
-  readonly issueForms: Readonly<Record<string, string>>;
-  /** `assets/pull_request_template.md`, when this Talos ships it. */
-  readonly prTemplate: string | undefined;
-  readonly dependabot: UpdateDefaults;
-};
+export type AdoptAssets = KitAssets & LanguageAssets;
 
 export type AdoptInput = ConfigInput & {
   /** A brief to add, as given: its file name and text. */
@@ -28,10 +29,9 @@ export type AdoptInput = ConfigInput & {
   readonly version: string;
   readonly packs: readonly Pack[];
   readonly assets: AdoptAssets;
-  readonly claude: ClaudeRenderer;
+  /** Every prefix the organisation's repositories use, when the organisation could be read. */
+  readonly prefixesInUse?: readonly PrefixUse[] | undefined;
 };
-
-type Deletion = { readonly path: string; readonly why: 'scaffold' | 'pr-template' };
 
 export type AdoptPlan = {
   readonly config: TalosConfig;
@@ -41,136 +41,99 @@ export type AdoptPlan = {
   /** Only files whose content changes. */
   readonly write: readonly PlannedFile[];
   readonly delete: readonly Deletion[];
-  /** What whoever commits must do first: refresh lock files, pin what adoption can't. */
+  /** What whoever commits must do first: refresh lock files, finish what adoption couldn't. */
   readonly next: readonly string[];
 };
 
-const PR_TEMPLATE_PATH = '.github/pull_request_template.md';
-const PR_TEMPLATES = [
-  PR_TEMPLATE_PATH,
-  'pull_request_template.md',
-  'docs/pull_request_template.md',
-];
-const ISSUE_FORMS = '.github/ISSUE_TEMPLATE';
+type Settled = { readonly config: TalosConfig; readonly status: AdoptPlan['talosYml'] };
 
-function inRoot(component: Component | undefined, path: string): string {
-  return component === undefined || component.root === '.' ? path : `${component.root}/${path}`;
-}
-
-function generatedFiles(input: AdoptInput, config: TalosConfig, facts: RepoFacts): PlannedFile[] {
-  const ctx: ApplyContext = { facts, config, side: 'alone', tiers: ['commit', 'head'] };
-  return generatedTargets(input.packs, ctx).flatMap((target): PlannedFile[] => {
-    const render: RenderContext = {
-      config,
-      facts,
-      version: input.version,
-      ...(target.component === undefined ? {} : { component: target.component }),
-    };
-    const base: PlannedFile = {
-      path: targetPath(target),
-      content: target.file.render(render),
-      why: 'generated',
-    };
-    const extension = target.file.extension;
-    if (extension === undefined) return [base];
-    const path = inRoot(target.component, extension.path);
-    if (input.files.includes(path) || input.read(path) !== undefined) return [base];
-    return [base, { path, content: extension.initial(render), why: 'extension' }];
-  });
-}
-
-function kitFiles(input: AdoptInput, config: TalosConfig, scaffold: boolean): PlannedFile[] {
-  const claudeNow = input.read('CLAUDE.md');
-  const keep = claudeNow !== undefined && !(scaffold && isScaffoldClaude(claudeNow));
-  const files: PlannedFile[] = [
-    {
-      path: 'CLAUDE.md',
-      content: input.claude(keep ? claudeNow : undefined, { config, version: input.version }),
-      why: 'claude',
-    },
-    ...Object.entries(input.assets.issueForms).map(([name, content]): PlannedFile => ({
-      path: `${ISSUE_FORMS}/${name}`,
-      content,
-      why: 'issue-form',
-    })),
-  ];
-  if (input.assets.prTemplate !== undefined) {
-    files.push({ path: PR_TEMPLATE_PATH, content: input.assets.prTemplate, why: 'pr-template' });
+/**
+ * `talos.yml`, with what the repository's own scanner settings held. The security settings are
+ * read from the tree as it was, before any generated file takes their place.
+ */
+function settle(draft: Draft, input: AdoptInput, seeds: Map<string, Seed>): Settled {
+  const resolved = resolveConfig({ ...input, files: draft.files(), read: draft.read });
+  const security = securityMigration(input.files, input.read);
+  const current = resolved.text ?? draft.read('talos.yml') ?? '';
+  const text = withAdditions(current, security.additions);
+  if (resolved.text !== undefined || text !== current) draft.write('talos.yml', text, 'talos.yml');
+  for (const file of security.moved) draft.remove(file, 'migrated');
+  for (const step of security.next) draft.next(step);
+  const gitleaks = security.gitleaks;
+  const project = draft.read(GITLEAKS_PROJECT);
+  if (gitleaks !== undefined && project !== undefined) {
+    draft.write(GITLEAKS_PROJECT, gitleaks(project), 'migration');
+  } else if (gitleaks !== undefined) {
+    seeds.set(GITLEAKS_PROJECT, gitleaks);
   }
-  const dependabot = dependabotYml(
-    input.read(DEPENDABOT_PATH),
-    ecosystems(config.components, input.files),
-    input.assets.dependabot,
-  );
-  if (dependabot !== undefined) {
-    files.push({ path: DEPENDABOT_PATH, content: dependabot, why: 'dependabot' });
-  }
-  return files;
+  return { config: parsed(text), status: resolved.status };
 }
 
-function briefFile(input: AdoptInput, config: TalosConfig): PlannedFile | undefined {
+/**
+ * Every generated base through the shared rendering, and each missing extension file once: from
+ * its initial text, or the project's own settings moved into it.
+ */
+function generated(
+  draft: Draft,
+  input: AdoptInput,
+  config: TalosConfig,
+  seeds: ReadonlyMap<string, Seed>,
+): void {
+  const ctx: ApplyContext = {
+    facts: repoFacts(draft.files(), config.exclude),
+    config,
+    side: 'alone',
+    tiers: ['commit', 'head'],
+  };
+  for (const file of renderConfigs(input.packs, ctx, input.version)) {
+    const extension = file.extension;
+    const missing = extension !== undefined && !draft.has(extension.path);
+    draft.write(file.path, file.content, 'generated');
+    if (extension === undefined || !missing) continue;
+    const seed = seeds.get(extension.path);
+    draft.write(
+      extension.path,
+      seed === undefined ? extension.content : seed(extension.content),
+      'extension',
+    );
+  }
+}
+
+function brief(draft: Draft, input: AdoptInput, config: TalosConfig): string | undefined {
   if (input.brief === undefined) return undefined;
   const path = briefPath(config.docs.briefs, input.brief.fileName, input.brief.text, input.now);
-  const content = input.brief.text.endsWith('\n') ? input.brief.text : `${input.brief.text}\n`;
-  return { path, content, why: 'brief' };
-}
-
-function deletions(input: AdoptInput, writes: readonly PlannedFile[]): Deletion[] {
-  const writing = new Set(writes.map((file) => file.path));
-  const templates = input.files.filter(
-    (file) => PR_TEMPLATES.includes(file.toLowerCase()) && !writing.has(file),
-  );
-  return [
-    ...scaffoldLeftovers(input.files, input.read).map((path): Deletion => ({
-      path,
-      why: 'scaffold',
-    })),
-    ...(writing.has(PR_TEMPLATE_PATH)
-      ? templates.map((path): Deletion => ({ path, why: 'pr-template' }))
-      : []),
-  ];
-}
-
-function changed(input: AdoptInput, files: readonly PlannedFile[]): PlannedFile[] {
-  const byPath = new Map(files.map((file) => [file.path, file]));
-  return [...byPath.values()].filter((file) => input.read(file.path) !== file.content);
+  const text = input.brief.text;
+  draft.write(path, text.endsWith('\n') ? text : `${text}\n`, 'brief');
+  return path;
 }
 
 /**
  * Everything adoption writes and deletes in the working tree, and what must follow. Pure: it
  * reads the tree only through `input.read`, and running it twice plans nothing the second time.
+ * It refuses a prefix another repository of the organisation uses, when it was given them.
  */
 export function adoptPlan(input: AdoptInput): AdoptPlan {
-  const leftovers = new Set(scaffoldLeftovers(input.files, input.read));
-  const kept: AdoptInput = { ...input, files: input.files.filter((file) => !leftovers.has(file)) };
-  const resolved = resolveConfig(kept);
-  const config = resolved.config;
+  const draft = startDraft(input.files, input.read);
+  for (const path of scaffoldLeftovers(input.files, input.read)) draft.remove(path, 'scaffold');
   const scaffold = fromScaffold(input.files, input.read);
-  const pins = toolPins(config.components, input.packs, kept.files, input.read);
-  const brief = briefFile(input, config);
-  const talosYml: PlannedFile[] =
-    resolved.text === undefined
-      ? []
-      : [{ path: 'talos.yml', content: resolved.text, why: 'talos.yml' }];
-  const kit = kitFiles(kept, config, scaffold);
-  const rest = [...kit, ...pins.files, ...(brief === undefined ? [] : [brief])];
-  // The files adoption writes decide which generated configs apply, so a rerun plans nothing.
-  const after = [
-    ...new Set(
-      [...kept.files, ...talosYml, ...rest].map((f) => (typeof f === 'string' ? f : f.path)),
-    ),
-  ];
-  const generated = generatedFiles(kept, config, repoFacts(after, config.exclude));
-  const all: PlannedFile[] = [...talosYml, ...generated, ...rest];
-  const write = changed(input, all);
+  const seeds = new Map<string, Seed>();
+  const { config, status } = settle(draft, input, seeds);
+  checkPrefix(input.prefixesInUse, input.repo, config.prefix);
+  kitFiles(draft, config, input.assets, scaffold);
+  for (const [path, seed] of languageSteps(draft, config, input.packs, input.assets)) {
+    seeds.set(path, seed);
+  }
+  const briefFile = brief(draft, input, config);
+  generated(draft, input, config, seeds);
+  const done = draft.done();
   return {
     config,
-    talosYml: resolved.status,
-    brief: brief?.path,
+    talosYml: status,
+    brief: briefFile,
     scaffold,
-    write,
-    delete: deletions(input, write),
-    next: pins.next,
+    write: done.write,
+    delete: done.delete,
+    next: done.next,
   };
 }
 

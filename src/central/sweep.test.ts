@@ -27,12 +27,14 @@ function finding(extra: Partial<Reported>): Reported {
 }
 
 describe('isRuntimeFile', () => {
-  it('reads each Dockerfile, version file, tools.lock and talos.yml anywhere', () => {
+  it("reads every file the gate's runtime check reads, and the root talos.yml", () => {
     const yes = [
       'Dockerfile',
       'apps/web/Dockerfile',
       'Dockerfile.prod',
       'docker/api.Dockerfile',
+      'Containerfile',
+      'apps/api/Containerfile.dev',
       '.nvmrc',
       'apps/web/.node-version',
       '.python-version',
@@ -43,7 +45,16 @@ describe('isRuntimeFile', () => {
       'tools.lock',
       'talos.yml',
     ];
-    const no = ['package.json', 'docker/readme.md', 'my-Dockerfile', 'go.sum', 'compose.yaml'];
+    const no = [
+      'package.json',
+      'docker/readme.md',
+      'my-Dockerfile',
+      'go.sum',
+      'compose.yaml',
+      'Dockerfile.dockerignore',
+      'vendor/tools.lock',
+      'apps/web/talos.yml',
+    ];
     expect(yes.filter((p) => !isRuntimeFile(p))).toEqual([]);
     expect(no.filter((p) => isRuntimeFile(p))).toEqual([]);
   });

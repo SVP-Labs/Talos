@@ -1,3 +1,4 @@
+import { prettyJson } from './json-text.js';
 import {
   eolOf,
   insertLines,
@@ -109,7 +110,7 @@ function pyrightSeed(settings: Table): Seed | undefined {
     const comments = lines.filter((line) => line.startsWith('//'));
     const json: unknown = JSON.parse(lines.filter((line) => !line.startsWith('//')).join('\n'));
     const merged = { ...(isTable(json) ? json : {}), ...settings };
-    return `${[...comments, JSON.stringify(merged, null, 2)].join('\n')}\n`;
+    return `${[...comments, ''].join('\n')}${prettyJson(merged)}`;
   };
 }
 

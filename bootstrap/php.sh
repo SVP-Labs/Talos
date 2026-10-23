@@ -13,7 +13,9 @@
 #   oses=["linux"]
 #   version=8.4
 #
-# Needs git, jq and yq (mikefarah's, which GitHub's runners carry, or the Python one).
+# Needs git, jq and yq (mikefarah's, which GitHub's runners carry, or the Python one). The caller
+# workflow, which never changes between releases, runs it from whichever release a repository
+# enforces, so every release keeps it, with these arguments and this output.
 set -euo pipefail
 
 floor='8.4'

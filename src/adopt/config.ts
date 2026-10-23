@@ -3,6 +3,7 @@ import type { Reader } from './scaffold.js';
 import { derivePrefix, isSeed, renderTalosYml } from './talos-yml.js';
 import { ConfigError, parseConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
+import { prefixHolder, type PrefixUse } from '../govern/create.js';
 import { repoFacts } from '../repo/facts.js';
 
 export class AdoptRefusal extends Error {
@@ -26,7 +27,7 @@ export type ResolvedConfig = {
   readonly status: 'written' | 'completed' | 'kept';
 };
 
-function parsed(text: string): TalosConfig {
+export function parsed(text: string): TalosConfig {
   try {
     return parseConfig(text);
   } catch (error) {
@@ -70,4 +71,24 @@ export function resolveConfig(input: ConfigInput): ResolvedConfig {
   if (!isSeed(existing)) return { config: recorded, text: undefined, status: 'kept' };
   const text = draftConfig(input, recorded);
   return { config: parsed(text), text, status: 'completed' };
+}
+
+/**
+ * Refuses a prefix another repository of the organisation uses, as `talos new` does: a ticket
+ * branch `<P>-<N>` must name one repository. `uses` is `undefined` when the organisation couldn't
+ * be read, and then nothing is refused.
+ */
+export function checkPrefix(
+  uses: readonly PrefixUse[] | undefined,
+  repo: string,
+  prefix: string,
+): void {
+  if (uses === undefined) return;
+  const others = uses.filter((use) => use.repo.toLowerCase() !== repo.toLowerCase());
+  const holder = prefixHolder(others, prefix);
+  if (holder !== undefined) {
+    throw new AdoptRefusal(
+      `prefix ${prefix} is in use by ${holder}; each repository needs its own`,
+    );
+  }
 }

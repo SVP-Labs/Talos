@@ -41,7 +41,10 @@ export function ancestors(dir: string): string[] {
 }
 
 /** The npm lockfile governing a component, nearest first, and the directory it is in. */
-export function npmLock(root: string, files: readonly string[]): { dir: string; lock: string } | undefined {
+export function npmLock(
+  root: string,
+  files: readonly string[],
+): { dir: string; lock: string } | undefined {
   for (const dir of ancestors(root)) {
     for (const [lock] of NPM_LOCKS) {
       if (files.includes(posix.join(dir, lock))) return { dir, lock };
@@ -53,7 +56,9 @@ export function npmLock(root: string, files: readonly string[]): { dir: string; 
 /** The command that refreshes the npm lockfile governing a component, run where it lives. */
 export function npmLockStep(root: string, files: readonly string[]): string {
   const found = npmLock(root, files);
-  if (found === undefined) return `in ${root}: pnpm install --lockfile-only, and commit pnpm-lock.yaml`;
+  if (found === undefined) {
+    return `in ${root}: pnpm install --lockfile-only, and commit pnpm-lock.yaml`;
+  }
   const command = NPM_LOCKS.find(([lock]) => lock === found.lock)?.[1] ?? '';
   return `in ${found.dir}: ${command}`;
 }
@@ -133,7 +138,9 @@ const pythonPinner: Pinner = (draft, component, packages) => {
   const text = draft.read(pyproject);
   if (text !== undefined && !usesRequirements(root, draft.files())) {
     const pinned = pinPythonProject(text, packages);
-    if (pinned.kind === 'manual') draft.next(`in ${root}: pin the dev tools by hand: ${pinned.reason}`);
+    if (pinned.kind === 'manual') {
+      draft.next(`in ${root}: pin the dev tools by hand: ${pinned.reason}`);
+    }
     if (pinned.kind !== 'changed') return;
     draft.write(pyproject, pinned.text, 'dev-dependencies');
     draft.next(`in ${root}: uv lock`);
@@ -143,12 +150,18 @@ const pythonPinner: Pinner = (draft, component, packages) => {
   const content = pinRequirementsIn(draft.read(path), packages);
   if (content === undefined) return;
   draft.write(path, content, 'dev-dependencies');
-  draft.next(`in ${root}: uv pip compile --generate-hashes requirements-dev.in -o requirements-dev.txt`);
+  draft.next(
+    `in ${root}: uv pip compile --generate-hashes requirements-dev.in -o requirements-dev.txt`,
+  );
 };
 
 const PINNERS: Readonly<Record<DevTools['manager'], Pinner>> = {
   npm: jsonPinner('package.json', npmManifest, (draft, root) => npmLockStep(root, draft.files())),
-  composer: jsonPinner('composer.json', composerManifest, (_, root) => `in ${root}: composer update --lock`),
+  composer: jsonPinner(
+    'composer.json',
+    composerManifest,
+    (_, root) => `in ${root}: composer update --lock`,
+  ),
   pypi: pythonPinner,
   cargo: (draft, component, packages) => {
     draft.next(`in ${component.root}: pin ${Object.keys(packages).join(', ')} by hand`);
@@ -158,7 +171,11 @@ const PINNERS: Readonly<Record<DevTools['manager'], Pinner>> = {
 };
 
 /** Each component's dev dependencies pinned at the versions its language pack runs. */
-export function toolPins(draft: Draft, components: readonly Component[], packs: readonly Pack[]): void {
+export function toolPins(
+  draft: Draft,
+  components: readonly Component[],
+  packs: readonly Pack[],
+): void {
   for (const component of components) {
     const devTools = packs.find((pack) => pack.lang === component.lang)?.devTools;
     if (devTools !== undefined) PINNERS[devTools.manager](draft, component, devTools.packages);

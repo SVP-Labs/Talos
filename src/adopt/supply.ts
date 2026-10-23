@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import { isMap, isScalar, parseDocument, type Document } from 'yaml';
+import { Document, isMap, isScalar, parseDocument } from 'yaml';
 import { parseManifest } from './dev-deps.js';
 import type { Draft } from './draft.js';
 import { npmLock, npmLockStep } from './tool-pins.js';
@@ -24,12 +24,12 @@ const NOSEMGREP =
 const GUARDS_NOTE = [
   ' Supply-chain guards: a release waits a day before it can be installed, no dependency of a',
   ' dependency comes from git or a tarball URL, and a release with less provenance than the',
-  ' ones before it stops the install. A day, not Semgrep\'s week: hijacked releases are mostly',
+  " ones before it stops the install. A day, not Semgrep's week: hijacked releases are mostly",
   ' pulled within hours, and a week would hold back security fixes as long.',
 ].join('\n');
 
 const PATCH_NOTE = [
-  " Stryker's Vitest runner predates Vitest 5, which joins a test's suites with \" > \"; without",
+  ' Stryker\'s Vitest runner predates Vitest 5, which joins a test\'s suites with " > "; without',
   ' this patch the runner selects no tests for a mutant, and every mutant survives.',
 ].join('\n');
 
@@ -59,8 +59,14 @@ function guard(doc: Document): boolean {
     blockExoticSubdeps: doc.get('blockExoticSubdeps') !== true,
     trustPolicy: doc.get('trustPolicy') !== 'no-downgrade',
   };
-  const values = { minimumReleaseAge: ageNode(doc), blockExoticSubdeps: true, trustPolicy: 'no-downgrade' };
-  let note: string | undefined = Object.keys(wrong).every((key) => !doc.has(key)) ? GUARDS_NOTE : undefined;
+  const values = {
+    minimumReleaseAge: ageNode(doc),
+    blockExoticSubdeps: true,
+    trustPolicy: 'no-downgrade',
+  };
+  let note: string | undefined = Object.keys(wrong).every((key) => !doc.has(key))
+    ? GUARDS_NOTE
+    : undefined;
   for (const key of ['minimumReleaseAge', 'blockExoticSubdeps', 'trustPolicy'] as const) {
     if (!wrong[key]) continue;
     if (doc.has(key)) doc.set(key, values[key]);
@@ -88,22 +94,33 @@ function patch(doc: Document): boolean {
  * mapping. A project's own keys and comments stay.
  */
 export function pnpmWorkspace(text: string | undefined, wanted: Wanted): string | undefined {
-  const doc = parseDocument(text ?? '');
-  if (doc.errors.length > 0) return undefined;
-  if (doc.contents === null || (isScalar(doc.contents) && doc.contents.value === null)) {
-    doc.contents = doc.createNode({});
-  }
+  const parsed = parseDocument(text ?? '');
+  if (parsed.errors.length > 0) return undefined;
+  const empty =
+    parsed.contents === null || (isScalar(parsed.contents) && parsed.contents.value === null);
+  const doc: Document = empty ? new Document({}) : parsed;
   if (!isMap(doc.contents)) return undefined;
   const guarded = guard(doc);
   const patched = wanted.patch && patch(doc);
   return guarded || patched ? doc.toString({ lineWidth: 0, singleQuote: true }) : undefined;
 }
 
+/** Whether the workspace file patches the runner with the patch Talos ships. */
+function pointsAtPatch(text: string | undefined): boolean {
+  if (text === undefined) return false;
+  const doc = parseDocument(text);
+  return (
+    doc.getIn(['patchedDependencies', `${RUNNER}@${RUNNER_VERSION}`]) === `patches/${RUNNER_PATCH}`
+  );
+}
+
 function pinsRunner(draft: Draft, component: Component): boolean {
   const manifest = parseManifest(draft.read(posix.join(component.root, 'package.json')) ?? '');
   return ['dependencies', 'devDependencies'].some((field) => {
     const deps = manifest?.[field];
-    return typeof deps === 'object' && deps !== null && Reflect.get(deps, RUNNER) === RUNNER_VERSION;
+    return (
+      typeof deps === 'object' && deps !== null && Reflect.get(deps, RUNNER) === RUNNER_VERSION
+    );
   });
 }
 
@@ -136,14 +153,16 @@ export function supplyChain(
     const text = draft.read(path);
     const next = pnpmWorkspace(text, { patch: needsPatch });
     if (text !== undefined && next === undefined && parseDocument(text).errors.length > 0) {
-      draft.next(`in ${dir}: pnpm-workspace.yaml is not YAML Talos can read; set its guards by hand`);
+      draft.next(
+        `in ${dir}: pnpm-workspace.yaml is not YAML Talos can read; set its guards by hand`,
+      );
     }
     if (next !== undefined) {
       draft.write(path, next, 'supply-chain');
       draft.next(npmLockStep(dir, draft.files()));
     }
     const patchPath = posix.join(dir, 'patches', RUNNER_PATCH);
-    if (needsPatch && runnerPatch !== undefined && !draft.has(patchPath)) {
+    if (runnerPatch !== undefined && pointsAtPatch(draft.read(path)) && !draft.has(patchPath)) {
       draft.write(patchPath, runnerPatch, 'patch');
     }
   }

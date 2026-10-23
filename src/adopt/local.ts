@@ -57,14 +57,18 @@ export function safePath(path: string): string {
   return normal;
 }
 
+/**
+ * Deletes first, then writes: on a file system that ignores case, a file deleted under one
+ * spelling would otherwise take the one written under another with it.
+ */
 export async function applyPlan(root: string, plan: AdoptPlan): Promise<void> {
+  for (const deletion of plan.delete) {
+    await rm(join(root, safePath(deletion.path)), { force: true });
+  }
   for (const file of plan.write) {
     const path = join(root, safePath(file.path));
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, file.content);
-  }
-  for (const deletion of plan.delete) {
-    await rm(join(root, safePath(deletion.path)), { force: true });
   }
 }
 

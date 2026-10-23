@@ -1,23 +1,16 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
 import { alertOf, type RuntimeAlert } from './sweep.js';
-import { runtimePack } from '../checks/runtime/index.js';
+import { runtimeFindings } from '../checks/runtime/check.js';
+import { isDeclaringFile } from '../checks/runtime/declarations.js';
+import { defaultFetcher, type Fetcher } from '../checks/runtime/fetchers.js';
 import { parseConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
-import { silentLogger } from '../core/log.js';
-import type { Pack } from '../core/pack.js';
-import { type Engine, runChecks } from '../engine/run.js';
-import { exec } from '../exec/exec.js';
 import { repoFacts } from '../repo/facts.js';
-import { createTools } from '../tools/lock.js';
-import { ownVersion } from '../version/self.js';
 
 /**
- * How the sweep asks the runtime pack about a repository it never checks out: the declaring files
- * are read through the API, written into an empty directory, and the pack's own checks run there,
- * exactly as they run in the gate. Nothing from the repository is executed: the checks parse
- * files and ask the vendors' feeds.
+ * How the sweep asks the runtime check about a repository it never checks out: the declaring
+ * files, read through the API, go to the same function the gate's `runtime/runtimes` calls, with
+ * `talos.yml`'s `exclude` and exceptions. Nothing from the repository is executed or written to
+ * disk: the check parses the files and asks the vendors' feeds.
  */
 type Assessment = { readonly alerts: readonly RuntimeAlert[]; readonly errors: number };
 
@@ -37,54 +30,41 @@ function configOf(text: string | undefined): TalosConfig {
   return parseConfig(FALLBACK_CONFIG);
 }
 
-/** A path inside `root`, or `undefined` for one that would leave it. */
-export function inside(root: string, path: string): string | undefined {
-  const target = resolve(root, path);
-  const rel = relative(root, target);
-  return rel === '' || rel.startsWith('..') || rel.split(sep).includes('..') ? undefined : target;
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-async function writeFiles(root: string, files: ReadonlyMap<string, string>): Promise<string[]> {
-  const written: string[] = [];
-  for (const [path, text] of files) {
-    const target = inside(root, path);
-    if (target === undefined) continue;
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, text);
-    written.push(path);
-  }
-  return written;
-}
+export type AssessorOptions = {
+  readonly fetcher?: Fetcher;
+  /** `YYYY-MM-DD`, in UTC. */
+  readonly today?: () => string;
+};
 
-/** The runtime pack's checks as an assessor; another pack can stand in for tests. */
-export function packAssessor(pack: Pack = runtimePack): RuntimeAssessor {
+/**
+ * The runtime check as an assessor. A feed that can't be read fails the whole repository's
+ * assessment, counted as one error and never as a pass; its message, which may name a file, is
+ * dropped, since the sweep's log is public.
+ */
+export function runtimeAssessor(options: AssessorOptions = {}): RuntimeAssessor {
   return async (files) => {
-    const root = await mkdtemp(join(tmpdir(), 'talos-sweep-'));
+    const config = configOf(files.get('talos.yml'));
+    const declaring = new Map(
+      repoFacts([...files.keys()], config.exclude)
+        .files.filter((path) => isDeclaringFile(path))
+        .flatMap((path): [string, string][] => {
+          const text = files.get(path);
+          return text === undefined ? [] : [[path, text]];
+        }),
+    );
     try {
-      const written = await writeFiles(root, files);
-      const config = configOf(files.get('talos.yml'));
-      const engine: Engine = {
-        exec,
-        tools: createTools(exec, silentLogger),
-        log: silentLogger,
-        version: ownVersion(),
-        packs: [pack],
-      };
-      const result = await runChecks(engine, {
-        root,
-        sha: '0'.repeat(40),
-        tiers: ['commit', 'head'],
-        os: 'linux',
-        side: 'alone',
-        config,
-        facts: repoFacts(written, config.exclude),
+      const findings = await runtimeFindings(declaring, {
+        fetcher: options.fetcher ?? defaultFetcher(),
+        today: (options.today ?? utcToday)(),
+        exceptions: config.supply_chain.exceptions,
       });
-      return {
-        alerts: result.outcomes.flatMap((o) => o.findings.flatMap((f) => alertOf(f) ?? [])),
-        errors: result.outcomes.filter((o) => o.status === 'error').length,
-      };
-    } finally {
-      await rm(root, { recursive: true, force: true });
+      return { alerts: findings.flatMap((f) => alertOf(f) ?? []), errors: 0 };
+    } catch {
+      return { alerts: [], errors: 1 };
     }
   };
 }

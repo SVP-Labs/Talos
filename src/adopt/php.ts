@@ -28,9 +28,13 @@ export function isLaravel(manifest: Manifest): boolean {
  */
 export function allowsOlderPhp(constraint: string): boolean | undefined {
   const range = constraint
-    .replaceAll(/\s*,\s*/g, ' ')
-    .replaceAll(/\s*\|\|?\s*/g, ' || ')
-    .trim();
+    .split(',')
+    .map((part) => part.trim())
+    .join(' ')
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+    .join(' || ');
   try {
     const lowest = semver.minVersion(range);
     return lowest === null ? undefined : semver.lt(lowest, '8.4.0');
@@ -53,8 +57,7 @@ function withPlugins(manifest: Manifest): Manifest {
   const plugins = table.catch({}).parse(allowed ?? {});
   const { [INSTALLER]: _, ...kept } = plugins;
   const next = { ...kept, ...Object.fromEntries(PLUGINS.map((name) => [name, true])) };
-  const same =
-    !(INSTALLER in plugins) && PLUGINS.every((name) => plugins[name] === true);
+  const same = !(INSTALLER in plugins) && PLUGINS.every((name) => plugins[name] === true);
   return same ? manifest : { ...manifest, config: { ...config, 'allow-plugins': next } };
 }
 
@@ -67,5 +70,7 @@ function withPhp(manifest: Manifest): Manifest {
 
 /** The manifest with the plugins, the PHP version and no extension installer. */
 export function composerSettings(manifest: Manifest): Manifest {
-  return withPhp(withPlugins(withoutInstaller(withoutInstaller(manifest, 'require-dev'), 'require')));
+  return withPhp(
+    withPlugins(withoutInstaller(withoutInstaller(manifest, 'require-dev'), 'require')),
+  );
 }

@@ -125,6 +125,16 @@ export function joinToml(sections: readonly TomlSection[], eol = '\n'): string {
   return lines.length === 0 ? '' : `${lines.join(eol)}${eol}`;
 }
 
+/** The sections with a blank line after each that has lines, but the last. */
+export function spaced(sections: readonly TomlSection[]): TomlSection[] {
+  const filled = sections.filter((section) => section.lines.length > 0);
+  return filled.map((section, index) => {
+    const last = section.lines.at(-1) ?? '';
+    if (index === filled.length - 1 || last.trim() === '') return section;
+    return { ...section, lines: [...section.lines, ''], top: [...section.top, true] };
+  });
+}
+
 export function eolOf(text: string): string {
   return text.includes('\r\n') ? '\r\n' : '\n';
 }

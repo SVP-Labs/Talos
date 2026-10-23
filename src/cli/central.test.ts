@@ -137,6 +137,32 @@ describe('talos central', () => {
     expect(lastJson(terminal.lines)).toMatchObject({ ok: false, leaks: 0, canary: false });
   });
 
+  it('passes the privacy self-test only with the canary watched and no name in any log', async () => {
+    const canary = 'SVP-Labs/talos-scratch-canary';
+    const fake = fakeGitHub({
+      'GET installation/repositories': installation([{ id: 1, name: canary }]),
+      'GET repos/SVP-Labs/Talos/actions/runs/5/attempts/1/jobs': {
+        body: {
+          total_count: 1,
+          jobs: [{ id: 8, name: 'sweep-0', status: 'completed', conclusion: 'success' }],
+        },
+      },
+      'GET repos/SVP-Labs/Talos/actions/jobs/8/logs': { body: 'repositories: 1\n' },
+    });
+    const env = {
+      GITHUB_TOKEN: 'w',
+      TALOS_REVIEWER_TOKEN: 'r',
+      GITHUB_REPOSITORY: 'SVP-Labs/Talos',
+      GITHUB_RUN_ID: '5',
+    };
+    const watched = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: nameDigest(canary) });
+    expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], watched)).toBe(0);
+    expect(lastJson(watched.lines)).toMatchObject({ ok: true, leaks: 0, canary: true });
+    const unset = io({ ...env, TALOS_PRIVACY_CANARY_SHA256: '' });
+    expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['privacy'], unset)).toBe(1);
+    expect(lastJson(unset.lines)).toMatchObject({ ok: false, leaks: 0, canary: null });
+  });
+
   it('runs the channels-file drift check on request', async () => {
     const fake = fakeGitHub({ 'GET repos/SVP-Labs/Talos': { status: 403 } });
     const terminal = io({ TALOS_RELEASE_TOKEN: 'r', TALOS_REVIEWER_TOKEN: 'v' });

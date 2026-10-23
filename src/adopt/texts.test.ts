@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { renderClaudeMd } from './claude.js';
 import { fromScaffold, isScaffoldClaude, oldKitCallers, scaffoldLeftovers } from './scaffold.js';
 import {
   ADOPT_MARKER,
@@ -10,7 +9,6 @@ import {
   dateStamp,
   slugify,
 } from './texts.js';
-import { parseConfig } from '../config/load.js';
 import { judgeReadiness } from '../jobs/readiness.js';
 import { affectedPaths } from '../ticket/sections.js';
 
@@ -148,20 +146,5 @@ describe('Scaffold', () => {
         { path: '.github/workflows/notes.md', text: 'SVP-Labs/Workflows' },
       ]),
     ).toEqual(['.github/workflows/gates.yml']);
-  });
-});
-
-describe('renderClaudeMd', () => {
-  const ctx = { config: parseConfig('name: Notebook\nprefix: S\n'), version: '1.2.3' };
-
-  it("puts Talos's block first and keeps the project's own instructions", () => {
-    const first = renderClaudeMd('# Ours\n\nUse tabs.\n', ctx);
-    expect(first.startsWith('<!-- talos:begin -->')).toBe(true);
-    expect(first).toContain('`S-<N>`');
-    expect(first.endsWith('# Ours\n\nUse tabs.\n')).toBe(true);
-    const updated = renderClaudeMd(first, { ...ctx, version: '1.2.4' });
-    expect(updated).toContain('Talos 1.2.4');
-    expect(updated.endsWith('# Ours\n\nUse tabs.\n')).toBe(true);
-    expect(renderClaudeMd(undefined, ctx).endsWith('<!-- talos:end -->\n')).toBe(true);
   });
 });

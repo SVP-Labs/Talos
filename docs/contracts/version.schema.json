@@ -1,0 +1,49 @@
+{
+  "$id": "https://github.com/SVP-Labs/Talos/blob/main/docs/contracts/version.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "talos.version/1",
+  "description": "What `talos version --enforced --json` prints: the Talos release a repository enforces, which Thea's hub hands to tasks as TALOS_VERSION and TALOS_SHA.",
+  "type": "object",
+  "properties": {
+    "schema": { "const": "talos.version/1" },
+    "repo": {
+      "anyOf": [{ "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$" }, { "type": "null" }],
+      "description": "owner/name; null when the release came from the environment outside a clone"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
+      "description": "package.json's version at the pinned commit"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "the release commit the pin names"
+    },
+    "from": {
+      "enum": ["environment", "rulesets", "channels"],
+      "description": "TALOS_VERSION and TALOS_SHA, the repository's rulesets, or channels.json"
+    },
+    "pin": {
+      "type": "object",
+      "description": "the pin that was looked up; absent when the release came from the environment",
+      "properties": {
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "source": {
+          "type": "string",
+          "description": "the ruleset's name, or channels.json"
+        },
+        "enforcement": { "type": "string", "description": "active or evaluate" },
+        "path": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "description": "the gate workflow's path in the Talos repository; null from channels.json"
+        },
+        "channel": { "anyOf": [{ "enum": ["evaluate", "canary", "stable"] }, { "type": "null" }] }
+      },
+      "required": ["sha", "source", "enforcement", "path", "channel"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema", "repo", "version", "sha", "from"],
+  "additionalProperties": false
+}

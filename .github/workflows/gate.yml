@@ -245,6 +245,7 @@ jobs:
           tools: composer
         env:
           fail-fast: true
+          update: true # the newest patch of the cycle, which the PHP pack insists on
       - name: Run the checks
         if: ${{ steps.cached.outputs.cache-hit != 'true' }}
         working-directory: repo

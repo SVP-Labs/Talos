@@ -79,5 +79,6 @@ jobs:
           tools: composer
         env:
           fail-fast: true
+          update: true # the newest patch of the cycle, which the PHP pack insists on
       - name: Run every test project for this OS
         run: node dist/bin/talos.js self-test test-projects

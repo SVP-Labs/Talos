@@ -215,6 +215,7 @@ tostring
 typecov
 typecoverage
 uninlined
+unstub
 unusedcode
 UPDATECHECK
 ustar

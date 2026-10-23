@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadAdoptAssets } from './assets.js';
-import { renderClaudeMd } from './claude.js';
-import { AdoptRefusal, resolveConfig } from './config.js';
+import { AdoptRefusal, checkPrefix, resolveConfig } from './config.js';
 import { type AdoptAssets, type AdoptInput, adoptPlan, touchedPaths } from './plan.js';
-import { npmLockStep, toolPins } from './tool-pins.js';
 import type { Pack } from '../core/pack.js';
 import { PACKS } from '../core/registry.js';
 
@@ -30,6 +28,8 @@ const ASSETS: AdoptAssets = {
   issueForms: { 'chore.yml': 'name: Chore\n', 'config.yml': 'blank_issues_enabled: false\n' },
   prTemplate: 'Closes #\n',
   dependabot: { schedule: { interval: 'weekly' }, cooldown: { 'default-days': 1 } },
+  claudeKit: '# {{name}}\n\nBranches are `{{prefix}}-<N>`.\n',
+  runnerPatch: 'diff --git a/x b/x\n',
 };
 
 function input(texts: Record<string, string>, overrides: Partial<AdoptInput> = {}): AdoptInput {
@@ -42,7 +42,6 @@ function input(texts: Record<string, string>, overrides: Partial<AdoptInput> = {
     version: '1.0.0',
     packs: [FAKE],
     assets: ASSETS,
-    claude: renderClaudeMd,
     ...overrides,
   };
 }
@@ -53,8 +52,8 @@ function applied(
   plan: ReturnType<typeof adoptPlan>,
 ): Record<string, string> {
   const next = { ...texts };
-  for (const file of plan.write) next[file.path] = file.content;
   for (const deletion of plan.delete) Reflect.deleteProperty(next, deletion.path);
+  for (const file of plan.write) next[file.path] = file.content;
   return next;
 }
 
@@ -72,15 +71,17 @@ describe('adoptPlan', () => {
     expect(plan.config).toMatchObject({ name: 'Notebook', prefix: 'N' });
     expect(plan.write.map((f) => `${f.why} ${f.path}`)).toEqual([
       'talos.yml talos.yml',
-      'generated tool.config.js',
-      'extension tool.project.js',
-      'generated .repo-wide',
       'claude CLAUDE.md',
       'issue-form .github/ISSUE_TEMPLATE/chore.yml',
       'issue-form .github/ISSUE_TEMPLATE/config.yml',
       'pr-template .github/pull_request_template.md',
       'dependabot .github/dependabot.yml',
       'dev-dependencies package.json',
+      'line-endings .gitattributes',
+      'supply-chain pnpm-workspace.yaml',
+      'generated tool.config.js',
+      'extension tool.project.js',
+      'generated .repo-wide',
     ]);
     expect(plan.next).toEqual(['in .: pnpm install --lockfile-only']);
     expect(plan.delete).toEqual([]);
@@ -91,6 +92,7 @@ describe('adoptPlan', () => {
     const second = adoptPlan(input(applied(TS_REPO, first)));
     expect(second.write).toEqual([]);
     expect(second.delete).toEqual([]);
+    expect(second.next).toEqual([]);
     expect(second.talosYml).toBe('kept');
   });
 
@@ -104,11 +106,11 @@ describe('adoptPlan', () => {
     });
   });
 
-  it('adds the brief and replaces Scaffold and its PR template', () => {
+  it('adds the brief and replaces Scaffold, its CLAUDE.md and its PR template', () => {
     const texts = {
       'project.yml': 'scaffold: {}\nprefix: S\n',
       justfile: 'gates:\n',
-      'CLAUDE.md': 'Run `just gates`.\n',
+      'CLAUDE.md': '# Notebook\n\nRun `just gates`.\n',
       '.github/PULL_REQUEST_TEMPLATE.md': 'old\n',
     };
     const plan = adoptPlan(
@@ -117,13 +119,23 @@ describe('adoptPlan', () => {
     expect(plan.scaffold).toBe(true);
     expect(plan.brief).toBe('docs/requirements/20261023-notebook.md');
     expect(plan.write.find((f) => f.why === 'brief')?.content).toBe('# Notebook\n');
-    expect(plan.write.find((f) => f.path === 'CLAUDE.md')?.content).not.toContain('just gates');
+    const claude = plan.write.find((f) => f.path === 'CLAUDE.md')?.content ?? '';
+    expect(claude).not.toContain('just gates');
+    expect(claude).toContain('Branches are `S-<N>`.');
     expect(plan.delete).toEqual([
       { path: 'project.yml', why: 'scaffold' },
       { path: 'justfile', why: 'scaffold' },
       { path: '.github/PULL_REQUEST_TEMPLATE.md', why: 'pr-template' },
     ]);
     expect(touchedPaths(plan)).toContain('justfile');
+  });
+
+  it("keeps a project's CLAUDE.md under Talos's block, its title one level down", () => {
+    const plan = adoptPlan(input({ ...TS_REPO, 'CLAUDE.md': '# Notebook\n\n## Build\n' }));
+    const claude = plan.write.find((f) => f.path === 'CLAUDE.md')?.content ?? '';
+    expect(claude.startsWith('<!-- talos:begin -->')).toBe(true);
+    expect(claude.endsWith('<!-- talos:end -->\n\n## Notebook\n\n## Build\n')).toBe(true);
+    expect(claude.match(/^# /gm)).toHaveLength(1);
   });
 
   it("detects components in what stays, not in Scaffold's own samples", () => {
@@ -137,25 +149,105 @@ describe('adoptPlan', () => {
     expect(plan.delete.map((d) => d.path)).toContain('.github/scaffold/samples/lua/src/add.lua');
   });
 
-  it('keeps a component’s existing extension file and an unchanged CLAUDE.md block', () => {
+  it('keeps an extension file the component has', () => {
     const plan = adoptPlan(
       input({ ...TS_REPO, 'tool.project.js': 'export default { strict: true };\n' }),
     );
     expect(plan.write.map((f) => f.path)).not.toContain('tool.project.js');
   });
 
-  it('runs with every pack Talos ships, and a rerun plans nothing', async () => {
+  it('refuses a prefix another repository of the organisation uses', () => {
+    const uses = [
+      { repo: 'SVP-Labs/Notebook', prefix: 'N' },
+      { repo: 'SVP-Labs/Thea', prefix: 'T' },
+    ];
+    expect(() => adoptPlan(input(TS_REPO, { prefixesInUse: uses }))).not.toThrow();
+    expect(() => adoptPlan(input(TS_REPO, { prefix: 'T', prefixesInUse: uses }))).toThrow(
+      /prefix T is in use by SVP-Labs\/Thea/,
+    );
+    expect(() => adoptPlan(input(TS_REPO, { prefix: 'T' }))).not.toThrow();
+  });
+});
+
+describe('adoptPlan with every pack Talos ships', () => {
+  const REPO = {
+    'package.json': '{\n  "name": "web",\n  "prettier": { "semi": false }\n}\n',
+    'pnpm-lock.yaml': 'lockfileVersion: 9\n',
+    'tsconfig.json': '{}\n',
+    '.prettierrc.json': '{}\n',
+    'src/a.ts': 'export {};\n',
+    'api/pyproject.toml':
+      '[project]\nname = "api"\n\n[tool.ruff.lint]\nselect = ["E"]\n\n[tool.mypy]\nstrict = true\n',
+    'api/uv.lock': 'version = 1\n',
+    'api/app/__init__.py': '',
+    'shop/composer.json': '{\n    "require": { "php": "^8.2" }\n}\n',
+    'shop/composer.lock': '{}\n',
+    'shop/src/A.php': '<?php\n',
+    'game/main.lua': 'return 1\n',
+    'core/Cargo.toml': '[package]\nname = "core"\nversion = "0.1.0"\n',
+    'core/Cargo.lock': 'version = 4\n',
+    'core/src/lib.rs': '',
+    '.gitleaks.toml':
+      "[extend]\nuseDefault = true\n\n[[rules]]\nid = \"x\"\nregex = '''x_\\w{9}'''\n",
+    'osv-scanner.toml':
+      '[[IgnoredVulns]]\nid = "GHSA-1"\nignoreUntil = 2027-01-08\nreason = "dev only"\n',
+    'test-projects/a/package.json': '{}\n',
+  };
+
+  it('writes what each pack asks for, and a rerun plans nothing', async () => {
     const assets = await loadAdoptAssets();
-    const real = {
-      ...TS_REPO,
-      'pyproject.toml': '[project]\nname = "x"\n',
-      'tools/run.py': 'print(1)\n',
-    };
-    const first = adoptPlan(input(real, { packs: PACKS, assets }));
-    expect(first.config.components.map((c) => c.lang)).toEqual(['ts', 'py']);
-    expect(first.write.some((f) => f.why === 'generated')).toBe(true);
-    const second = adoptPlan(input(applied(real, first), { packs: PACKS, assets }));
+    const first = adoptPlan(input(REPO, { packs: PACKS, assets }));
+    expect(first.config.components.map((c) => `${c.lang} ${c.root}`)).toEqual([
+      'ts .',
+      'py api',
+      'php shop',
+      'lua .',
+      'rust core',
+    ]);
+    const paths = first.write.map((f) => f.path);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'api/ruff.toml',
+        'api/pyrightconfig.json',
+        'shop/phpstan.project.neon',
+        'shop/phpmd.project.xml',
+        'luacheck_project.lua',
+        'core/rust-toolchain.toml',
+        '.gitleaks.project.toml',
+        'patches/@stryker-mutator__vitest-runner@10.0.0.patch',
+        '.gitignore',
+        '.gitattributes',
+      ]),
+    );
+    expect(first.delete).toEqual(
+      expect.arrayContaining([{ path: '.prettierrc.json', why: 'shadowed' }]),
+    );
+    const second = adoptPlan(input(applied(REPO, first), { packs: PACKS, assets }));
     expect(second.write.map((f) => f.path)).toEqual([]);
+    expect(second.delete).toEqual([]);
+  });
+
+  it('moves the scanners’ settings into talos.yml and the project files', async () => {
+    const assets = await loadAdoptAssets();
+    const plan = adoptPlan(input(REPO, { packs: PACKS, assets }));
+    const text = (path: string): string => plan.write.find((f) => f.path === path)?.content ?? '';
+    const config = resolveConfig(input({ 'talos.yml': text('talos.yml') })).config;
+    expect(config.supply_chain.exceptions).toEqual({
+      'GHSA-1': { reason: 'dev only', expires: '2027-01-08' },
+    });
+    expect(text('.gitleaks.project.toml')).toContain('id = "x"');
+    expect(text('.gitleaks.toml')).toContain('Generated by Talos');
+    expect(text('osv-scanner.toml')).toContain('id = "GHSA-1"');
+    expect(text('api/ruff.toml')).toContain('[lint]\nextend-select = ["E"]');
+    expect(text('api/pyproject.toml')).not.toContain('[tool.mypy]');
+    expect(text('api/pyproject.toml')).toContain('exclude-newer = "1 day"');
+    expect(JSON.parse(text('shop/composer.json'))).toMatchObject({
+      require: { php: '^8.4' },
+      config: { 'allow-plugins': { 'pestphp/pest-plugin': true } },
+    });
+    expect(JSON.parse(text('package.json'))).not.toHaveProperty('prettier');
+    expect(text('.github/dependabot.yml')).toContain('- test-projects/**');
+    expect(text('pnpm-workspace.yaml')).toContain('patchedDependencies:');
   });
 });
 
@@ -177,97 +269,17 @@ describe('resolveConfig', () => {
   });
 });
 
-describe('toolPins', () => {
-  const py: Pack = {
-    name: 'py',
-    lang: 'py',
-    checks: [],
-    devTools: { manager: 'pypi', packages: { ruff: '0.17.2' } },
-  };
-  const rust: Pack = {
-    name: 'rust',
-    lang: 'rust',
-    checks: [],
-    devTools: { manager: 'cargo', packages: { x: '1' } },
-  };
-  const read = (texts: Record<string, string>) => (path: string) => texts[path];
-
-  it('pins Python tools in pyproject or requirements-dev.in, and names the next step', () => {
-    const components = [
-      { lang: 'py' as const, root: 'api', os: ['linux' as const] },
-      { lang: 'py' as const, root: 'tools', os: ['linux' as const] },
-      { lang: 'rust' as const, root: 'desk', os: ['linux' as const] },
-    ];
-    const texts = { 'api/pyproject.toml': '[project]\nname = "a"\n' };
-    const pins = toolPins(components, [py, rust], Object.keys(texts), read(texts));
-    expect(pins.files.map((f) => f.path)).toEqual([
-      'api/pyproject.toml',
-      'tools/requirements-dev.in',
-    ]);
-    expect(pins.next).toEqual([
-      'in api: uv lock',
-      'in tools: uv pip compile --generate-hashes requirements-dev.in -o requirements-dev.txt',
-      'in desk: pin x by hand',
-    ]);
-  });
-
-  it('pins where the install reads: requirements-dev.in beside hashed requirements, the group with uv.lock', () => {
-    const one = [{ lang: 'py' as const, root: '.', os: ['linux' as const] }];
-    const texts = {
-      'pyproject.toml': '[project]\nname = "a"\n',
-      'requirements.txt': 'x==1 --hash=sha256:00\n',
-      'requirements-dev.in': 'pytest\nhypothesis\n',
-    };
-    const pins = toolPins(one, [py], Object.keys(texts), read(texts));
-    expect(pins.files).toEqual([
-      {
-        path: 'requirements-dev.in',
-        content: 'pytest\nhypothesis\nruff==0.17.2\n',
-        why: 'dev-dependencies',
-      },
-    ]);
-    const locked = toolPins(one, [py], [...Object.keys(texts), 'uv.lock'], read(texts));
-    expect(locked.files.map((f) => f.path)).toEqual(['pyproject.toml']);
-  });
-
-  it('says what to do when a manifest is missing or unusual', () => {
-    const ts = [{ lang: 'ts' as const, root: 'web', os: ['linux' as const] }];
-    expect(toolPins(ts, [FAKE], [], () => undefined).next).toEqual([
-      'in web: add package.json, then rerun',
-    ]);
-    const odd = { 'pyproject.toml': 'dependency-groups.dev = []\n' };
-    const pinned = toolPins(
-      [{ lang: 'py', root: '.', os: ['linux'] }],
-      [py],
-      Object.keys(odd),
-      read(odd),
-    );
-    expect(pinned.next[0]).toMatch(/pin the dev tools by hand/);
-    const done = {
-      'pyproject.toml': '[dependency-groups]\ndev = ["ruff==0.17.2"]\n',
-      'requirements-dev.in': 'ruff==0.17.2\n',
-    };
-    expect(
-      toolPins([{ lang: 'py', root: '.', os: ['linux'] }], [py], ['pyproject.toml'], read(done))
-        .files,
-    ).toEqual([]);
-    expect(
-      toolPins(
-        [{ lang: 'py', root: '.', os: ['linux'] }],
-        [py],
-        ['requirements-dev.in'],
-        read(done),
-      ).files,
-    ).toEqual([]);
-  });
-
-  it('refreshes the lockfile where it lives, up to the root', () => {
-    expect(npmLockStep('apps/web', ['package-lock.json'])).toBe(
-      'in .: npm install --package-lock-only',
-    );
-    expect(npmLockStep('apps/web', ['apps/yarn.lock'])).toBe(
-      'in apps: yarn install --mode update-lockfile',
-    );
-    expect(npmLockStep('web', [])).toMatch(/commit pnpm-lock.yaml/);
+describe('checkPrefix', () => {
+  it("ignores the repository's own record and case, and an organisation it couldn't read", () => {
+    const uses = [{ repo: 'svp-labs/notebook', prefix: 'n' }];
+    expect(() => {
+      checkPrefix(uses, 'SVP-Labs/Notebook', 'N');
+    }).not.toThrow();
+    expect(() => {
+      checkPrefix(uses, 'SVP-Labs/Other', 'N');
+    }).toThrow(AdoptRefusal);
+    expect(() => {
+      checkPrefix(undefined, 'SVP-Labs/Other', 'N');
+    }).not.toThrow();
   });
 });

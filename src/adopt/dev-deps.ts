@@ -67,7 +67,11 @@ export function pinManifest(manifest: Manifest, fields: ManifestFields, pins: Pi
 }
 
 /** {@link pinManifest} on a manifest's text; `undefined` when every pin is already there. */
-export function pinJsonManifest(text: string, fields: ManifestFields, pins: Pins): string | undefined {
+export function pinJsonManifest(
+  text: string,
+  fields: ManifestFields,
+  pins: Pins,
+): string | undefined {
   const manifest = parseManifest(text);
   if (manifest === undefined) return undefined;
   const pinned = pinManifest(manifest, fields, pins);
@@ -189,9 +193,13 @@ export function pinPythonProject(text: string, pins: Pins): PythonProjectPin {
   return { kind: 'changed', text: next };
 }
 
-/** `requirements-dev.in` for a project without `pyproject.toml`: compiled with hashes after. */
+/**
+ * `requirements-dev.in` for a project without `pyproject.toml`: compiled with hashes after. Its
+ * comments and blank lines stay; the pins go at the end.
+ */
 export function pinRequirementsIn(text: string | undefined, pins: Pins): string | undefined {
-  const lines = (text ?? '').split(/\r?\n/).filter((line) => line.trim() !== '');
+  const lines = (text ?? '').split(/\r?\n/);
+  while (lines.length > 0 && (lines.at(-1) ?? '').trim() === '') lines.pop();
   const wanted = mergeRequirements(lines, pins);
   if (text !== undefined && sameEntries(wanted, lines)) return undefined;
   return `${wanted.join('\n')}\n`;

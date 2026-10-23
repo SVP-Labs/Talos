@@ -1,4 +1,5 @@
-import type { Reported } from '../core/finding.js';
+import { isDeclaringFile } from '../checks/runtime/declarations.js';
+import type { Finding } from '../core/finding.js';
 import type { IssueDraft } from '../jobs/talos-issues.js';
 import { markerFields } from '../status/markers.js';
 import { LABEL } from '../ticket/labels.js';
@@ -14,31 +15,17 @@ const SECURITY_MARKER = 'talos-security/1';
 export const SECURITY_LABEL = 'security';
 const P0_LABEL = 'priority/p0';
 const TOOLS_LOCK = 'tools.lock';
-
-const RUNTIME_FILES: ReadonlySet<string> = new Set([
-  '.nvmrc',
-  '.node-version',
-  '.python-version',
-  'rust-toolchain',
-  'rust-toolchain.toml',
-  'go.mod',
-  'composer.json',
-  TOOLS_LOCK,
-  'talos.yml',
-]);
-
-const CONTAINER_FILE = /^Dockerfile(?:\.[\w.-]+)?$|\.(?:Dockerfile|dockerfile)$/;
+const CONFIG = 'talos.yml';
 
 /** At most this many files are read from one repository per sweep. */
 export const MAX_FILES = 60;
 
 /**
- * Whether a path can declare a runtime: a Dockerfile, a version file, Talos's `tools.lock`, or
- * `talos.yml` (whose `exclude` and exceptions the runtime check honours).
+ * Whether the sweep reads a path: every file the gate's runtime check reads, and the root
+ * `talos.yml`, whose `exclude` and exceptions that check honours.
  */
 export function isRuntimeFile(path: string): boolean {
-  const name = path.split('/').at(-1) ?? '';
-  return RUNTIME_FILES.has(name) || CONTAINER_FILE.test(name);
+  return path === CONFIG || isDeclaringFile(path);
 }
 
 export type RuntimeAlert = {
@@ -81,7 +68,7 @@ function fixedIn(message: string, version: string): string | undefined {
  * A `runtime/security` finding as an alert. Its key is `<runtime> <version>`, optionally followed
  * by the fixed version; otherwise the fixed version is the newest one its message names.
  */
-export function alertOf(finding: Reported): RuntimeAlert | undefined {
+export function alertOf(finding: Finding): RuntimeAlert | undefined {
   if (finding.rule !== SECURITY_RULE) return undefined;
   const [runtime = '', version = '', ...rest] = (finding.key ?? '').trim().split(/\s+/);
   if (!WORD.test(runtime) || !VERSION.test(version)) return undefined;
