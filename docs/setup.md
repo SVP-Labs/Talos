@@ -253,7 +253,8 @@ trusted publishing, so no npm token is stored anywhere (C26).
    belongs to the `channels.json` fallback alone. `org init` reads the org variable
    `TALOS_LOOKUP` and creates it only when that says `channels`; otherwise it reports the ruleset
    as not needed. If smoke test 1 or 5 turns the fallback on, run `talos org init` again once
-   `talos-release` has Contents write, and it adds the ruleset.
+   `talos-release` has Contents write, and it adds the ruleset. A step that fails doesn't stop the
+   others: `org init` reports each with GitHub's reason and exits 1, so a rerun finishes the rest.
 
 ## 6. The scratch repository and six smoke tests
 

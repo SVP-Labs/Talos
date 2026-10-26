@@ -150,21 +150,36 @@ export type StepResult = {
   readonly detail: string;
 };
 
-/** What to say about a failed step: the request and its status, never a response body. */
+/**
+ * What to say about a failed step: the request, its status and GitHub's clipped reason, never the
+ * raw response body. Steps run only from an owner's own terminal, never a public log.
+ */
 function failure(step: Step, error: unknown, hint: (status: number) => string): string {
-  if (error instanceof GitHubError) return `${step.detail}: ${error.message}${hint(error.status)}`;
+  if (error instanceof GitHubError) {
+    const reason = error.reason === undefined ? '' : ` (${error.reason})`;
+    return `${step.detail}: ${error.message}${reason}${hint(error.status)}`;
+  }
   return `${step.detail}: ${error instanceof Error ? error.message : String(error)}`;
 }
 
+export type ApplyOptions = {
+  /** Words added to a refusal, by its status. */
+  readonly hint?: (status: number) => string;
+  /** Carry on past a failure, for steps that don't depend on each other. */
+  readonly independent?: boolean;
+};
+
 /**
- * Carries out every `change` in order. The order matters (the caller must be on the default
- * branch before any ruleset blocks a direct commit), so the first failure stops the rest.
+ * Carries out every `change` in order. The order usually matters (the caller must be on the
+ * default branch before any ruleset blocks a direct commit), so the first failure stops the rest,
+ * unless the steps are `independent`: then each runs and each failure is reported.
  */
 export async function applySteps(
   gh: GitHub,
   steps: readonly Step[],
-  hint: (status: number) => string = () => '',
+  options: ApplyOptions = {},
 ): Promise<StepResult[]> {
+  const hint = options.hint ?? (() => '');
   const results: StepResult[] = [];
   let failed = false;
   for (const step of steps) {
@@ -172,7 +187,7 @@ export async function applySteps(
       results.push({ id: step.id, status: step.status, detail: step.detail });
       continue;
     }
-    if (failed) {
+    if (failed && options.independent !== true) {
       results.push({ id: step.id, status: 'skipped', detail: step.detail });
       continue;
     }

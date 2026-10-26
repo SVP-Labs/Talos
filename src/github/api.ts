@@ -1,14 +1,46 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { z } from 'zod';
 
 export class GitHubError extends Error {
   override readonly name = 'GitHubError';
   constructor(
     message: string,
     readonly status: number,
+    /** GitHub's own words for a refusal, clipped; kept out of `message` so a caller opts in. */
+    readonly reason?: string,
   ) {
     super(message);
   }
+}
+
+const MAX_REASON = 200;
+
+const refusalSchema = z.object({ message: z.string(), errors: z.array(z.unknown()).optional() });
+const errorSchema = z.union([z.string(), z.object({ message: z.string() })]);
+
+/** The message and errors of a refused request's body, or nothing when it has none. */
+async function reasonOf(response: Response): Promise<string | undefined> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await response.text());
+  } catch {
+    return undefined;
+  }
+  const parsed = refusalSchema.safeParse(body);
+  if (!parsed.success) return undefined;
+  const details = (parsed.data.errors ?? []).flatMap((error) => {
+    const item = errorSchema.safeParse(error);
+    if (!item.success) return [];
+    return [typeof item.data === 'string' ? item.data : item.data.message];
+  });
+  const text = [parsed.data.message, ...details].join(': ');
+  return text.length <= MAX_REASON ? text : `${text.slice(0, MAX_REASON - 1)}…`;
+}
+
+async function refused(response: Response, request: string): Promise<GitHubError> {
+  const status = response.status;
+  return new GitHubError(`${request}: ${status}`, status, await reasonOf(response));
 }
 
 type RequestOptions = {
@@ -73,9 +105,7 @@ export function github(token: string, options: GitHubOptions = {}): GitHub {
     const url = path.startsWith('https://') ? path : `${baseUrl}/${path.replace(/^\//, '')}`;
     const response = await send(method, url, opts);
     if (response.status === 404 && opts.allowMissing === true) return undefined as T;
-    if (!response.ok) {
-      throw new GitHubError(`${method} ${path}: ${response.status}`, response.status);
-    }
+    if (!response.ok) throw await refused(response, `${method} ${path}`);
     if (response.status === 204) return undefined as T;
     const type = response.headers.get('content-type') ?? '';
     return (type.includes('json') ? await response.json() : await response.text()) as T;
@@ -86,7 +116,7 @@ export function github(token: string, options: GitHubOptions = {}): GitHub {
     let url: string | undefined = `${baseUrl}/${path.replace(/^\//, '')}${separator}per_page=100`;
     while (url !== undefined) {
       const response = await send('GET', url, {});
-      if (!response.ok) throw new GitHubError(`GET ${path}: ${response.status}`, response.status);
+      if (!response.ok) throw await refused(response, `GET ${path}`);
       const page = await response.json();
       const list = key === undefined ? page : (page as Record<string, unknown>)[key];
       items.push(...(list as T[]));

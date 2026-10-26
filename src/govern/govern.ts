@@ -81,7 +81,9 @@ export async function governRepository(options: GovernOptions): Promise<GovernRe
     ...(options.seed === undefined ? {} : { seed: options.seed }),
   };
   const steps = governPlan(state, request);
-  const results = options.dryRun ? planned(steps) : await applySteps(options.gh, steps, scopeHint);
+  const results = options.dryRun
+    ? planned(steps)
+    : await applySteps(options.gh, steps, { hint: scopeHint });
   return {
     schema: GOVERN_SCHEMA,
     repo: options.repo,

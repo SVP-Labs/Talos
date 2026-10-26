@@ -124,18 +124,28 @@ describe('talos org', () => {
     expect(await orgWith({ fetch: orgApi(emptyOrg()).fetch })(['pins'], io())).toBe(1);
   });
 
-  it('sets up the channels branch ruleset when the org uses the channels.json lookup', async () => {
+  it('runs every step past a failure, says what GitHub said and exits 1', async () => {
     const org = emptyOrg();
+    let id = 100;
     const api = orgApi(org, 'SvenPGH', [
       route(
         'GET',
         /^orgs\/SVP-Labs\/actions\/variables\/TALOS_LOOKUP$/,
         json({ name: 'TALOS_LOOKUP', value: 'channels' }),
       ),
+      route('POST', /^repos\/SVP-Labs\/Talos\/rulesets$/, (call) =>
+        record.parse(call.body).name === 'talos-release-tags'
+          ? json({ message: 'Validation Failed', errors: ['Actor must be part of the org'] }, 422)
+          : store(org.talosRulesets, call.body, id++),
+      ),
     ]);
-    expect(await orgWith({ fetch: api.fetch })(['init', '--seed', V1], io())).toBe(0);
+    const term = io();
+    expect(await orgWith({ fetch: api.fetch })(['init', '--seed', V1], term)).toBe(1);
+    expect(term.stdout).toMatch(
+      /✗ ruleset:talos-release-tags +create talos-release-tags: POST repos\/SVP-Labs\/Talos\/rulesets: 422 \(Validation Failed: Actor must be part of the org\)/,
+    );
+    expect(term.stdout).not.toContain('- ruleset:');
     expect([...org.talosRulesets.values()].map((r) => r.name)).toEqual([
-      'talos-release-tags',
       'talos-self-test',
       'talos-channels',
     ]);
