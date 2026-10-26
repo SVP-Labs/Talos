@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   checkSeed,
+  orgLookup,
   orgPlan,
   type OrgState,
   pinsOf,
@@ -39,6 +40,7 @@ function state(overrides: Partial<OrgState> = {}): OrgState {
     talosRepo: 'SVP-Labs/Talos',
     ids: IDS,
     releaseAppId: 700,
+    lookup: 'rulesets',
     definitions: {},
     channels: [],
     talosRulesets: [],
@@ -86,15 +88,40 @@ describe('orgPlan', () => {
       'change ruleset:talos-canary',
       'change ruleset:talos-stable',
       'change ruleset:talos-release-tags',
-      'change ruleset:talos-channels',
       'change ruleset:talos-self-test',
+      'ok ruleset:talos-channels',
     ]);
+    expect(steps[7]?.detail).toBe('talos-channels is only needed with TALOS_LOOKUP=channels');
     const canary = steps[3];
     expect(canary?.status === 'change' ? canary.effect : undefined).toMatchObject({
       kind: 'create-ruleset',
       scope: { kind: 'org', org: 'SVP-Labs' },
       body: { name: 'talos-canary', enforcement: 'active' },
     });
+  });
+
+  it('sets up the channels branch ruleset only in the channels.json lookup', () => {
+    const steps = orgPlan(state({ lookup: 'channels' }), templates, V1);
+    const last = steps.at(-1);
+    expect(summary(steps).slice(-3)).toEqual([
+      'change ruleset:talos-release-tags',
+      'change ruleset:talos-self-test',
+      'change ruleset:talos-channels',
+    ]);
+    expect(last?.status === 'change' ? last.effect : undefined).toMatchObject({
+      kind: 'create-ruleset',
+      scope: { kind: 'repo', repo: 'SVP-Labs/Talos' },
+      body: { name: 'talos-channels', bypass_actors: [{ actor_id: 700 }] },
+    });
+    expect(orgPlan({ ...setUp(), lookup: 'channels' }, templates).at(-1)?.status).toBe('ok');
+    const talosRulesets = setUp().talosRulesets.filter((r) => r.name !== 'talos-channels');
+    expect(orgPlan({ ...setUp(), talosRulesets }, templates).every((s) => s.status === 'ok')).toBe(
+      true,
+    );
+    const missing = orgPlan({ ...setUp(), talosRulesets, lookup: 'channels' }, templates);
+    expect(summary(missing).filter((s) => !s.startsWith('ok'))).toEqual([
+      'change ruleset:talos-channels',
+    ]);
   });
 
   it('asks for a seed when a channel has no pin yet', () => {
@@ -201,8 +228,33 @@ describe('readOrgState', () => {
     const read = await readOrgState(api.client(), identities({}), templates);
     expect(read.ids).toEqual(IDS);
     expect(read.releaseAppId).toBe(700);
+    expect(read.lookup).toBe('rulesets');
     expect(Object.keys(read.definitions)).toEqual(['talos']);
     expect(read.channels.map((r) => r.name)).toEqual(['talos-canary']);
     expect(read.releases).toEqual([{ tag: 'v0.2.0', sha: V2 }]);
+  });
+});
+
+describe('orgLookup', () => {
+  const variable = (value: string) =>
+    fakeApi([
+      route(
+        'GET',
+        /^orgs\/SVP-Labs\/actions\/variables\/TALOS_LOOKUP$/,
+        json({ name: 'TALOS_LOOKUP', value }),
+      ),
+    ]).client();
+
+  it("reads the organisation's TALOS_LOOKUP variable, rulesets when it isn't set", async () => {
+    expect(await orgLookup(variable('channels'), 'SVP-Labs')).toBe('channels');
+    expect(await orgLookup(variable('rulesets'), 'SVP-Labs')).toBe('rulesets');
+    expect(await orgLookup(variable(''), 'SVP-Labs')).toBe('rulesets');
+    expect(await orgLookup(fakeApi([]).client(), 'SVP-Labs')).toBe('rulesets');
+  });
+
+  it('refuses a value the workflows would refuse', async () => {
+    await expect(orgLookup(variable('branch'), 'SVP-Labs')).rejects.toThrow(
+      /TALOS_LOOKUP variable is "branch"/,
+    );
   });
 });

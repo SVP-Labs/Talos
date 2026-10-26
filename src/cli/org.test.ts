@@ -4,7 +4,7 @@ import type { Io } from './io.js';
 import { main } from './main.js';
 import { orgWith } from './org.js';
 import { loadTemplates } from '../govern/templates.js';
-import { fakeApi, type FakeApi, json, route } from '../govern/test/fake-api.js';
+import { fakeApi, type FakeApi, json, route, type Route } from '../govern/test/fake-api.js';
 
 const V1 = '1'.repeat(40);
 
@@ -21,11 +21,12 @@ function store(map: Map<number, Record<string, unknown>>, body: unknown, id: num
   return json({ id });
 }
 
-function orgApi(org: Org, login = 'SvenPGH'): FakeApi {
+function orgApi(org: Org, login = 'SvenPGH', first: Route[] = []): FakeApi {
   let next = 1;
   const list = (map: Map<number, Record<string, unknown>>) => () =>
     json([...map.values()].map((r) => ({ id: r.id, name: r.name, source_type: 'Repository' })));
   return fakeApi([
+    ...first,
     route('GET', /^user$/, json({ login })),
     route('GET', /^repos\/SVP-Labs\/Talos$/, json({ id: 500 })),
     route('GET', /^apps\/talos-reviewer$/, json({ id: 600 })),
@@ -94,7 +95,6 @@ describe('talos org', () => {
     ]);
     expect([...org.talosRulesets.values()].map((r) => r.name)).toEqual([
       'talos-release-tags',
-      'talos-channels',
       'talos-self-test',
     ]);
     const again = orgApi(org);
@@ -122,6 +122,23 @@ describe('talos org', () => {
     expect(api.writes()).toEqual([]);
     expect(term.stdout).toContain('! ruleset:talos-canary');
     expect(await orgWith({ fetch: orgApi(emptyOrg()).fetch })(['pins'], io())).toBe(1);
+  });
+
+  it('sets up the channels branch ruleset when the org uses the channels.json lookup', async () => {
+    const org = emptyOrg();
+    const api = orgApi(org, 'SvenPGH', [
+      route(
+        'GET',
+        /^orgs\/SVP-Labs\/actions\/variables\/TALOS_LOOKUP$/,
+        json({ name: 'TALOS_LOOKUP', value: 'channels' }),
+      ),
+    ]);
+    expect(await orgWith({ fetch: api.fetch })(['init', '--seed', V1], io())).toBe(0);
+    expect([...org.talosRulesets.values()].map((r) => r.name)).toEqual([
+      'talos-release-tags',
+      'talos-self-test',
+      'talos-channels',
+    ]);
   });
 
   it('refuses a seed that is not a release, and anyone but the owner', async () => {

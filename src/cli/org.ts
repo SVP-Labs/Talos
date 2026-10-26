@@ -93,8 +93,9 @@ export function orgWith(deps: OrgDeps): Command {
 
 /**
  * `talos org`: the organisation's custom properties, the three channel rulesets that run the
- * gate pinned at a release, and the Talos repository's tag and `channels` rulesets. `init
- * --seed <sha>` seeds every pin from the first release; afterwards the release jobs move them.
+ * gate pinned at a release, and the Talos repository's tag and self-test rulesets (and its
+ * `channels` one with `TALOS_LOOKUP=channels`). `init --seed <sha>` seeds every pin from the first
+ * release; afterwards the release jobs move them.
  * `pins` prints each channel's pin and its tag.
  */
 export const org: Command = orgWith({});
