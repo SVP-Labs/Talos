@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { renderRustfmt } from './configs.js';
-import { isInside, relativeTo, rustFiles } from './paths.js';
+import { isInside, realRelativeTo, rustFiles } from './paths.js';
 import { type Bound, cargo, failed } from './run.js';
 import { componentDir, inComponent } from '../../core/component.js';
 import type { Finding } from '../../core/finding.js';
@@ -89,16 +89,19 @@ export async function format(ctx: Bound): Promise<Finding[]> {
   }
   const dir = componentDir(ctx);
   const own = new Set(rustFiles(ctx));
-  return changes.flatMap((u): Finding[] => {
-    const file = relativeTo(ctx.root, dir, u.file);
-    const local = inComponent(ctx.component.root, file);
-    if (!isInside(file) || local === undefined || !own.has(local)) return [];
-    return [
-      {
-        rule: 'rustfmt/format',
-        message: unformattedMessage(u),
-        location: { file, line: u.line, endLine: u.endLine },
-      },
-    ];
-  });
+  const found = await Promise.all(
+    changes.map(async (u): Promise<Finding[]> => {
+      const file = await realRelativeTo(ctx.root, dir, u.file);
+      const local = inComponent(ctx.component.root, file);
+      if (!isInside(file) || local === undefined || !own.has(local)) return [];
+      return [
+        {
+          rule: 'rustfmt/format',
+          message: unformattedMessage(u),
+          location: { file, line: u.line, endLine: u.endLine },
+        },
+      ];
+    }),
+  );
+  return found.flat();
 }

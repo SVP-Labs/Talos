@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   APPLIES,
@@ -24,6 +25,25 @@ function posixPath(path: string): string {
 export function relativeTo(to: string, base: string, file: string): string {
   const absolute = isAbsolute(file) ? file : resolve(base, file);
   return posixPath(relative(to, absolute));
+}
+
+/** A path as the file system names it: links and Windows short names resolved, no `\\?\`. */
+async function realPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * As {@link relativeTo}, for a tool that prints canonical paths (cargo fmt): Windows gives them
+ * the `\\?\` prefix and long names, and macOS resolves `/var` to `/private/var`, so `to` and the
+ * file are compared as the file system names them.
+ */
+export async function realRelativeTo(to: string, base: string, file: string): Promise<string> {
+  const absolute = isAbsolute(file) ? file : resolve(base, file);
+  return relativeTo(await realPath(to), base, await realPath(absolute));
 }
 
 /** Whether a relative path stays inside the directory it is relative to. */

@@ -1,6 +1,6 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { format, parseRustfmtCheck, unformattedMessage, unparsable } from './format.js';
 import type { Bound } from './run.js';
@@ -77,10 +77,24 @@ describe('format', () => {
     'rs/src/main.rs': 'fn main() {}\n',
   };
 
+  /**
+   * A checkout reached through a link, which cargo fmt prints canonical: resolved, and on
+   * Windows with the `\\?\` prefix, as a runner's short-named temp directory is printed.
+   */
+  async function linked(): Promise<{ root: string; printed: string }> {
+    const real = await tempRepo(files);
+    const root = join(await mkdtemp(join(tmpdir(), 'talos-link-')), 'checkout');
+    await symlink(real, root, 'junction');
+    const canonical = await realpath(real);
+    return { root, printed: process.platform === 'win32' ? `\\\\?\\${canonical}` : canonical };
+  }
+
   async function run(
     answer: ExecResult,
+    at?: { root: string; printed: string },
   ): Promise<{ found: Awaited<ReturnType<typeof format>>; args: string[] }> {
-    const root = await tempRepo(files);
+    const root = at?.root ?? (await tempRepo(files));
+    const printed = at?.printed ?? root;
     const config = parseConfig(MINIMAL_CONFIG);
     const args: string[] = [];
     const ctx: Bound = {
@@ -88,7 +102,7 @@ describe('format', () => {
       sha: '0'.repeat(40),
       exec: (_command, given) => {
         args.push(...given);
-        return Promise.resolve({ ...answer, stdout: answer.stdout.replaceAll('{root}', root) });
+        return Promise.resolve({ ...answer, stdout: answer.stdout.replaceAll('{root}', printed) });
       },
       tools: { path: (name) => Promise.resolve(`/tools/${name}`), version: () => '1.0.0' },
       scratch: await mkdtemp(join(tmpdir(), 'talos-rustfmt-')),
@@ -127,6 +141,12 @@ describe('format', () => {
     ]);
     const config = args[args.indexOf('--config-path') + 1] ?? '';
     expect(await readFile(config, 'utf8')).toContain('max_width = 100');
+  });
+
+  it('places files cargo fmt prints by their canonical path', async () => {
+    const stdout = `Diff in {root}${sep}rs${sep}src${sep}main.rs:1:\n-fn main() {}\n+fn main() {\n`;
+    const { found } = await run({ code: 1, stdout, stderr: '' }, await linked());
+    expect(found.map((f) => f.location)).toEqual([{ file: 'rs/src/main.rs', line: 1, endLine: 1 }]);
   });
 
   it("leaves files it couldn't parse to rust/types", async () => {
