@@ -68,7 +68,7 @@ jobs:
           TALOS_DEV=1 node dist/bin/talos.js shrinkwrap "$tree" --out npm-shrinkwrap.json
           mkdir -p "$RUNNER_TEMP/package"
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
-          tar -tzf "$RUNNER_TEMP"/package/*.tgz | grep -qx 'package/npm-shrinkwrap.json' ||
+          tar -tzf "$RUNNER_TEMP"/package/*.tgz | grep -x 'package/npm-shrinkwrap.json' >/dev/null ||
             { echo "release: the package has no npm-shrinkwrap.json" >&2; exit 1; }
       - name: Keep the package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
