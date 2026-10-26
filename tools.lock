@@ -1,0 +1,429 @@
+{
+  "//": "Outside tools Talos downloads, checks against these sha256 sums and caches; see src/tools/README.md.",
+  "runtimes": {
+    "python": "3.13.17"
+  },
+  "tools": {
+    "actionlint": {
+      "version": "1.7.12",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+          "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+          "path": "actionlint"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz",
+          "sha256": "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6",
+          "path": "actionlint"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz",
+          "sha256": "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644",
+          "path": "actionlint"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+          "sha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+          "path": "actionlint"
+        },
+        "win32-x64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip",
+          "sha256": "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9",
+          "path": "actionlint.exe"
+        }
+      }
+    },
+    "cargo-llvm-cov": {
+      "version": "0.9.1",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "b3f68e625481fed9b16444174f3fa5ebcdbde4a1878803a35eabe2dcefcdc41a",
+          "path": "cargo-llvm-cov"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "abf5f13c1520f8756d2192bfaaeadb0208f5b7eaa8cadc15bf847befa42b7360",
+          "path": "cargo-llvm-cov"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-apple-darwin.tar.gz",
+          "sha256": "ddf949b82a63017441ea76aa068bdd7e2dde8055f47cd3ef736fdbbd633bc33e",
+          "path": "cargo-llvm-cov"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-aarch64-apple-darwin.tar.gz",
+          "sha256": "7e821a6c90c0884f79f759f5d9be50799ade67bb82515186d922f26032ef43b8",
+          "path": "cargo-llvm-cov"
+        },
+        "win32-x64": {
+          "url": "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-pc-windows-msvc.zip",
+          "sha256": "656590cfa13bb7478595bbfdd3bc6bc075a4f7f3f0df5a439c1856cb03c5a4d2",
+          "path": "cargo-llvm-cov.exe"
+        }
+      }
+    },
+    "cargo-machete": {
+      "version": "0.9.2",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/bnjbvr/cargo-machete/releases/download/v0.9.2/cargo-machete-v0.9.2-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "48200087f54c55aabcd4db4af1e25742b49846c02a1b1bfa134711945b35b2e9",
+          "path": "cargo-machete-v0.9.2-x86_64-unknown-linux-musl/cargo-machete"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/bnjbvr/cargo-machete/releases/download/v0.9.2/cargo-machete-v0.9.2-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "6f96c3e6026a5bdd241b6ae600c6fb86c9197c6e189a894f91371baa01fd10f5",
+          "path": "cargo-machete-v0.9.2-aarch64-unknown-linux-gnu/cargo-machete"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/bnjbvr/cargo-machete/releases/download/v0.9.2/cargo-machete-v0.9.2-x86_64-apple-darwin.tar.gz",
+          "sha256": "3e8cb936c9b820f84d047a2b5be8b229b2be67bf2467014885376a6faffdcac3",
+          "path": "cargo-machete-v0.9.2-x86_64-apple-darwin/cargo-machete"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/bnjbvr/cargo-machete/releases/download/v0.9.2/cargo-machete-v0.9.2-aarch64-apple-darwin.tar.gz",
+          "sha256": "63e28fee386d82d33f2d12406c857f98e2d4697f3f7df7f71f34dff07fca0fde",
+          "path": "cargo-machete-v0.9.2-aarch64-apple-darwin/cargo-machete"
+        },
+        "win32-x64": {
+          "url": "https://github.com/bnjbvr/cargo-machete/releases/download/v0.9.2/cargo-machete-v0.9.2-x86_64-pc-windows-msvc.tar.gz",
+          "sha256": "996120ac70afe405c58fce508a476f25bb71032c6fb8013aa0123bba36429c76",
+          "path": "cargo-machete-v0.9.2-x86_64-pc-windows-msvc/cargo-machete.exe"
+        }
+      }
+    },
+    "cargo-mutants": {
+      "version": "27.1.0",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e",
+          "path": "cargo-mutants"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-apple-darwin.tar.gz",
+          "sha256": "7109a9e9673fe0b977f622e6f32383b6d1cbbf3fbb63b7c30db3267462c74670",
+          "path": "cargo-mutants"
+        },
+        "win32-x64": {
+          "url": "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-pc-windows-msvc.zip",
+          "sha256": "2a2f00e47d4b458262a41501b0820aa26015fd35779903d2c8b30b2993f36791",
+          "path": "cargo-mutants.exe"
+        }
+      }
+    },
+    "cargo-nextest": {
+      "version": "0.9.149",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.149/cargo-nextest-0.9.149-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "32d1d8c0567b7a80bee2bad8bb09125c846da96bc009b2de11ec08557290c770",
+          "path": "cargo-nextest"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.149/cargo-nextest-0.9.149-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "6f82e375187cf3a1f3e336879a51940c315a5d0ce7253f7e517ad28295b74189",
+          "path": "cargo-nextest"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.149/cargo-nextest-0.9.149-universal-apple-darwin.tar.gz",
+          "sha256": "47b9941765a9ff94e304a3fe5444ac1c7593da655525b8b69f8f2b31a9217507",
+          "path": "cargo-nextest"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.149/cargo-nextest-0.9.149-universal-apple-darwin.tar.gz",
+          "sha256": "47b9941765a9ff94e304a3fe5444ac1c7593da655525b8b69f8f2b31a9217507",
+          "path": "cargo-nextest"
+        },
+        "win32-x64": {
+          "url": "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.149/cargo-nextest-0.9.149-x86_64-pc-windows-msvc.zip",
+          "sha256": "bf904b85c7c5c2a29c340053a8d9d8e8027ff0d55a2bf7cef7d23032f8166438",
+          "path": "cargo-nextest.exe"
+        }
+      }
+    },
+    "gitleaks": {
+      "version": "8.30.1",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+          "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "path": "gitleaks"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
+          "sha256": "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080",
+          "path": "gitleaks"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_x64.tar.gz",
+          "sha256": "dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709",
+          "path": "gitleaks"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+          "path": "gitleaks"
+        },
+        "win32-x64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip",
+          "sha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e",
+          "path": "gitleaks.exe"
+        }
+      }
+    },
+    "hadolint": {
+      "version": "2.15.1",
+      "kind": "binary",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64",
+          "sha256": "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507",
+          "path": "hadolint"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-arm64",
+          "sha256": "f6198ef8090f404dbb771abfee086eb8c48ac177f30da7fd3510aca35b344b5d",
+          "path": "hadolint"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-macos-x86_64",
+          "sha256": "ffe9bb18b23d5ed1eae50237aecdbb523d016e96da0bd4e7aa432040acfc3fde",
+          "path": "hadolint"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-macos-arm64",
+          "sha256": "5c09f3213f8e40406abe048233d985eebef336d4a6a20021be47fadb6cf480a2",
+          "path": "hadolint"
+        },
+        "win32-x64": {
+          "url": "https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-windows-x86_64.exe",
+          "sha256": "01d927294962b5387f9ead4f18679158452be4f17c765ad0bdffe5264b9c7b0a",
+          "path": "hadolint.exe"
+        }
+      }
+    },
+    "hererocks": {
+      "version": "0.25.1-5d77b0b",
+      "kind": "binary",
+      "platforms": {
+        "any": {
+          "url": "https://raw.githubusercontent.com/luarocks/hererocks/5d77b0bafc8b96f82355ca2ce5637c00d78a065c/hererocks.py",
+          "sha256": "17629cd7716a1adaea3b78a3d8f85f4de0f58f127e99aa13e8f8fe82128b154b",
+          "path": "hererocks.py"
+        }
+      }
+    },
+    "lua-language-server": {
+      "version": "3.19.2",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-linux-x64.tar.gz",
+          "sha256": "93ad326b10f6c00911dd8c450fa098332dbd8f9f45d1052f5636a2d54479b947",
+          "path": "bin/lua-language-server"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-linux-arm64.tar.gz",
+          "sha256": "17b8e401a874440adeb649e5024c364f2bb9d15156c74a40e56d1ae9a1b2e4f2",
+          "path": "bin/lua-language-server"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-darwin-x64.tar.gz",
+          "sha256": "6f2174ece5ec63bcd9d5b22b2c902445c1cd9045fafe48c62602448ebf4c09cc",
+          "path": "bin/lua-language-server"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-darwin-arm64.tar.gz",
+          "sha256": "79149584320a23bd5fcd5bc31f47a1975acd8a4560a0e89036bb1016fa61687f",
+          "path": "bin/lua-language-server"
+        },
+        "win32-x64": {
+          "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-win32-x64.zip",
+          "sha256": "4a3dc851b3b31e7b75a23f645d1ba4a2137579a55f5fa4edbb17a3e2a6254044",
+          "path": "bin/lua-language-server.exe"
+        }
+      }
+    },
+    "osv-scanner": {
+      "version": "2.7.0",
+      "kind": "binary",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64",
+          "sha256": "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b",
+          "path": "osv-scanner"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_arm64",
+          "sha256": "4061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7",
+          "path": "osv-scanner"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_darwin_amd64",
+          "sha256": "e82c5df7ab0a42dff29a1cd0660711447b56b4c0483ff66ad8634df10fd81a45",
+          "path": "osv-scanner"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_darwin_arm64",
+          "sha256": "d4926ef8da134332543be276dff157e4c170f99ad91fc48e89448a8816bdf70b",
+          "path": "osv-scanner"
+        },
+        "win32-x64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_windows_amd64.exe",
+          "sha256": "9964ed64ec9a387391eb4cc006ad5c531154821aef29b793e02c448de4686438",
+          "path": "osv-scanner.exe"
+        }
+      }
+    },
+    "psscriptanalyzer": {
+      "version": "1.25.0",
+      "kind": "psgallery",
+      "platforms": {
+        "any": {
+          "url": "https://cdn.powershellgallery.com/packages/psscriptanalyzer.1.25.0.nupkg",
+          "sha256": "14e634c828eb98efb9f40b2918ba90f139ed5eccdf663a2a747736d996995d60",
+          "path": "PSScriptAnalyzer.psd1"
+        }
+      }
+    },
+    "semgrep": {
+      "version": "1.182.1",
+      "kind": "pypi",
+      "requirements": "tools/semgrep.txt",
+      "bin": "semgrep"
+    },
+    "shellcheck": {
+      "version": "0.11.0",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz",
+          "sha256": "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198",
+          "path": "shellcheck-v0.11.0/shellcheck"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz",
+          "sha256": "12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588",
+          "path": "shellcheck-v0.11.0/shellcheck"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz",
+          "sha256": "3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6",
+          "path": "shellcheck-v0.11.0/shellcheck"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.xz",
+          "sha256": "56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79",
+          "path": "shellcheck-v0.11.0/shellcheck"
+        },
+        "win32-x64": {
+          "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip",
+          "sha256": "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e",
+          "path": "shellcheck.exe"
+        }
+      }
+    },
+    "stylua": {
+      "version": "2.6.0",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-linux-x86_64.zip",
+          "sha256": "a485f72bbfa22e4642e77a84b5edc2611a5cab7477b34e2e709dd8f78e919895",
+          "path": "stylua"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-linux-aarch64.zip",
+          "sha256": "8e67539e5fdf7a81cd03cf592b0df18d3bb96ee17a5ea5d9bf67b86387b903b0",
+          "path": "stylua"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-macos-x86_64.zip",
+          "sha256": "90779aa873837b2dff8eb3361bd27950303914c24265a59cae0a0d0629d71585",
+          "path": "stylua"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-macos-aarch64.zip",
+          "sha256": "dab9b66d340ca5ffc8225211f1dcf89b84783e09b8cbec8c518497eba81f3c42",
+          "path": "stylua"
+        },
+        "win32-x64": {
+          "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.6.0/stylua-windows-x86_64.zip",
+          "sha256": "fd13b4014e3b779c244bbc03f2c282e357f15bc526de6a6fa5ecbc447538313c",
+          "path": "stylua.exe"
+        }
+      }
+    },
+    "uv": {
+      "version": "0.13.5",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f",
+          "path": "uv-x86_64-unknown-linux-gnu/uv"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "4bb69cf95ed13f23713bb7bc09f241896ea0c75b7c557e615a20604b82f9c403",
+          "path": "uv-aarch64-unknown-linux-gnu/uv"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-apple-darwin.tar.gz",
+          "sha256": "b0f52b0e3945b4107d89024ea38e625683011fbfc05a0d98f9fa2d6dcee28c66",
+          "path": "uv-x86_64-apple-darwin/uv"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-apple-darwin.tar.gz",
+          "sha256": "743f85035a1996ecb350659e01cd9faea9709829be09b1b4b03c73eaf3c9cd73",
+          "path": "uv-aarch64-apple-darwin/uv"
+        },
+        "win32-x64": {
+          "url": "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-pc-windows-msvc.zip",
+          "sha256": "a38b8d1902b7cfbc76b423ba1bb456f623f42064cdc72628b6075b89afd1019a",
+          "path": "uv.exe"
+        }
+      }
+    },
+    "zizmor": {
+      "version": "1.31.1",
+      "kind": "archive",
+      "platforms": {
+        "linux-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99",
+          "path": "zizmor"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "37eebbd5762a44f262d94875431b14a6d2402991e90a685113ea97b8b41be833",
+          "path": "zizmor"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-x86_64-apple-darwin.tar.gz",
+          "sha256": "72ae63bb85b67229c06242f04195cb43927e9fab5f43803c6434dc701a517d61",
+          "path": "zizmor"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-aarch64-apple-darwin.tar.gz",
+          "sha256": "ad5aa633cd56215b11e6c51d51f90c7e6b22904a75047d1215abbd422f61d698",
+          "path": "zizmor"
+        },
+        "win32-x64": {
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-x86_64-pc-windows-msvc.zip",
+          "sha256": "4de30371c8a3b483aecbcf0dec1fd6a2b6aae65051ca226b4f6527baac6a8c7a",
+          "path": "zizmor.exe"
+        }
+      }
+    }
+  }
+}

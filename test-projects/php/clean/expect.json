@@ -1,0 +1,1 @@
+{ "checks": ["php/format", "php/lint", "php/types", "php/deadcode", "php/typecov", "php/arch", "php/config-strength", "php/toolchain"], "clean": true }

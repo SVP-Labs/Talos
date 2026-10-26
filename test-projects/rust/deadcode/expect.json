@@ -1,0 +1,5 @@
+{
+  "checks": ["rust/deadcode"],
+  "rules": ["rustc/dead_code", "cargo-machete/unused-dependency"],
+  "os": ["linux", "windows"]
+}

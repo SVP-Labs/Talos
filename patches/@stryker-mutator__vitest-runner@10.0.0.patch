@@ -1,0 +1,14 @@
+diff --git a/dist/src/vitest-test-runner.js b/dist/src/vitest-test-runner.js
+index 84f1ca026503b8e92b7adc952ec6c6a401943656..6ab038b04284e56e997e7183ab1c9ea99b58ae39 100644
+--- a/dist/src/vitest-test-runner.js
++++ b/dist/src/vitest-test-runner.js
+@@ -144,7 +144,8 @@ export class VitestTestRunner {
+         if (testIds.length > 0) {
+             const parsedTests = testIds.map(fromTestId);
+             const regexTestNameFilter = parsedTests
+-                .map(({ test: name }) => escapeRegExp(name))
++                // Vitest 5 joins a test's suites with " > " where Vitest 4 used a space.
++                .map(({ test: name }) => escapeRegExp(name).replaceAll(' ', '(?: | > )'))
+                 .join('|');
+             const regex = new RegExp(regexTestNameFilter);
+             testFilesToRun = parsedTests.map(({ file }) => file);

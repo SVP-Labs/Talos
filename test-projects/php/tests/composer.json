@@ -1,0 +1,28 @@
+{
+    "name": "svp-labs/ledger-tests",
+    "description": "A Talos test project: a failing test and code no test covers.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4"
+    },
+    "require-dev": {
+        "pestphp/pest": "5.3.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ledger\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    }
+}

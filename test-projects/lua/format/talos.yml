@@ -1,0 +1,4 @@
+name: Format
+prefix: FM
+components:
+  - { lang: lua }

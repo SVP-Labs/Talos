@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/deadcode"],
+  "rules": ["knip/exports", "knip/files"]
+}

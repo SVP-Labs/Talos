@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+disabledRules = ["generic-api-key"]
+
+[[allowlists]]
+description = "Everything under fixtures"
+paths = ['''fixtures/''']
+
+[[rules]]
+id = "aws-access-token"
+regex = '''AKIA_NEVER_[0-9]{4}'''

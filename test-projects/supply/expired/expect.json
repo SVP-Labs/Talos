@@ -1,0 +1,1 @@
+{ "checks": ["supply/expired"], "rules": ["supply/expired", "supply/allow-too-long"] }

@@ -1,0 +1,1 @@
+{ "checks": ["docs/spelling"], "rules": ["cspell/unknown-word"] }

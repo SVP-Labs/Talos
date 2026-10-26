@@ -1,0 +1,1 @@
+{ "checks": ["common/custom-commit"], "rules": ["custom/names/file-name"] }

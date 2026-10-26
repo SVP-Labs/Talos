@@ -1,0 +1,1 @@
+{ "checks": ["security/secrets", "security/dependencies", "security/semgrep", "security/config-strength"], "clean": true }

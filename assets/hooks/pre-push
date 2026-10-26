@@ -1,0 +1,64 @@
+#!/bin/sh
+# Talos's pre-push hook, written by talos adopt, which rewrites it.
+#
+# It runs the fast tier (format, lint, types, dead code, unit tests, suppressions and the commit
+# subject) on the working tree before a push, so what the gate will say arrives early. The gate
+# runs the same checks on the PR and decides there: skipping this hook skips only the early answer.
+#
+# Git runs it once the clone's core.hooksPath is .githooks. A Node project's prepare script sets
+# that on install; anywhere else, run `git config core.hooksPath .githooks` once in each clone.
+
+set -u
+
+# Each line git passes is "<local ref> <local sha> <remote ref> <remote sha>". A push that only
+# deletes branches or sends tags has nothing for the fast tier to judge.
+refs=0
+branches=0
+if [ ! -t 0 ]; then
+  while read -r _ sha remote _; do
+    refs=$((refs + 1))
+    case "${remote}:${sha}" in
+      refs/heads/*:*[!0]*) branches=$((branches + 1)) ;;
+      *) ;;
+    esac
+  done
+fi
+if [ "${refs}" -gt 0 ] && [ "${branches}" -eq 0 ]; then
+  exit 0
+fi
+
+# Git runs a hook at the top of the working tree. Talos runs the release the repository
+# enforces, through the talos on PATH or else npx; in Talos's own repository, the build at hand.
+set -- npx --yes @svp-labs/talos
+if command -v talos >/dev/null 2>&1; then
+  set -- talos
+fi
+if grep -q '"name": "@svp-labs/talos"' package.json 2>/dev/null; then
+  if [ ! -f dist/bin/talos.js ]; then
+    echo 'pre-push: build Talos first (pnpm build); here the hook runs that build.' >&2
+    exit 1
+  fi
+  set -- env TALOS_DEV=1 node dist/bin/talos.js
+fi
+if [ "$1" = npx ] && ! command -v npx >/dev/null 2>&1; then
+  echo 'pre-push: the fast tier runs on Talos, which needs Node.js 22.18 or later with npx.' >&2
+  exit 1
+fi
+
+"$@" check --tiers commit
+code=$?
+case "${code}" in
+  0) exit 0 ;;
+  1)
+    echo 'pre-push: the fast tier found new findings: fix them and push again. The gate runs' >&2
+    echo 'the same checks on the PR, so pushing past this hook only moves the failure there.' >&2
+    ;;
+  2)
+    echo 'pre-push: Talos hit an engine error (exit 2), a Talos bug: report it on' >&2
+    echo 'SVP-Labs/Talos, and never work around it in the project.' >&2
+    ;;
+  *)
+    echo "pre-push: talos check could not run (exit ${code}); talos doctor says what's missing." >&2
+    ;;
+esac
+exit 1

@@ -1,0 +1,4 @@
+name: Case
+prefix: TC
+checks:
+  links: { run: bash scripts/links.sh, scope: head }

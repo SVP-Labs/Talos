@@ -1,0 +1,5 @@
+name: Ledger
+prefix: LG
+components:
+  - { lang: php }
+mutation: [src/Limits.php]

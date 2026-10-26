@@ -1,0 +1,7 @@
+# The settings `talos adopt` gives every ecosystem in .github/dependabot.yml. The cooldown holds a
+# version update until its release is a day old, matching the supply-chain rule that installs only
+# releases at least a day old; Dependabot never holds a security update.
+schedule:
+  interval: weekly
+cooldown:
+  default-days: 1

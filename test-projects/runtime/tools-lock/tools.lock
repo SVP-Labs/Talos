@@ -1,0 +1,10 @@
+{
+  "runtimes": {
+    "python": "3.13.1"
+  },
+  "tools": {
+    "gitleaks": {
+      "version": "8.28.0"
+    }
+  }
+}

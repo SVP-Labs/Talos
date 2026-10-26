@@ -1,0 +1,5 @@
+name: Case
+prefix: CA
+components:
+  - { lang: ts }
+mutation: [src/clamp.ts]

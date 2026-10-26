@@ -1,0 +1,277 @@
+# Moves the channel pins (talos central channels): hourly, canary to the newest release no trusted
+# regression holds back and stable to canary's release once it has earned it; at once when a
+# trusted `regression` issue opens or gets the label (rollback); and on the owner's dispatch,
+# the urgent promotion after one clean gate run. It runs on main only (the `release`
+# environment holds talos-release's key and accepts nothing else) and at stable's pin, so a broken
+# canary release can't stop its own rollback. The run is public: it prints counts and Talos's own
+# release tags only. Each token reaches what it reads: the organisation's rulesets and custom
+# properties, the canary repositories' runs (masked before the token is minted for them), and
+# channels.json in this repository.
+name: channels
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  issues:
+    types: [opened, labeled]
+
+permissions: {}
+
+concurrency: # pin moves run one at a time, and each run decides from scratch
+  group: channels
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  channels:
+    name: channels
+    if: >-
+      ${{ github.event_name != 'issues' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'regression') ||
+        (github.event.action == 'opened' &&
+          contains(github.event.issue.labels.*.name, 'regression')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read # tags, main and channels.json of this repository
+      issues: read # its regression issues and who labelled them
+    steps:
+      - name: Refuse a dispatch by anyone but the owner
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          OWNER: ${{ vars.TALOS_OWNER }}
+        run: |
+          [[ -n "$OWNER" ]] || { echo "channels: the variable TALOS_OWNER names no owner" >&2; exit 1; }
+          actor="${GITHUB_ACTOR,,}" triggering="${GITHUB_TRIGGERING_ACTOR:-$GITHUB_ACTOR}"
+          if [[ "$actor" != "${OWNER,,}" || "${triggering,,}" != "${OWNER,,}" ]]; then
+            echo "channels: only the owner may dispatch the urgent promotion" >&2
+            exit 1
+          fi
+      - name: Mint talos-release's token for the organisation's rulesets and properties
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-administration: write
+          permission-organization-custom-properties: read
+      - name: Find stable's pin
+        id: find
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          WORKFLOW_TOKEN: ${{ github.token }}
+          ORG: ${{ github.repository_owner }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: |
+          set -euo pipefail
+          fail() {
+            echo "find-stable: $1" >&2
+            exit 1
+          }
+          if [[ "${TALOS_LOOKUP:-rulesets}" == channels ]]; then
+            sha="$(GH_TOKEN="$WORKFLOW_TOKEN" \
+              gh api "repos/$GITHUB_REPOSITORY/contents/channels.json?ref=channels" 2>/dev/null |
+              jq -r '.content | @base64d | fromjson | .stable // empty' 2>/dev/null)" ||
+              fail "cannot read channels.json"
+          else
+            id="$(gh api --paginate "orgs/$ORG/rulesets" 2>/dev/null |
+              jq -s -r 'add // [] | .[] | select(.name == "talos-stable") | .id' 2>/dev/null)" ||
+              fail "cannot list the organisation's rulesets"
+            [[ "$id" =~ ^[0-9]+$ ]] || fail "there is no single talos-stable ruleset"
+            sha="$(gh api "orgs/$ORG/rulesets/$id" 2>/dev/null |
+              jq -r '[.rules[]? | select(.type == "workflows") | .parameters.workflows[]?.sha // empty]
+                | unique | if length == 1 then .[0] else empty end' 2>/dev/null)" ||
+              fail "cannot read the talos-stable ruleset"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "stable pins no release yet: seed it with talos org init --seed"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out Talos at stable's pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.find.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Mint talos-release's token to read the organisation's custom properties
+        id: properties
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-custom-properties: read
+      - name: Look the canary repositories up and mask their names
+        id: canary
+        env:
+          TALOS_PROPERTIES_TOKEN: ${{ steps.properties.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
+        run: node talos-kit/bootstrap/launch.ts central pick --channel canary --json
+      - name: Mint talos-release's token to read those repositories' runs
+        id: runs
+        if: ${{ steps.canary.outputs.names != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.canary.outputs.names }}
+          permission-actions: read
+      - name: Mint talos-release's token to write channels.json here
+        id: mirror
+        if: ${{ vars.TALOS_LOOKUP == 'channels' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          permission-contents: write
+      - name: Move the pins
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TALOS_RELEASE_TOKEN: ${{ steps.token.outputs.token }}
+          TALOS_CANARY_TOKEN: ${{ steps.runs.outputs.token }}
+          TALOS_MIRROR_TOKEN: ${{ steps.mirror.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
+          TALOS_OWNER: ${{ vars.TALOS_OWNER }}
+          TALOS_THEA_APP: ${{ vars.TALOS_THEA_APP }}
+          TALOS_REVIEWER_APP: ${{ vars.TALOS_REVIEWER_APP }}
+          TALOS_RELEASE_APP: ${{ vars.TALOS_RELEASE_APP }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: node talos-kit/bootstrap/launch.ts central channels --json
+
+  privacy:
+    name: privacy
+    needs: channels
+    if: ${{ !cancelled() && needs.channels.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      actions: read # this run's jobs and their logs
+      contents: read # this repository's rulesets, to find the release to run
+    steps:
+      - name: Mint talos-release's token to read the organisation's custom properties
+        id: properties
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-organization-custom-properties: read
+      - name: Find the enforced Talos release
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TALOS_LOOKUP: ${{ vars.TALOS_LOOKUP }}
+        run: |
+          # bootstrap/find-pin.sh, inlined (Talos isn't checked out yet); a test keeps them equal.
+          find_pin() {
+            set -euo pipefail
+
+            repo="${GITHUB_REPOSITORY:-}"
+            talos="${TALOS_REPO:-SVP-Labs/Talos}"
+            mode="${TALOS_LOOKUP:-rulesets}"
+            sha_pattern='^[0-9a-f]{40}$'
+
+            fail() {
+              echo "find-pin: $1" >&2
+              exit 1
+            }
+
+            by_rulesets() {
+              local talos_id ids id detail shas count=0 pin=""
+              talos_id="$(gh api "repos/$talos" 2>/dev/null | jq -r '.id')" ||
+                fail "cannot read the Talos repository"
+              ids="$(gh api --paginate "repos/$repo/rulesets?includes_parents=true" 2>/dev/null |
+                jq -s -r 'add // [] | .[] | select(.enforcement != "disabled") | .id')" ||
+                fail "cannot list the repository's rulesets"
+              for id in $ids; do
+                detail="$(gh api "repos/$repo/rulesets/$id?includes_parents=true" 2>/dev/null)" ||
+                  fail "cannot read a ruleset"
+                shas="$(jq -r --argjson talos "$talos_id" '
+                  [.rules[]? | select(.type == "workflows") | .parameters.workflows[]?
+                    | select(.repository_id == $talos) | (.sha // "none")] | unique | .[]' <<<"$detail")" ||
+                  fail "cannot read a ruleset"
+                [[ -z "$shas" ]] && continue
+                count=$((count + 1))
+                [[ "$shas" == *$'\n'* ]] && fail "a ruleset pins Talos at several commits"
+                [[ "$shas" =~ $sha_pattern ]] || fail "a ruleset runs Talos at a ref, not a commit SHA"
+                pin="$shas"
+              done
+              [[ "$count" -eq 0 ]] && fail "no ruleset that applies to this repository runs the Talos gate"
+              [[ "$count" -gt 1 ]] && fail "$count Talos rulesets apply; exactly one must"
+              printf '%s\n' "$pin"
+            }
+
+            by_channels() {
+              local channel sha
+              channel="$(gh api "repos/$repo" 2>/dev/null | jq -r '.custom_properties.talos // empty')" ||
+                fail "cannot read the repository"
+              case "$channel" in
+                evaluate | canary | stable) ;;
+                *) fail "the talos property names no channel" ;;
+              esac
+              sha="$(gh api "repos/$talos/contents/channels.json?ref=channels" 2>/dev/null |
+                jq -r --arg channel "$channel" '.content | @base64d | fromjson | .[$channel] // empty')" ||
+                fail "cannot read channels.json"
+              [[ "$sha" =~ $sha_pattern ]] || fail "channels.json has no commit for the channel"
+              printf '%s\n' "$sha"
+            }
+
+            [[ -n "$repo" ]] || fail "GITHUB_REPOSITORY is not set"
+            case "$mode" in
+              rulesets) by_rulesets ;;
+              channels) by_channels ;;
+              *) fail "TALOS_LOOKUP must be rulesets or channels" ;;
+            esac
+          }
+          pin="$(find_pin)"
+          printf 'sha=%s\n' "$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out Talos at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.find.outputs.sha }}
+          path: talos-kit
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Mask every repository name and find the canary
+        id: canary
+        env:
+          TALOS_PROPERTIES_TOKEN: ${{ steps.properties.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
+          # The canary's name as a SHA-256 digest: the name itself would print here.
+          TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
+        run: node talos-kit/bootstrap/launch.ts central privacy --mask --json
+      - name: Mint talos-release's token for the canary alone
+        id: release
+        if: ${{ steps.canary.outputs.name != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          private-key: ${{ secrets.TALOS_RELEASE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.canary.outputs.name }}
+          permission-metadata: read
+      - name: Search this run's logs for repository names
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TALOS_PROPERTIES_TOKEN: ${{ steps.properties.outputs.token }}
+          TALOS_ORG: ${{ github.repository_owner }}
+          TALOS_RELEASE_TOKEN: ${{ steps.release.outputs.token }}
+          TALOS_PRIVACY_JOB: privacy
+          # The canary's name as a SHA-256 digest: the name itself would print here.
+          TALOS_PRIVACY_CANARY_SHA256: ${{ vars.TALOS_PRIVACY_CANARY_SHA256 }}
+        run: node talos-kit/bootstrap/launch.ts central privacy --json

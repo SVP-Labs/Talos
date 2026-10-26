@@ -1,0 +1,1 @@
+{ "checks": ["php/format"], "rules": ["pint/format"] }

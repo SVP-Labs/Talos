@@ -1,0 +1,4 @@
+{
+  "checks": ["lua/format", "lua/lint", "lua/types", "lua/deadcode", "lua/config-strength", "lua/toolchain"],
+  "clean": true
+}

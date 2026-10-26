@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/arch"],
+  "rules": ["depcruise/no-circular", "depcruise/no-dev-deps-in-shipped-code"]
+}

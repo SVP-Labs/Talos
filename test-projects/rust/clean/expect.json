@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "rust/format",
+    "rust/lint",
+    "rust/types",
+    "rust/deadcode",
+    "rust/config-strength",
+    "rust/toolchain",
+    "rust/tests",
+    "rust/coverage",
+    "rust/mutation"
+  ],
+  "clean": true,
+  "os": ["linux", "windows"]
+}

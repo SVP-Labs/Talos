@@ -1,0 +1,1 @@
+{ "checks": ["docs/markdown"], "rules": ["markdownlint/MD025", "markdownlint/MD013"] }

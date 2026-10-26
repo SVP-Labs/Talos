@@ -1,0 +1,25 @@
+{
+    "name": "svp-labs/ledger-arch",
+    "description": "A Talos test project: code that breaks the universal and the project's architecture rules.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.4"
+    },
+    "require-dev": {
+        "deptrac/deptrac": "4.7.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ledger\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

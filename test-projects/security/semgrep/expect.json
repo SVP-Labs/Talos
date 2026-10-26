@@ -1,0 +1,1 @@
+{ "checks": ["security/semgrep"], "rules": ["semgrep/python.lang.security.audit.subprocess-shell-true.subprocess-shell-true"] }

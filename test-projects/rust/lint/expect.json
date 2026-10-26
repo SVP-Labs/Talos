@@ -1,0 +1,13 @@
+{
+  "checks": ["rust/lint"],
+  "rules": [
+    "clippy/unwrap_used",
+    "clippy/too_many_arguments",
+    "clippy/too_many_lines",
+    "clippy/cognitive_complexity",
+    "rustc/unsafe_code",
+    "talos/max-depth",
+    "talos/max-lines"
+  ],
+  "os": ["linux", "windows"]
+}

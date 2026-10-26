@@ -1,0 +1,5 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/bin/talos.ts", "src/cli/*.ts", "bootstrap/*.ts"],
+  "project": ["src/**/*.ts", "bootstrap/**/*.ts"]
+}

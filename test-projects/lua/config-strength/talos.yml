@@ -1,0 +1,4 @@
+name: Lenient
+prefix: LN
+components:
+  - { lang: lua }

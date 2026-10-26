@@ -1,0 +1,1 @@
+{ "checks": ["php/tests", "php/coverage"], "rules": ["tests/failed", "coverage/uncovered"] }

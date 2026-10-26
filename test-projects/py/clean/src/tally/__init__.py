@@ -1,0 +1,1 @@
+"""Counts words in text."""

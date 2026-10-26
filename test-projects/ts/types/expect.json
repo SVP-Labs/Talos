@@ -1,0 +1,5 @@
+{
+  "checks": ["ts/types"],
+  "rules": ["tsc/TS2322"],
+  "os": ["linux", "windows"]
+}

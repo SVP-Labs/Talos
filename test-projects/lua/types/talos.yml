@@ -1,0 +1,4 @@
+name: Types
+prefix: TP
+components:
+  - { lang: lua }

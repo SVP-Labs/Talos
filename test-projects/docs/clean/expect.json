@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "docs/markdown",
+    "docs/spelling",
+    "docs/decisions",
+    "docs/glossary",
+    "docs/references",
+    "docs/comments",
+    "docs/claude-md"
+  ],
+  "clean": true
+}

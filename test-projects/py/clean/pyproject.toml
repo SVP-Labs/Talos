@@ -1,0 +1,22 @@
+[project]
+name = "tally"
+version = "0.1.0"
+description = "Counts words."
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "basedpyright==1.40.2",
+  "complexipy==8.1.0",
+  "coverage==7.17.0",
+  "import-linter==2.15",
+  "mutmut==3.8.0",
+  "pytest==9.1.1",
+  "ruff==0.17.2",
+  "vulture==2.16",
+]

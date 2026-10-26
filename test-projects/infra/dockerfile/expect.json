@@ -1,0 +1,4 @@
+{
+  "checks": ["infra/dockerfile"],
+  "rules": ["hadolint/DL3007", "hadolint/DL3008", "hadolint/DL3000"]
+}

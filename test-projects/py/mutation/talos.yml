@@ -1,0 +1,5 @@
+name: Case
+prefix: TC
+components:
+  - { lang: py }
+mutation: [src/lenient/limits.py]

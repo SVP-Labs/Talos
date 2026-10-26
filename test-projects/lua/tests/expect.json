@@ -1,0 +1,1 @@
+{ "checks": ["lua/tests"], "rules": ["tests/failed"] }

@@ -1,0 +1,4 @@
+{
+  "checks": ["docs/comments"],
+  "rules": ["comments/todo", "comments/reference", "comments/history", "comments/code"]
+}

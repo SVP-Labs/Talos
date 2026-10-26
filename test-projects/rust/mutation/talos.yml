@@ -1,0 +1,5 @@
+name: Case
+prefix: TC
+components:
+  - { lang: rust, os: [linux, windows] }
+mutation: [src/lib.rs]

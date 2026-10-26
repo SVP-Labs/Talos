@@ -1,0 +1,25 @@
+{
+  "checks": ["common/suppressions"],
+  "rules": [
+    "suppression/eslint-disable",
+    "suppression/ts-expect-error",
+    "suppression/istanbul-ignore",
+    "suppression/noqa",
+    "suppression/type-ignore",
+    "suppression/pyright-ignore",
+    "suppression/pragma-no-cover",
+    "suppression/phpstan-ignore",
+    "suppression/code-coverage-ignore",
+    "suppression/allow",
+    "suppression/luacheck",
+    "suppression/diagnostic-disable",
+    "suppression/shellcheck-disable",
+    "suppression/hadolint-ignore",
+    "suppression/suppress-message",
+    "suppression/nosemgrep",
+    "suppression/gitleaks-allow",
+    "suppression/nosec",
+    "suppression/zizmor-ignore",
+    "suppression/markdownlint-disable"
+  ]
+}

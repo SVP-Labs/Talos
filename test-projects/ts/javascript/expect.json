@@ -1,0 +1,5 @@
+{
+  "checks": ["ts/javascript"],
+  "rules": ["ts/javascript"],
+  "os": ["linux", "windows"]
+}

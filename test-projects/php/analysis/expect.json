@@ -1,0 +1,14 @@
+{
+  "checks": ["php/lint", "php/types", "php/deadcode", "php/typecov"],
+  "rules": [
+    "phpmd/ExcessiveParameterList",
+    "phpmd/CyclomaticComplexity",
+    "phpstan/complexity.functionLike",
+    "talos/max-depth",
+    "talos/max-lines",
+    "phpstan/missingType.parameter",
+    "phpstan/equal.notAllowed",
+    "phpstan/shipmonk.deadMethod",
+    "typecov/param"
+  ]
+}

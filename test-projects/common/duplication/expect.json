@@ -1,0 +1,1 @@
+{ "checks": ["common/duplication"], "rules": ["jscpd/clone"] }

@@ -1,0 +1,1 @@
+{ "checks": ["py/deadcode"], "rules": ["vulture/V103"] }

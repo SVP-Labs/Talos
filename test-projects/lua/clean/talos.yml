@@ -1,0 +1,4 @@
+name: Greeter
+prefix: GR
+components:
+  - { lang: lua }

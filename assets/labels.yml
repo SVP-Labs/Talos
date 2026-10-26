@@ -1,0 +1,101 @@
+# The labels every governed repository carries. The caller's daily label sync adds the missing
+# ones and updates colour and description of the rest; it never deletes a label, so a project's
+# own labels stay. Descriptions are at most 100 characters (GitHub's limit).
+#
+# Not here, on purpose: a PR's review stage and round (status/in-review, review/round-N) are
+# read from GitHub and the reviewer's verdict line, never mirrored in labels; test-change is
+# gone because test integrity has no exemption, only the owner's approval.
+
+# Types: an issue carries exactly one (issue readiness checks it).
+- name: feature
+  color: '1D76DB'
+  description: 'Type: a new capability.'
+- name: bug
+  color: 'D73A4A'
+  description: 'Type: something is broken; the ticket adds Repro and Expected / Actual.'
+- name: chore
+  color: 'C2E0C6'
+  description: 'Type: maintenance; can land without the owner when it stays inside its named files.'
+- name: refactor
+  color: 'BFD4F2'
+  description: 'Type: restructuring that keeps behaviour; the existing tests pass unchanged.'
+- name: spike
+  color: 'F9C513'
+  description: 'Type: a time-boxed question; the answer is a comment on the issue, not shipped code.'
+- name: debt/dead-code
+  color: '5319E7'
+  description: 'Type: unused code to remove; filed weekly by Talos from the findings on main.'
+- name: debt/other
+  color: '5319E7'
+  description: 'Type: other findings on main to clear; filed weekly by Talos, one file per issue.'
+- name: epic
+  color: '3E4B9E'
+  description: 'Type: work split into tickets; links its brief, and is never claimed itself.'
+
+# Status: set by issue readiness and the claim protocol.
+- name: status/ready
+  color: '0E8A16'
+  description: 'Passes issue readiness: open to claim with talos ticket claim.'
+- name: status/in-progress
+  color: 'FEF2C0'
+  description: 'Claimed: its <P>-<N> branch exists. Released on merge, by hand, or after 4 h idle.'
+- name: needs-spec
+  color: 'E99695'
+  description: "Fails issue readiness; Talos's comment on the issue lists what is missing."
+- name: needs-decision
+  color: 'E99695'
+  description: 'Waits for the owner to settle an open choice; not claimable meanwhile.'
+- name: needs-human
+  color: 'B60205'
+  description: 'The reviewer asked for changes twice; a person decides. Remove it to let the reviewer review again.'
+- name: blocked
+  color: 'B60205'
+  description: 'Waits on something outside the ticket; not claimable meanwhile.'
+- name: legacy
+  color: 'D4C5F9'
+  description: 'From before Talos; readiness skips it until it is rewritten and this label removed.'
+
+# The agent queue.
+- name: ai/eligible
+  color: 'C5DEF5'
+  description: 'In the agent queue: talos ticket next may claim it, by priority and then age.'
+- name: ai/claimed
+  color: 'C5DEF5'
+  description: 'Held through talos ticket; mirrors the <P>-<N> branch, which is the lock.'
+- name: ai/go
+  color: '1D76DB'
+  description: 'Asks Thea to claim this ticket now, ahead of the queue.'
+
+# Priority: the queue takes p0 first; an issue without one counts as p3.
+- name: priority/p0
+  color: 'B60205'
+  description: "Drop everything: a security fix, which goes ahead of Thea's daily queue budget."
+- name: priority/p1
+  color: 'D93F0B'
+  description: 'High: next after p0.'
+- name: priority/p2
+  color: 'F9C513'
+  description: 'Normal; Talos files flaky tests at p2.'
+- name: priority/p3
+  color: 'C2E0C6'
+  description: 'Low, and the default; Talos files debt issues and sync chores at p3.'
+
+# What an issue is about, beside its type.
+- name: decision
+  color: '0052CC'
+  description: 'Sets or changes a decision: links its brief, and the PR records the decision.'
+- name: security
+  color: 'B60205'
+  description: "A security release or advisory to fix at once; filed by Talos's runtime sweep."
+- name: flaky
+  color: 'F9C513'
+  description: 'A test that failed, then passed on one rerun; filed by Talos to fix the cause.'
+- name: sync
+  color: 'C2E0C6'
+  description: 'A sync chore: generated tool configs lag the enforced Talos version; filed by Talos.'
+- name: drift
+  color: 'D93F0B'
+  description: 'A repository setting differs from what talos govern sets; filed by the drift report.'
+- name: regression
+  color: 'B60205'
+  description: 'On the Talos repository: a release broke something; rolls canary back, holds promotion.'

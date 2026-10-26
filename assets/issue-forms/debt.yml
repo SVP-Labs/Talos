@@ -1,0 +1,32 @@
+name: Debt
+description: 'Technical debt that is not dead code (Talos files these weekly too)'
+labels: ['debt/other']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: 'What to clear, and why it matters.'
+    validations: { required: true }
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: 'One to five testable checkboxes; more means the issue should be split.'
+      value: |
+        - [ ]
+    validations: { required: true }
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: 'What this ticket leaves alone, so the work stays one PR.'
+    validations: { required: true }
+  - type: textarea
+    id: affected-areas
+    attributes:
+      label: Affected areas
+      description: >-
+        What this ticket may touch, one item per line. Name a file exactly as - `path/to/file`;
+        for chores and debt, Talos's review holds the PR to the files named here.
+    validations: { required: true }

@@ -1,0 +1,4 @@
+name: Ledger
+prefix: LG
+components:
+  - { lang: php }

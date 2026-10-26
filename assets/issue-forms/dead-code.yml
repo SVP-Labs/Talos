@@ -1,0 +1,32 @@
+name: Dead code
+description: 'Unused code to remove (Talos files these weekly too)'
+labels: ['debt/dead-code']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: "What is unused, and how you know: a finding, a scanner's output."
+    validations: { required: true }
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: 'One to five testable checkboxes; more means the issue should be split.'
+      value: |
+        - [ ] Removed, or declared a live entry point in the tool's project extension file
+    validations: { required: true }
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: 'What this ticket leaves alone, so the work stays one PR.'
+    validations: { required: true }
+  - type: textarea
+    id: affected-areas
+    attributes:
+      label: Affected areas
+      description: >-
+        What this ticket may touch, one item per line. Name a file exactly as - `path/to/file`;
+        for chores and debt, Talos's review holds the PR to the files named here.
+    validations: { required: true }

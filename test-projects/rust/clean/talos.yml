@@ -1,0 +1,5 @@
+name: Tally
+prefix: TY
+components:
+  - { lang: rust, os: [linux, windows] }
+mutation: [src/lib.rs]

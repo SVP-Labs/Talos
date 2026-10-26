@@ -1,0 +1,5 @@
+name: Tally
+prefix: TY
+components:
+  - { lang: py }
+mutation: [src/tally/count.py]

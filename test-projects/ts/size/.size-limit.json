@@ -1,0 +1,4 @@
+[
+  { "name": "App bundle", "path": "static/app.txt", "limit": "1 kB" },
+  { "name": "Within budget", "path": "static/app.txt", "limit": "100 kB" }
+]

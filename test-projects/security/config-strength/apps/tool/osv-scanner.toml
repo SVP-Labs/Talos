@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "GHSA-35jh-r3h4-6jhm"
+reason = "Ignored here instead of in talos.yml"

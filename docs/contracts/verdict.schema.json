@@ -1,0 +1,154 @@
+{
+  "$id": "https://github.com/SVP-Labs/Talos/blob/main/docs/contracts/verdict.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "talos.verdict/1",
+  "description": "The gate's compact verdict: what `talos check --json` prints, the gate's `verdict.json` in its `talos-verdict` artifact, and what `talos findings` prints of the newest one on a PR's head. Small enough to ride in an event: at most 20 blocking findings listed, the rest counted by rule, every text capped as each field says, and the whole at most 48 KiB as compact JSON, past which the flaky tests and then the blocking findings listed are cut (`truncated` says so of the findings). `talos findings` passes no verdict past these caps: it answers `unknown` with `error` instead. Exit codes: `talos check` 0 green, 1 red, 2 engine error; `talos findings` 1 red, 0 for any other answer.",
+  "oneOf": [
+    {
+      "title": "verdict",
+      "description": "The gate's verdict: green, red with its blocking findings, or an engine error with its faults. `talos findings` adds `run`.",
+      "type": "object",
+      "properties": {
+        "schema": { "const": "talos.verdict/1" },
+        "talos": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "the Talos release that judged"
+        },
+        "repo": {
+          "anyOf": [{ "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$" }, { "type": "null" }],
+          "description": "owner/name; null for a local check"
+        },
+        "pr": {
+          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }],
+          "description": "the PR's number; null outside a PR"
+        },
+        "mode": { "enum": ["draft", "ready", "merge-group"] },
+        "base": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "status": {
+          "enum": ["green", "red", "engine-error"],
+          "description": "engine-error wins over red: an engine error is a Talos bug, not the PR's"
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "blocking": { "type": "integer", "minimum": 0 },
+            "existing": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "findings the base commit had too, which block nothing"
+            },
+            "faults": { "type": "integer", "minimum": 0 },
+            "byRule": {
+              "type": "object",
+              "propertyNames": { "maxLength": 100 },
+              "additionalProperties": { "type": "integer", "minimum": 1 },
+              "maxProperties": 40,
+              "description": "every blocking finding counted by its rule as `blocking` lists rules, listed or not, for the 40 rules with the most (ties by name); `blocking` above counts them all"
+            }
+          },
+          "required": ["blocking", "existing", "faults", "byRule"],
+          "additionalProperties": false
+        },
+        "blocking": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "rule": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "<tool>/<rule>, clipped with … past 100 characters"
+              },
+              "why": { "enum": ["new", "changed-line", "security", "lost", "existing", "info"] },
+              "file": { "$ref": "#/$defs/path" },
+              "line": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+              "message": { "type": "string", "maxLength": 200 }
+            },
+            "required": ["sha", "rule", "why", "file", "line", "message"],
+            "additionalProperties": false
+          }
+        },
+        "faults": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "properties": {
+              "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "os": { "enum": ["linux", "windows", "macos"] },
+              "check": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "reason": { "type": "string", "maxLength": 300 }
+            },
+            "required": ["sha", "os", "check", "reason"],
+            "additionalProperties": false
+          }
+        },
+        "flaky": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "maxLength": 300 },
+              "file": { "$ref": "#/$defs/path" }
+            },
+            "required": ["id", "file"],
+            "additionalProperties": false
+          }
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "more blocking findings or faults than are listed"
+        },
+        "run": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "from `talos findings`: the gate's workflow run that left the verdict"
+        }
+      },
+      "required": [
+        "schema",
+        "talos",
+        "repo",
+        "pr",
+        "mode",
+        "base",
+        "head",
+        "status",
+        "counts",
+        "blocking",
+        "faults",
+        "flaky",
+        "truncated"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "no verdict",
+      "description": "From `talos findings`: no run of the gate's own workflow on the PR's head left a verdict, or, with `error`, the one it left could not be read.",
+      "type": "object",
+      "properties": {
+        "schema": { "const": "talos.verdict/1" },
+        "status": { "const": "unknown" },
+        "repo": { "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$" },
+        "pr": { "type": "integer", "minimum": 1 },
+        "head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "error": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["schema", "status", "repo", "pr", "head"],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "path": {
+      "anyOf": [{ "type": "string", "maxLength": 300 }, { "type": "null" }],
+      "description": "repository-relative, clipped with … past 300 characters; null for no file"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+name: Tests
+prefix: TS
+components:
+  - { lang: lua }

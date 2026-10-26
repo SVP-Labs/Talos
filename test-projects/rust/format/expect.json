@@ -1,0 +1,1 @@
+{ "checks": ["rust/format"], "rules": ["rustfmt/format"], "os": ["linux", "windows"] }

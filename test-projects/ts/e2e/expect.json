@@ -1,0 +1,4 @@
+{
+  "checks": ["ts/e2e"],
+  "rules": ["e2e/no-axe", "playwright/failed"]
+}

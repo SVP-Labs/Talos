@@ -1,0 +1,5 @@
+name: Steady
+prefix: SD
+supply_chain:
+  exceptions:
+    GHSA-aaaa-bbbb-cccc: { reason: "An advisory against code this project never calls", expires: 2099-01-01 }

@@ -1,0 +1,1 @@
+{ "checks": ["php/arch"], "rules": ["deptrac/test-code", "deptrac/dev-dependency", "deptrac/layers"] }

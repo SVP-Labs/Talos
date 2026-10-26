@@ -1,0 +1,5 @@
+name: Case
+prefix: TC
+checks:
+  names: { run: bash scripts/names.sh, scope: commit }
+  links: { run: bash scripts/links.sh, scope: head }

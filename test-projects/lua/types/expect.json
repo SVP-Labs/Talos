@@ -1,0 +1,1 @@
+{ "checks": ["lua/types"], "rules": ["luals/return-type-mismatch", "luals/param-type-mismatch"] }

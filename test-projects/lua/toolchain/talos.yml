@@ -1,0 +1,4 @@
+name: Pinned
+prefix: PN
+components:
+  - { lang: lua }

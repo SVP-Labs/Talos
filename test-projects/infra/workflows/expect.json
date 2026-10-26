@@ -1,0 +1,9 @@
+{
+  "checks": ["infra/workflows"],
+  "rules": [
+    "actionlint/expression",
+    "zizmor/template-injection",
+    "zizmor/unpinned-uses",
+    "zizmor/excessive-permissions"
+  ]
+}

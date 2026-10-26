@@ -1,0 +1,1 @@
+{ "checks": ["supply/provenance"], "rules": ["supply/provenance-downgrade"] }

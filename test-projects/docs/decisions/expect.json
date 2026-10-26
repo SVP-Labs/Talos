@@ -1,0 +1,8 @@
+{
+  "checks": ["docs/decisions"],
+  "rules": [
+    "decisions/duplicate-id",
+    "decisions/unresolved-reference",
+    "decisions/one-way-reversal"
+  ]
+}

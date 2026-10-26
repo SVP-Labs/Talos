@@ -1,0 +1,4 @@
+name: Case
+prefix: CA
+components:
+  - { lang: ts, os: [linux, windows] }

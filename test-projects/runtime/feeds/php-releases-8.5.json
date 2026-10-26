@@ -1,0 +1,107 @@
+{
+  "8.5.12": {
+    "announcement": true,
+    "tags": [
+      "security"
+    ],
+    "date": "21 Oct 2026"
+  },
+  "8.5.11": {
+    "announcement": {
+      "English": "/releases/8_5_11.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "24 Sep 2026"
+  },
+  "8.5.10": {
+    "announcement": {
+      "English": "/releases/8_5_10.php"
+    },
+    "tags": [
+      ""
+    ],
+    "date": "27 Aug 2026"
+  },
+  "8.5.9": {
+    "announcement": {
+      "English": "/releases/8_5_9.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "30 Jul 2026"
+  },
+  "8.5.8": {
+    "announcement": {
+      "English": "/releases/8_5_8.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "02 Jul 2026"
+  },
+  "8.5.7": {
+    "announcement": {
+      "English": "/releases/8_5_7.php"
+    },
+    "tags": [],
+    "date": "04 Jun 2026"
+  },
+  "8.5.6": {
+    "announcement": {
+      "English": "/releases/8_5_6.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "07 May 2026"
+  },
+  "8.5.5": {
+    "announcement": {
+      "English": "/releases/8_5_5.php"
+    },
+    "tags": [],
+    "date": "09 Apr 2026"
+  },
+  "8.5.4": {
+    "announcement": {
+      "English": "/releases/8_5_4.php"
+    },
+    "tags": [],
+    "date": "12 Mar 2026"
+  },
+  "8.5.3": {
+    "announcement": {
+      "English": "/releases/8_5_3.php"
+    },
+    "tags": [],
+    "date": "12 Feb 2026"
+  },
+  "8.5.2": {
+    "announcement": {
+      "English": "/releases/8_5_2.php"
+    },
+    "tags": [],
+    "date": "15 Jan 2026"
+  },
+  "8.5.1": {
+    "announcement": {
+      "English": "/releases/8_5_1.php"
+    },
+    "tags": [
+      "security"
+    ],
+    "date": "18 Dec 2025"
+  },
+  "8.5.0": {
+    "announcement": {
+      "English": "/releases/8_5_0.php"
+    },
+    "tags": [
+      ""
+    ],
+    "date": "20 Nov 2025"
+  }
+}
