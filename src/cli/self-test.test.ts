@@ -17,11 +17,21 @@ const PROJECT = {
 const HERE = currentOs();
 const ELSEWHERE = HERE === 'macos' ? 'linux' : 'macos';
 
-/** Test projects in a directory, each expecting what it's given, on this OS unless it says. */
-async function cases(expectations: Readonly<Record<string, object>>): Promise<string> {
+/**
+ * Test projects in a directory, each expecting what it's given, on this OS unless it says, and
+ * with its own `talos.yml` where `configs` gives one.
+ */
+async function cases(
+  expectations: Readonly<Record<string, object>>,
+  configs: Readonly<Record<string, string>> = {},
+): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'talos-self-test-'));
   for (const [name, expectation] of Object.entries(expectations)) {
-    const files = { ...PROJECT, 'expect.json': JSON.stringify({ os: [HERE], ...expectation }) };
+    const files = {
+      ...PROJECT,
+      ...(configs[name] === undefined ? {} : { 'talos.yml': configs[name] }),
+      'expect.json': JSON.stringify({ os: [HERE], ...expectation }),
+    };
     for (const [path, content] of Object.entries(files)) {
       await mkdir(dirname(join(root, name, path)), { recursive: true });
       await writeFile(join(root, name, path), content);
@@ -37,12 +47,15 @@ function ioAt(cwd: string): Io & { text: () => string } {
 
 describe('talos self-test', () => {
   it('runs each case and compares its findings with what the case expects', async () => {
-    const root = await cases({
-      found: { checks: ['docs/glossary'], rules: ['glossary/avoid'] },
-      missing: { checks: ['docs/glossary'], rules: ['glossary/nothing'] },
-      dirty: { checks: ['docs/glossary'], clean: true },
-      elsewhere: { checks: ['docs/glossary'], os: [ELSEWHERE] },
-    });
+    const root = await cases(
+      {
+        found: { checks: ['docs/glossary'], rules: ['glossary/avoid'] },
+        missing: { checks: ['docs/glossary'], rules: ['glossary/nothing'] },
+        dirty: { checks: ['docs/glossary'], clean: true },
+        elsewhere: { checks: ['docs/glossary'], os: [ELSEWHERE] },
+      },
+      { elsewhere: `${PROJECT['talos.yml']}components:\n  - { lang: py, os: [${ELSEWHERE}] }\n` },
+    );
     const io = ioAt(root);
     expect(await selfTest([root], io)).toBe(1);
     expect(io.text()).toBe(
@@ -53,6 +66,22 @@ describe('talos self-test', () => {
         'FAIL missing',
         '     no glossary/nothing finding',
         '2 case(s) failed',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('fails a case that expects an OS its talos.yml runs no component on, wherever it runs', async () => {
+    const root = await cases({
+      unplanned: { checks: ['docs/glossary'], os: ['linux', 'windows', 'macos'] },
+    });
+    const io = ioAt(root);
+    expect(await selfTest([root], io)).toBe(1);
+    expect(io.text()).toBe(
+      [
+        'FAIL unplanned',
+        '     expect.json lists windows, macos, which no component in talos.yml runs on',
+        '1 case(s) failed',
         '',
       ].join('\n'),
     );

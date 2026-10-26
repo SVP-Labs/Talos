@@ -1,4 +1,4 @@
 name: Case
 prefix: CA
 components:
-  - { lang: ts }
+  - { lang: ts, os: [linux, windows] }

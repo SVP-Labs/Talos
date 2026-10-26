@@ -5,6 +5,9 @@ import { join, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import { type Command, parse } from './io.js';
 import { currentOs } from './run.js';
+import { ConfigError, loadConfig } from '../config/load.js';
+import type { TalosConfig } from '../config/schema.js';
+import type { Os } from '../core/check.js';
 import type { RunResult } from '../core/result.js';
 import { runAt } from '../engine/local.js';
 import type { Engine } from '../engine/run.js';
@@ -51,6 +54,24 @@ async function freshRepo(engine: Engine, source: string): Promise<string> {
   return directory;
 }
 
+/**
+ * The operating systems `expect.json` lists beyond Linux that no component of the case's
+ * `talos.yml` declares: no component check is planned there, so the case can't pass on them.
+ * A `talos.yml` that can't be read lists none; the case's run reports it.
+ */
+export async function undeclaredOses(source: string, expected: Expectation): Promise<Os[]> {
+  let config: TalosConfig;
+  try {
+    config = await loadConfig(source);
+  } catch (error) {
+    if (error instanceof ConfigError) return [];
+    throw error;
+  }
+  return expected.os.filter(
+    (os) => os !== 'linux' && !config.components.some((c) => c.os.includes(os)),
+  );
+}
+
 /** What went wrong with one case, or nothing. */
 export function assess(expected: Expectation, result: RunResult): string[] {
   const problems = result.outcomes
@@ -70,6 +91,38 @@ export function assess(expected: Expectation, result: RunResult): string[] {
     problems.push(`expected no findings, got ${[...rules].join(', ')}`);
   }
   return problems;
+}
+
+/**
+ * Runs one case in a fresh repository: what went wrong, or nothing when it isn't for this OS. A
+ * case expecting an OS its `talos.yml` declares no component on fails on every OS.
+ */
+async function runCase(
+  engine: Engine,
+  source: string,
+  expected: Expectation,
+  os: Os,
+): Promise<string[] | undefined> {
+  const undeclared = await undeclaredOses(source, expected);
+  if (undeclared.length > 0) {
+    return [`expect.json lists ${undeclared.join(', ')}, which no component in talos.yml runs on`];
+  }
+  if (!expected.os.includes(os)) return undefined;
+  const directory = await freshRepo(engine, source);
+  try {
+    const sha = (
+      await execOk(engine.exec, 'git', ['rev-parse', 'HEAD'], { cwd: directory })
+    ).trim();
+    const at = { root: directory, sha, os, side: 'alone' as const, only: expected.checks };
+    return await runAt(engine, { ...at, tiers: ['commit', 'head'] }).then(
+      (result) => assess(expected, result),
+      (error: unknown) => [
+        `engine error: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -97,26 +150,12 @@ export const selfTest: Command = async (argv, io) => {
     const expected = expectation.parse(
       JSON.parse(await readFile(join(source, 'expect.json'), 'utf8')),
     );
-    if (!expected.os.includes(os)) continue;
-    const directory = await freshRepo(engine, source);
-    try {
-      const sha = (
-        await execOk(engine.exec, 'git', ['rev-parse', 'HEAD'], { cwd: directory })
-      ).trim();
-      const at = { root: directory, sha, os, side: 'alone' as const, only: expected.checks };
-      const problems = await runAt(engine, { ...at, tiers: ['commit', 'head'] }).then(
-        (result) => assess(expected, result),
-        (error: unknown) => [
-          `engine error: ${error instanceof Error ? error.message : String(error)}`,
-        ],
-      );
-      failed += problems.length > 0 ? 1 : 0;
-      const mark = problems.length > 0 ? 'FAIL' : 'ok  ';
-      const detail = problems.map((p) => `     ${p}\n`).join('');
-      io.out(`${mark} ${name}\n${detail}`);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    const problems = await runCase(engine, source, expected, os);
+    if (problems === undefined) continue;
+    failed += problems.length > 0 ? 1 : 0;
+    const mark = problems.length > 0 ? 'FAIL' : 'ok  ';
+    const detail = problems.map((p) => `     ${p}\n`).join('');
+    io.out(`${mark} ${name}\n${detail}`);
   }
   io.out(failed > 0 ? `${failed} case(s) failed\n` : 'all cases passed\n');
   return failed > 0 ? 1 : 0;
