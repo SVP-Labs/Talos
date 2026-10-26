@@ -248,6 +248,43 @@ describe('rulesets', () => {
   });
 });
 
+describe('a refused request', () => {
+  const refusing =
+    (body: string, status = 422): typeof fetch =>
+    () =>
+      Promise.resolve(new Response(body, { status }));
+  const refusal = async (body: string): Promise<GitHubError> => {
+    const error: unknown = await github('t', { fetch: refusing(body) })
+      .request('POST', 'repos/o/r/rulesets', { body: {} })
+      .catch((e: unknown) => e);
+    if (!(error instanceof GitHubError)) throw new Error('expected a GitHubError');
+    return error;
+  };
+
+  it("keeps GitHub's reason apart from the message, with its errors", async () => {
+    const error = await refusal(
+      JSON.stringify({ message: 'Validation Failed', errors: ['Actor X must be part of it'] }),
+    );
+    expect(error.message).toBe('POST repos/o/r/rulesets: 422');
+    expect(error.reason).toBe('Validation Failed: Actor X must be part of it');
+    const fields = await refusal(
+      JSON.stringify({ message: 'Validation Failed', errors: [{ code: 'x', message: 'bad' }, 3] }),
+    );
+    expect(fields.reason).toBe('Validation Failed: bad');
+  });
+
+  it('clips a long reason and has none for a body that is not a GitHub error', async () => {
+    expect((await refusal(JSON.stringify({ message: 'm'.repeat(300) }))).reason).toHaveLength(200);
+    expect((await refusal('<html>')).reason).toBeUndefined();
+    expect((await refusal(JSON.stringify({ nope: 1 }))).reason).toBeUndefined();
+    const paged = github('t', { fetch: refusing(JSON.stringify({ message: 'Not Found' }), 404) });
+    await expect(paged.paginate('repos/o/r/tags')).rejects.toMatchObject({
+      message: 'GET repos/o/r/tags: 404',
+      reason: 'Not Found',
+    });
+  });
+});
+
 const run = (status: string, conclusion: string | null) => ({ status, conclusion });
 
 describe('stateOf', () => {

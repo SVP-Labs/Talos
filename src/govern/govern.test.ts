@@ -125,21 +125,40 @@ describe('governRepository', () => {
 });
 
 describe('applySteps', () => {
-  it('stops at the first failure and says why without a response body', async () => {
-    const api = fakeApi([
-      route('PUT', /vulnerability-alerts$/, { status: 403, json: { message: 'secret' } }),
+  const failing = () =>
+    fakeApi([
+      route('PUT', /vulnerability-alerts$/, {
+        status: 403,
+        json: { message: 'Must have admin rights', documentation_url: 'https://docs', x: 'raw' },
+      }),
+      route('PATCH', /properties\/values$/, json({})),
     ]);
-    const steps = [
-      ok('a', 'fine'),
-      change('alerts', 'switch on alerts', { kind: 'enable-alerts', repo: REPO }),
-      change('p', 'set', { kind: 'set-properties', repo: REPO, values: [] }),
-      manual('m', 'by hand'),
-    ];
-    const results = await applySteps(api.client(), steps, scopeHint);
+  const steps = [
+    ok('a', 'fine'),
+    change('alerts', 'switch on alerts', { kind: 'enable-alerts', repo: REPO }),
+    change('p', 'set', { kind: 'set-properties', repo: REPO, values: [] }),
+    manual('m', 'by hand'),
+  ];
+
+  it("stops at the first failure and says why in GitHub's words, not its raw body", async () => {
+    const results = await applySteps(failing().client(), steps, { hint: scopeHint });
     expect(results.map((r) => r.status)).toEqual(['ok', 'failed', 'skipped', 'manual']);
-    expect(results[1]?.detail).toMatch(/403.*gh auth refresh/);
-    expect(results[1]?.detail).not.toMatch(/secret/);
+    const request = `PUT repos/${REPO}/vulnerability-alerts`;
+    expect(results[1]?.detail).toBe(
+      `switch on alerts: ${request}: 403 (Must have admin rights)${scopeHint(403)}`,
+    );
+    expect(results[1]?.detail).not.toMatch(/docs|raw/);
     expect(planned(steps).map((r) => r.status)).toEqual(['ok', 'planned', 'planned', 'manual']);
+  });
+
+  it('runs every step past a failure when they are independent', async () => {
+    const api = failing();
+    const results = await applySteps(api.client(), steps, { independent: true });
+    expect(results.map((r) => r.status)).toEqual(['ok', 'failed', 'changed', 'manual']);
+    expect(api.writes()).toEqual([
+      `PUT repos/${REPO}/vulnerability-alerts`,
+      `PATCH repos/${REPO}/properties/values`,
+    ]);
   });
 
   it('defines org properties and updates org rulesets where GitHub expects them', async () => {

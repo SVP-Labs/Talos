@@ -92,7 +92,8 @@ an App you don't own on a governed repository.
   repositories it reads, which the jobs find through the custom properties and mask first.
 
   Contents stays off unless smoke test 1 or 5 (step 6) turns on the `channels.json` fallback;
-  then it is **Read and write**, and its jobs mint contents tokens for the Talos repository only.
+  then it is **Read and write**, its jobs mint contents tokens for the Talos repository only, and
+  `talos org init` makes it the one writer of the `channels` branch (step 5).
 
 - **Its key:** generate a private key; it becomes the `release` environment's secret
   `TALOS_RELEASE_KEY` (step 3) and nothing else.
@@ -242,11 +243,18 @@ trusted publishing, so no npm token is stored anywhere (C26).
    `canary` and `stable`; `talos-agents`, true or false), creates the three channel rulesets
    (`talos-evaluate` in Evaluate mode, `talos-canary` and `talos-stable` active), each requiring
    the gate at the seeded commit and `talos/review` from the reviewer, and on the Talos
-   repository the tag ruleset (only you create, move or delete `v*` tags), the `channels`
-   branch's ruleset (only `talos-release` writes it) and `talos-self-test`, which requires the
-   self-test workflow's `check` and `self-test <os>` jobs on `main`, in the merge queue too, so
-   a PR whose own engine fails its test projects never lands. `org pins` shows all three
-   channels at `v0.1.0`. From now on only Talos's release jobs move the pins.
+   repository the tag ruleset (only you create, move or delete `v*` tags) and
+   `talos-self-test`, which requires the self-test workflow's `check` and `self-test <os>` jobs
+   on `main`, in the merge queue too, so a PR whose own engine fails its test projects never
+   lands. `org pins` shows all three channels at `v0.1.0`. From now on only Talos's release jobs
+   move the pins.
+
+   The `channels` branch's ruleset, `talos-channels` (only `talos-release` writes the branch),
+   belongs to the `channels.json` fallback alone. `org init` reads the org variable
+   `TALOS_LOOKUP` and creates it only when that says `channels`; otherwise it reports the ruleset
+   as not needed. If smoke test 1 or 5 turns the fallback on, run `talos org init` again once
+   `talos-release` has Contents write, and it adds the ruleset. A step that fails doesn't stop the
+   others: `org init` reports each with GitHub's reason and exits 1, so a rerun finishes the rest.
 
 ## 6. The scratch repository and six smoke tests
 
@@ -305,8 +313,10 @@ C3's version lookup reads them through `rulesets?includes_parents=true`.
 - **If it isn't listed:** switch every lookup to `channels.json`. Set the org variable
   `TALOS_LOOKUP=channels`; give `talos-release` **Contents: Read and write** (step 1), so its jobs
   write the pins to `channels.json` on the Talos repository's `channels` branch whenever they move
-  one; and tell Thea's hub, whose lookup has a seam for it but doesn't read the file yet (her
-  U2). The drift report then checks the file against the rulesets.
+  one; then run `talos org init` again, which now creates the `talos-channels` ruleset so only
+  `talos-release` writes that branch (step 5.4); and tell Thea's hub, whose lookup has a seam for
+  it but doesn't read the file yet (her U2). The drift report then checks the file against the
+  rulesets.
 
 ### 2. Apps can still open issues and PRs
 
@@ -366,7 +376,8 @@ The gate finds its pin by listing the repository's rulesets with its `GITHUB_TOK
 - **Expect:** its **Find the enforced Talos release** step succeeds, and the later jobs carry
   the version in their names.
 - **If it fails** (`cannot list the repository's rulesets`): set the org variable
-  `TALOS_LOOKUP=channels` and give `talos-release` contents write, as in test 1.
+  `TALOS_LOOKUP=channels`, give `talos-release` contents write and rerun `talos org init`, as in
+  test 1.
 
 ### 6. The queue leaves `main` on the commits it tested
 

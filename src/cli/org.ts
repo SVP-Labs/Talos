@@ -25,7 +25,9 @@ async function init(gh: GitHub, who: Identities, templates: Templates, args: Ini
   await assertOwner(gh, who);
   const state = await readOrgState(gh, who, templates);
   const steps = orgPlan(state, templates, args.seed);
-  const results = args.dryRun ? planned(steps) : await applySteps(gh, steps, scopeHint);
+  const results = args.dryRun
+    ? planned(steps)
+    : await applySteps(gh, steps, { hint: scopeHint, independent: true });
   const output = stepsOutput(results);
   const verb = args.dryRun ? 'would set up' : 'set up';
   return {
@@ -93,8 +95,9 @@ export function orgWith(deps: OrgDeps): Command {
 
 /**
  * `talos org`: the organisation's custom properties, the three channel rulesets that run the
- * gate pinned at a release, and the Talos repository's tag and `channels` rulesets. `init
- * --seed <sha>` seeds every pin from the first release; afterwards the release jobs move them.
+ * gate pinned at a release, and the Talos repository's tag and self-test rulesets (and its
+ * `channels` one with `TALOS_LOOKUP=channels`). `init --seed <sha>` seeds every pin from the first
+ * release; afterwards the release jobs move them. Each step runs even when another failed.
  * `pins` prints each channel's pin and its tag.
  */
 export const org: Command = orgWith({});
