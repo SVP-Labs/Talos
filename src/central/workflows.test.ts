@@ -866,6 +866,15 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
       WORKFLOW_TOKEN: 'w',
     };
     expect((await runStep(find, { ...rulesets, ...channels }, env)).output).toBe(`sha=${B}\n`);
+    expect((await runStep(find, rulesets, env)).output).toBe(`sha=${A}\n`);
+    const broken = {
+      ...rulesets,
+      'repos/SVP-Labs/Talos/contents/channels.json?ref=channels': {
+        content: Buffer.from('not json').toString('base64'),
+        encoding: 'base64',
+      },
+    };
+    expect((await runStep(find, broken, env)).code).toBe(1);
   });
 });
 

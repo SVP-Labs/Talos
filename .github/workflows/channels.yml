@@ -74,12 +74,7 @@ jobs:
             echo "find-stable: $1" >&2
             exit 1
           }
-          if [[ "${TALOS_LOOKUP:-rulesets}" == channels ]]; then
-            sha="$(GH_TOKEN="$WORKFLOW_TOKEN" gh api -H 'Accept: application/vnd.github.raw' \
-              "repos/$GITHUB_REPOSITORY/contents/channels.json?ref=channels" 2>/dev/null |
-              jq -r '.stable // empty' 2>/dev/null)" ||
-              fail "cannot read channels.json"
-          else
+          by_ruleset() {
             id="$(gh api --paginate "orgs/$ORG/rulesets" 2>/dev/null |
               jq -s -r 'add // [] | .[] | select(.name == "talos-stable") | .id' 2>/dev/null)" ||
               fail "cannot list the organisation's rulesets"
@@ -88,6 +83,21 @@ jobs:
               jq -r '[.rules[]? | select(.type == "workflows") | .parameters.workflows[]?.sha // empty]
                 | unique | if length == 1 then .[0] else empty end' 2>/dev/null)" ||
               fail "cannot read the talos-stable ruleset"
+          }
+          if [[ "${TALOS_LOOKUP:-rulesets}" == channels ]]; then
+            # Until this workflow first writes channels.json, stable is the talos-stable ruleset's.
+            errors="$(mktemp)"
+            if channels="$(GH_TOKEN="$WORKFLOW_TOKEN" gh api -H 'Accept: application/vnd.github.raw' \
+              "repos/$GITHUB_REPOSITORY/contents/channels.json?ref=channels" 2>"$errors")"; then
+              sha="$(jq -r '.stable // empty' <<<"$channels" 2>/dev/null)" ||
+                fail "cannot read channels.json"
+            elif grep -q 'HTTP 404' "$errors"; then
+              by_ruleset
+            else
+              fail "cannot read channels.json"
+            fi
+          else
+            by_ruleset
           fi
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "stable pins no release yet: seed it with talos org init --seed"
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
