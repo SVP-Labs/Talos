@@ -37,7 +37,7 @@ jobs:
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -161,7 +161,7 @@ jobs:
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -177,7 +177,7 @@ jobs:
         if: ${{ steps.pick.outputs.names != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.pick.outputs.names }}
@@ -187,7 +187,7 @@ jobs:
         if: ${{ steps.pick.outputs.names != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.pick.outputs.names }}
@@ -218,7 +218,7 @@ jobs:
         id: read
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }} # reads the org's channel rulesets
           permission-organization-administration: read
@@ -226,7 +226,7 @@ jobs:
         id: file
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           permission-contents: read
           permission-issues: write
@@ -336,7 +336,7 @@ jobs:
         id: properties
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -433,7 +433,7 @@ jobs:
         if: ${{ steps.canary.outputs.name != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_RELEASE_APP_ID }}
+          client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.canary.outputs.name }}
@@ -443,7 +443,7 @@ jobs:
         if: ${{ steps.canary.outputs.name != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.canary.outputs.name }}

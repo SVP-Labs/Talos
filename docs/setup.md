@@ -137,7 +137,7 @@ Under the org's **Settings → Secrets and variables → Actions**, with **Repos
 repositories**, since every governed repository's caller reads them. Every variable needs
 **All repositories**, never **Private repositories**: Talos itself is public, its central jobs
 read the same variables, and a variable a repository can't see reaches its workflows as an empty
-string: the runtime sweep, for one, then mints its token with an empty `app-id` and fails.
+string: the runtime sweep, for one, then mints its token with an empty App ID and fails.
 
 The secrets:
 
