@@ -51,6 +51,8 @@ export type Step =
       readonly status: 'change';
       readonly detail: string;
       readonly effect: Effect;
+      /** The words a person follows instead when GitHub refuses the change (403). */
+      readonly refused?: string;
     }
   | { readonly id: string; readonly status: 'manual'; readonly detail: string };
 
@@ -58,8 +60,8 @@ export function ok(id: string, detail: string): Step {
   return { id, status: 'ok', detail };
 }
 
-export function change(id: string, detail: string, effect: Effect): Step {
-  return { id, status: 'change', detail, effect };
+export function change(id: string, detail: string, effect: Effect, refused?: string): Step {
+  return { id, status: 'change', detail, effect, ...(refused === undefined ? {} : { refused }) };
 }
 
 export function manual(id: string, detail: string): Step {
@@ -172,7 +174,8 @@ export type ApplyOptions = {
 /**
  * Carries out every `change` in order. The order usually matters (the caller must be on the
  * default branch before any ruleset blocks a direct commit), so the first failure stops the rest,
- * unless the steps are `independent`: then each runs and each failure is reported.
+ * unless the steps are `independent`: then each runs and each failure is reported. A change
+ * GitHub refuses that a person can still make by hand is reported as that manual step instead.
  */
 export async function applySteps(
   gh: GitHub,
@@ -195,6 +198,10 @@ export async function applySteps(
       await run(gh, step.effect);
       results.push({ id: step.id, status: 'changed', detail: step.detail });
     } catch (error) {
+      if (step.refused !== undefined && error instanceof GitHubError && error.status === 403) {
+        results.push({ id: step.id, status: 'manual', detail: step.refused });
+        continue;
+      }
       failed = true;
       results.push({ id: step.id, status: 'failed', detail: failure(step, error, hint) });
     }

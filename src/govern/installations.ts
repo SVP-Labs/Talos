@@ -7,10 +7,12 @@ import type { Identities } from '../github/identities.js';
  * The Apps every governed repository is added to: Thea's, which implements; `talos-reviewer`,
  * which reviews and files issues; and `talos-release`, whose drift report mints a token per
  * repository. Their installations are found through `GET /orgs/{org}/installations`, which an
- * org owner's token may call, and a repository is added with
- * `PUT /user/installations/{installation_id}/repositories/{repository_id}`, which works with the
- * owner's own token (a classic token or `gh`'s, with the `repo` scope) on a repository they
- * administer. An installation set to all repositories needs nothing.
+ * org owner's token may call. An installation set to all repositories needs nothing. For one set
+ * to selected repositories, `GET /user/installations/{installation_id}/repositories` says
+ * whether the repository is in it, and only with the `read:user` scope; and
+ * `PUT /user/installations/{installation_id}/repositories/{repository_id}` adds it, which GitHub
+ * refuses (403) to `gh`'s OAuth token, even an org owner's. Where either is refused, the step is
+ * the owner's, by hand, in the org's settings.
  */
 export type AppRole = 'thea' | 'reviewer' | 'release';
 
@@ -82,10 +84,21 @@ export async function readInstallations(
   );
 }
 
-/** One step per App: already there, added, or installed on the org by hand first. */
+/** Where an org owner adds a repository to an App's installation by hand. */
+function byHand(slug: string, repo: string): string {
+  return (
+    `add ${repo} to ${slug}'s installation if it isn't there: Org Settings → GitHub Apps → ` +
+    `${slug} → Configure → Repository access → add the repository → Save`
+  );
+}
+
+/**
+ * One step per App: already there, added, or by hand: installing the App on the org, or adding
+ * the repository where the token may not read the installation or GitHub refuses the change.
+ */
 export function installationSteps(
   states: readonly InstallationState[],
-  repositoryId: number,
+  repository: { readonly id: number; readonly name: string },
 ): Step[] {
   return states.map((state) => {
     const id = `app:${state.slug}`;
@@ -93,10 +106,12 @@ export function installationSteps(
       return manual(id, `install the ${state.slug} App on the organisation, then rerun`);
     }
     if (state.member === true) return ok(id, `${state.slug} reaches the repository`);
-    return change(id, `add the repository to ${state.slug}'s installation`, {
-      kind: 'install',
-      installationId: state.installation.id,
-      repositoryId,
-    });
+    if (state.member === undefined) return manual(id, byHand(state.slug, repository.name));
+    return change(
+      id,
+      `add the repository to ${state.slug}'s installation`,
+      { kind: 'install', installationId: state.installation.id, repositoryId: repository.id },
+      byHand(state.slug, repository.name),
+    );
   });
 }

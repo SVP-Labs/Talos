@@ -1,7 +1,7 @@
 import { type Command, type Io, parse, UsageError } from './io.js';
 import { exec } from '../exec/exec.js';
 import { github, type GitHubOptions, tokenFromEnvironment } from '../github/api.js';
-import { identities } from '../github/identities.js';
+import { ownerIdentities } from '../github/org-variables.js';
 import { currentRepository, isRepoName } from '../github/remote.js';
 import {
   type GovernAssets,
@@ -93,7 +93,10 @@ export function governWith(deps: GovernDeps): Command {
     try {
       const report = await governRepository({
         gh,
-        who: identities(io.env),
+        who: await ownerIdentities(gh, io.env, (line) =>
+          io.err(`talos govern: ${line}
+`),
+        ),
         repo,
         agents,
         channel,

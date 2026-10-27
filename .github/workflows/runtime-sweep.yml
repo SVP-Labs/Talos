@@ -35,7 +35,7 @@ jobs:
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -159,7 +159,7 @@ jobs:
         id: listing
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -175,7 +175,7 @@ jobs:
         if: ${{ steps.pick.outputs.names != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.pick.outputs.names }}
@@ -206,7 +206,7 @@ jobs:
         id: properties
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
@@ -304,7 +304,7 @@ jobs:
         if: ${{ steps.canary.outputs.name != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
+          client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.canary.outputs.name }}

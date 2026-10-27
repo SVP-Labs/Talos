@@ -15,7 +15,8 @@ about working on the kit itself.
 - `pnpm install` also points the clone's `core.hooksPath` at `.githooks`, whose `pre-push` runs
   the hook every governed repository gets (`assets/hooks/pre-push`): the fast tier, here with the
   build in `dist/` and `TALOS_DEV=1`. It refuses a push when there is no build, and judges with
-  whatever build is there, so run `pnpm build` after pulling.
+  whatever build is there, so run `pnpm build` after pulling. On Windows it leaves out the unit
+  tests (`ts/tests`), which don't all pass on a Windows machine, and says so; the PR runs them.
 
 ## Checking a change
 
@@ -37,6 +38,14 @@ Talos-specific rules, beyond the standard:
 - Tests never reach GitHub. `src/github/api.ts` takes `options.fetch`: every API path is tested
   against a fake fetch, with response shapes recorded from GitHub's documentation. No test, and
   no local run, calls a write method on the real API.
+- Tests never reach a real repository either. Every fixture repository is made in the system's
+  temporary directory, and its remotes are bare repositories made there too. Vitest's setup file
+  (`src/testing/git-env.ts`) drops every `GIT_*` variable the run started with. Git exports
+  `GIT_DIR` to a hook run from a linked worktree, so without that, a fixture's `git init`,
+  `git config` and `git push` act on the checkout and its GitHub remote. The setup file also gives
+  git an empty global and system config, stops it looking for a repository above the temporary
+  directory or inside the checkout, and allows no transport but a local path.
+  `src/testing/git-env.test.ts` fails when any of that is missing.
 - Every response and payload Talos relies on is validated with zod, never cast.
 - A decision is a pure function with exhaustive unit tests; the API calls around it stay thin.
 - A check never prints. It asks its tool for machine-readable output, parses it in a pure

@@ -9,6 +9,7 @@
 # that on install; anywhere else, run `git config core.hooksPath .githooks` once in each clone.
 
 set -u
+only=''
 
 # Each line git passes is "<local ref> <local sha> <remote ref> <remote sha>". A push that only
 # deletes branches or sends tags has nothing for the fast tier to judge.
@@ -27,8 +28,13 @@ if [ "${refs}" -gt 0 ] && [ "${branches}" -eq 0 ]; then
   exit 0
 fi
 
-# Git runs a hook at the top of the working tree. Talos runs the release the repository
-# enforces, through the talos on PATH or else npx; in Talos's own repository, the build at hand.
+# Git runs a hook at the top of the working tree, where git finds the repository again by itself.
+# From a linked worktree it also exports GIT_DIR, which would point every git the fast tier runs,
+# a test's fixture repository among them, at this repository and its remote: so it goes.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_PREFIX
+
+# Talos runs the release the repository enforces, through the talos on PATH or else npx; in
+# Talos's own repository, the build at hand.
 set -- npx --yes @svp-labs/talos
 if command -v talos >/dev/null 2>&1; then
   set -- talos
@@ -39,13 +45,19 @@ if grep -q '"name": "@svp-labs/talos"' package.json 2>/dev/null; then
     exit 1
   fi
   set -- env TALOS_DEV=1 node dist/bin/talos.js
+  # Talos's own unit tests don't all pass on a Windows machine (symlinks, path separators, line
+  # endings, bash scripts), so on Windows the hook runs the fast tier without them.
+  if [ "${OS:-}" = Windows_NT ]; then
+    only=ts/format,ts/lint,ts/types,ts/deadcode,ts/javascript
+    echo "pre-push: on Windows, Talos's unit tests (ts/tests) run on the PR only, not here." >&2
+  fi
 fi
 if [ "$1" = npx ] && ! command -v npx >/dev/null 2>&1; then
   echo 'pre-push: the fast tier runs on Talos, which needs Node.js 22.18 or later with npx.' >&2
   exit 1
 fi
 
-"$@" check --tiers commit
+"$@" check --tiers commit ${only:+--only "${only}"}
 code=$?
 case "${code}" in
   0) exit 0 ;;

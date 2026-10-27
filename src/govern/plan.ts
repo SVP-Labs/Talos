@@ -220,6 +220,6 @@ export function governPlan(state: RepoState, request: GovernRequest): Step[] {
           }),
         ]
       : []),
-    ...installationSteps(state.installations, state.id),
+    ...installationSteps(state.installations, { id: state.id, name: state.repo }),
   ];
 }

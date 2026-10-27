@@ -139,6 +139,7 @@ norc
 nosec
 nosemgrep
 nosonar
+NOSYSTEM
 npmjs
 ntfx
 nullglob

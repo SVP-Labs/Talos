@@ -387,7 +387,8 @@ architecture rules in the tools' own syntax, never here.
   merge-queue ruleset, the code-owner ruleset while at `evaluate`, collaborator-only issues and
   PRs, Dependabot alerts, the properties and the App installations. `--channel canary|stable`
   moves a green repository on and removes the code-owner ruleset. Where GitHub's API exposes no
-  setting, it prints the manual step (C29).
+  setting, or refuses the owner's token one (adding a repository to an App's installation), it
+  prints the manual step (C29).
 - **`talos adopt`:** writes the files and labels in one bootstrap PR: `talos.yml`, the generated
   configs, `CLAUDE.md`, the issue forms, the labels, the pre-push hook, each language's setup
   (pinned dev tools, supply-chain settings, toolchain), the brief and issue #1. The project's own

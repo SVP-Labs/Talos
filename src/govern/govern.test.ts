@@ -183,7 +183,7 @@ describe('applySteps', () => {
 });
 
 describe('readInstallations', () => {
-  it('cannot tell membership when the token may not list an installation, and adds it', async () => {
+  it('leaves the repository to the owner where the token may not list an installation', async () => {
     const api = fakeApi([
       route(
         'GET',
@@ -200,11 +200,46 @@ describe('readInstallations', () => {
       ['talos-reviewer', false],
       ['talos-release', false],
     ]);
-    expect(installationSteps(states, 42).map((s) => s.status)).toEqual([
-      'change',
-      'manual',
-      'manual',
+    const steps = installationSteps(states, { id: 42, name: REPO });
+    expect(steps.map((s) => s.status)).toEqual(['manual', 'manual', 'manual']);
+    expect(steps[0]?.detail).toBe(
+      `add ${REPO} to thea-svp's installation if it isn't there: Org Settings → GitHub Apps → ` +
+        'thea-svp → Configure → Repository access → add the repository → Save',
+    );
+  });
+
+  it('turns a refused addition into that step by hand, and carries on past it', async () => {
+    const installations = [
+      { id: 1, app_slug: 'thea-svp', repository_selection: 'selected' },
+      { id: 2, app_slug: 'talos-reviewer', repository_selection: 'selected' },
+      { id: 3, app_slug: 'talos-release', repository_selection: 'all' },
+    ];
+    const api = fakeApi([
+      route('GET', /^orgs\/SVP-Labs\/installations$/, json({ installations })),
+      route('GET', /^user\/installations\/\d+\/repositories$/, json({ repositories: [] })),
+      route('PUT', /^user\/installations\/1\/repositories\/42$/, {
+        status: 403,
+        json: { message: 'You do not have permission to modify this app on SVP-Labs' },
+      }),
+      route('PUT', /^user\/installations\/2\/repositories\/42$/, json({})),
     ]);
+    const states = await readInstallations(api.client(), who, 42);
+    const steps = installationSteps(states, { id: 42, name: REPO });
+    expect(planned(steps).map((r) => r.status)).toEqual(['planned', 'planned', 'ok']);
+    const results = await applySteps(api.client(), steps, { hint: scopeHint });
+    expect(results.map((r) => r.status)).toEqual(['manual', 'changed', 'ok']);
+    expect(results[0]?.detail).toMatch(/^add SVP-Labs\/demo to thea-svp's installation .* → Save$/);
+  });
+
+  it('reports any other refusal of an addition as a failure', async () => {
+    const api = fakeApi([route('PUT', /^user\/installations\//, { status: 404, json: {} })]);
+    const step = change(
+      'app:x',
+      'add',
+      { kind: 'install', installationId: 1, repositoryId: 42 },
+      'by hand',
+    );
+    expect((await applySteps(api.client(), [step])).map((r) => r.status)).toEqual(['failed']);
   });
 });
 

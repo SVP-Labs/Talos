@@ -5,6 +5,7 @@ import { loadAdoptAssets } from './assets.js';
 import { startDraft } from './draft.js';
 import { type HookAssets, PRE_PUSH, prePushHook } from './hooks.js';
 import { clone, sh } from './test/git.js';
+import { PACKS } from '../core/registry.js';
 import { exec } from '../exec/exec.js';
 
 const HOOK = "#!/bin/sh\n# Talos's pre-push hook, written by talos adopt, which rewrites it.\n";
@@ -162,6 +163,9 @@ appendFileSync('ran.txt', process.argv.slice(2).join(' ') + ' dev=' + dev + '\\n
 process.exitCode = Number(readFileSync('exit.txt', 'utf8'));
 `;
 
+/** The OS the hook sees: Talos's own hook leaves its unit tests out on Windows only. */
+const LINUX = { OS: '' };
+
 async function push(root: string, env: Readonly<Record<string, string>>, ...refs: string[]) {
   return (await exec('git', ['push', '--quiet', 'origin', ...refs], { cwd: root, env })).code;
 }
@@ -170,24 +174,41 @@ async function ran(root: string): Promise<string[]> {
   return (await readFile(join(root, 'ran.txt'), 'utf8')).trim().split('\n');
 }
 
+/** A clone of Talos itself, its build a stand-in. */
+async function talosClone(): Promise<string> {
+  const root = await hooked(
+    { 'package.json': '{\n  "name": "@svp-labs/talos"\n}\n' },
+    { [PRE_PUSH]: PRE_PUSH, 'assets/hooks/pre-push': 'assets/hooks/pre-push' },
+  );
+  await mkdir(join(root, 'dist/bin'), { recursive: true });
+  await writeFile(join(root, 'dist/bin/talos.js'), STAND_IN);
+  return root;
+}
+
 describe('the hook itself', () => {
   it("runs the fast tier with Talos's own build in Talos, and blocks a push it fails", async () => {
-    const root = await hooked(
-      { 'package.json': '{\n  "name": "@svp-labs/talos"\n}\n' },
-      { [PRE_PUSH]: PRE_PUSH, 'assets/hooks/pre-push': 'assets/hooks/pre-push' },
-    );
-    await mkdir(join(root, 'dist/bin'), { recursive: true });
-    await writeFile(join(root, 'dist/bin/talos.js'), STAND_IN);
+    const root = await talosClone();
     await writeFile(join(root, 'exit.txt'), '1');
-    expect(await push(root, {}, 'HEAD:refs/heads/work')).toBe(1);
+    expect(await push(root, LINUX, 'HEAD:refs/heads/work')).toBe(1);
     expect(await ran(root)).toEqual(['check --tiers commit dev=1']);
     await writeFile(join(root, 'exit.txt'), '0');
-    expect(await push(root, {}, 'HEAD:refs/heads/work')).toBe(0);
+    expect(await push(root, LINUX, 'HEAD:refs/heads/work')).toBe(0);
     await writeFile(join(root, 'exit.txt'), '1');
-    expect(await push(root, {}, ':refs/heads/work')).toBe(0);
+    expect(await push(root, LINUX, ':refs/heads/work')).toBe(0);
     sh(root, 'tag', 'v1');
-    expect(await push(root, {}, 'refs/tags/v1')).toBe(0);
+    expect(await push(root, LINUX, 'refs/tags/v1')).toBe(0);
     expect(await ran(root)).toHaveLength(2);
+  });
+
+  it("leaves Talos's own unit tests out on Windows, and only there", async () => {
+    const root = await talosClone();
+    await writeFile(join(root, 'exit.txt'), '0');
+    expect(await push(root, { OS: 'Windows_NT' }, 'HEAD:refs/heads/work')).toBe(0);
+    const windowsTier = PACKS.flatMap((pack) => pack.checks)
+      .filter((c) => c.tier === 'commit' && c.scope === 'component' && c.langs?.includes('ts'))
+      .map((c) => c.id)
+      .filter((id) => id !== 'ts/tests');
+    expect(await ran(root)).toEqual([`check --tiers commit --only ${windowsTier.join(',')} dev=1`]);
   });
 
   it('runs the talos on PATH in a governed repository, and blocks on an engine error', async () => {
@@ -201,7 +222,26 @@ describe('the hook itself', () => {
     const key = Object.keys(process.env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
     const path = `${bin}${delimiter}${process.env[key] ?? ''}`;
     // The hook must not pass a TALOS_DEV of its own; the one this test runs under is cleared.
-    expect(await push(root, { [key]: path, TALOS_DEV: '' }, 'HEAD:refs/heads/work')).toBe(1);
+    const env = { [key]: path, TALOS_DEV: '', OS: 'Windows_NT' };
+    expect(await push(root, env, 'HEAD:refs/heads/work')).toBe(1);
     expect(await ran(root)).toEqual(['check --tiers commit dev=']);
+  });
+
+  it('runs the fast tier in a linked worktree without the GIT_DIR git exports there', async () => {
+    const root = await hooked({ 'README.md': '# demo\n' });
+    const bin = join(root, '..', 'bin');
+    await mkdir(bin, { recursive: true });
+    const script = join(bin, 'talos.mjs').replaceAll('\\', '/');
+    await writeFile(
+      script,
+      "import { appendFileSync } from 'node:fs';\nappendFileSync('ran.txt', `dir=${process.env.GIT_DIR ?? ''}\\n`);\n",
+    );
+    await writeFile(join(bin, 'talos'), `#!/bin/sh\nexec node "${script}" "$@"\n`, { mode: 0o755 });
+    const linked = join(root, '..', 'linked');
+    sh(root, 'worktree', 'add', '--quiet', linked);
+    const key = Object.keys(process.env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
+    const path = `${bin}${delimiter}${process.env[key] ?? ''}`;
+    expect(await push(linked, { [key]: path }, 'HEAD:refs/heads/linked')).toBe(0);
+    expect(await ran(linked)).toEqual(['dir=']);
   });
 });
