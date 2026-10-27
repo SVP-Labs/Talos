@@ -15,7 +15,8 @@ about working on the kit itself.
 - `pnpm install` also points the clone's `core.hooksPath` at `.githooks`, whose `pre-push` runs
   the hook every governed repository gets (`assets/hooks/pre-push`): the fast tier, here with the
   build in `dist/` and `TALOS_DEV=1`. It refuses a push when there is no build, and judges with
-  whatever build is there, so run `pnpm build` after pulling.
+  whatever build is there, so run `pnpm build` after pulling. On Windows it leaves out the unit
+  tests (`ts/tests`), which don't all pass on a Windows machine, and says so; the PR runs them.
 
 ## Checking a change
 
