@@ -13,8 +13,10 @@ Never paste a key, token or secret into a chat or an issue; keep them in your pa
 
   ```bash
   gh auth login
-  gh auth refresh -s admin:org,repo,workflow
+  gh auth refresh -s admin:org,repo,workflow,read:user
   ```
+
+  `read:user` lets `talos govern` read which repositories an App's installation holds (step 1).
 
 - Node 22.18 or later, npm 11.5.1 or later and pnpm, for running Talos from a clone and for the
   first npm publish.
@@ -68,7 +70,7 @@ an App you don't own on a governed repository.
 - **Its key:** generate a private key; it becomes the org secret `TALOS_REVIEWER_KEY` (step 2)
   and nothing else. It never reaches Thea's hub.
 - **Install** it on SVP-Labs with **Only select repositories**, choosing `SVP-Labs/Talos`.
-  `talos govern` adds each governed repository to the installation.
+  Each governed repository is added to it by hand, the step `talos govern` prints (below).
 
 ### `talos-release`
 
@@ -97,8 +99,8 @@ an App you don't own on a governed repository.
 
 - **Its key:** generate a private key; it becomes the `release` environment's secret
   `TALOS_RELEASE_KEY` (step 3) and nothing else.
-- **Install** it on SVP-Labs with **Only select repositories**, choosing `SVP-Labs/Talos`;
-  `talos govern` adds each governed repository.
+- **Install** it on SVP-Labs with **Only select repositories**, choosing `SVP-Labs/Talos`. Each
+  governed repository is added to it by hand, the step `talos govern` prints (below).
 
 ### Thea's App
 
@@ -114,6 +116,20 @@ statuses and actions read. Two things go beyond that table, and both stay:
 - **Install** it on `SVP-Labs/Talos` too: her hub reads each release's `package.json` there.
 
 Its key stays in her hub's settings and nowhere else.
+
+### Adding a repository to an installation
+
+An installation set to **Only select repositories** gets each governed repository by hand.
+GitHub refuses `gh`'s token the call that adds one (`403`, "You do not have permission to modify
+this app", even for an org owner), and lists an installation's repositories only to a token with
+the `read:user` scope. So `talos govern` never fails on it: where it can't read the installation,
+or GitHub refuses the addition, it prints a manual step (`!`) with the way there, which you take
+for each App it names:
+
+**Org Settings → GitHub Apps → `<App>` → Configure → Repository access**, add the repository,
+**Save**.
+
+With `read:user`, the next `talos govern` reads the installation and shows the App `ok`.
 
 ## 2. Org secrets and variables
 
@@ -270,10 +286,11 @@ talos new talos-scratch-<random> --prefix SCR --agents off --dry-run
 talos new talos-scratch-<random> --prefix SCR --agents off
 ```
 
-`new` creates the repository with a seed `talos.yml` (its name and prefix), governs it at
-`evaluate`, and adds it to the three App installations. It prints the steps GitHub's API can't
-take, such as restricting issue creation to collaborators (**Settings → General → Features →
-Issues**). Do them by hand; `talos govern SVP-Labs/<scratch>` then shows every other step `ok`.
+`new` creates the repository with a seed `talos.yml` (its name and prefix) and governs it at
+`evaluate`. It prints the steps GitHub's API can't take: restricting issue creation to
+collaborators (**Settings → General → Features → Issues**), and adding the repository to each
+App's installation ([step 1](#adding-a-repository-to-an-installation)). Do them by hand;
+`talos govern SVP-Labs/<scratch>` then shows every other step `ok`.
 
 **It is also the privacy canary** (C30), and stays governed for good, so the central jobs always
 have it in their matrix. Each central workflow's last job reads every log of its run and fails
@@ -407,8 +424,10 @@ talos govern SVP-Labs/Talos --agents on
 ```
 
 It commits the caller and `CODEOWNERS` (`* @SvenPGH`) to `main` before any ruleset exists, creates
-the merge-queue ruleset and, while Talos is at `evaluate`, the code-owner ruleset, sets the
-properties and adds Talos to the three installations. Talos already holds its own `talos.yml`,
+the merge-queue ruleset and, while Talos is at `evaluate`, the code-owner ruleset, and sets the
+properties. The three installations hold Talos already (step 1), which `talos govern` shows `ok`
+with the `read:user` scope; without it, it lists each App as a manual step to check
+([step 1](#adding-a-repository-to-an-installation)). Talos already holds its own `talos.yml`,
 generated configs and `CLAUDE.md`, so it needs no `talos adopt`.
 
 Open a PR and watch the gate run under **Settings → Rules → Insights** without blocking anything,
