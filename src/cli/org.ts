@@ -1,7 +1,8 @@
 import { printReport, RUN_FLAGS } from './govern.js';
 import { type Command, parse, UsageError } from './io.js';
 import { github, type GitHub, type GitHubOptions, tokenFromEnvironment } from '../github/api.js';
-import { identities, type Identities } from '../github/identities.js';
+import type { Identities } from '../github/identities.js';
+import { ownerIdentities } from '../github/org-variables.js';
 import { assertOwner } from '../govern/govern.js';
 import {
   channelRulesets,
@@ -74,8 +75,11 @@ export function orgWith(deps: OrgDeps): Command {
     });
     if (sub !== 'init' && sub !== 'pins') throw new UsageError(USAGE);
     const seed = seedOf(values.seed);
-    const who = identities(io.env);
     const gh = github(await tokenFromEnvironment(io.env), deps);
+    const who = await ownerIdentities(gh, io.env, (line) =>
+      io.err(`talos org: ${line}
+`),
+    );
     try {
       const report =
         sub === 'pins'

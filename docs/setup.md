@@ -171,6 +171,11 @@ Set every identity variable, even where its value is the default name: Talos tru
 reviews by those logins, so a variable left unset falls back to a name that only means SVP-Labs's
 App if SVP-Labs owns it.
 
+Org variables exist only in Actions, so on your machine `talos govern`, `talos new` and
+`talos org` read the four identity variables with your `gh` token, each one your environment
+doesn't set (the environment wins). Where the token may not read one, the command says so and
+uses the default name.
+
 `TALOS_REVIEWER_KEY` with **All repositories** can be read by any workflow on any branch of any
 repository in the org. To narrow it, choose **Selected repositories** and add each repository as
 `talos govern` brings it in; a governed repository missing from the list can't run its caller.

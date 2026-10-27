@@ -1,7 +1,7 @@
 import { governOutput, onOff, printReport, RUN_FLAGS } from './govern.js';
 import { type Command, parse, required, UsageError } from './io.js';
 import { github, type GitHubOptions, tokenFromEnvironment } from '../github/api.js';
-import { identities } from '../github/identities.js';
+import { ownerIdentities } from '../github/org-variables.js';
 import {
   checkNew,
   createRepository,
@@ -56,8 +56,11 @@ export function newWith(deps: NewDeps): Command {
     const name = checked(named, nameProblem);
     const prefix = checked(required(values.prefix, 'prefix'), prefixProblem);
     const agents = onOff(values.agents, 'agents');
-    const who = identities(io.env);
     const gh = github(await tokenFromEnvironment(io.env), deps);
+    const who = await ownerIdentities(gh, io.env, (line) =>
+      io.err(`talos new: ${line}
+`),
+    );
     const repo = `${who.org}/${name}`;
     try {
       await assertOwner(gh, who);
