@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'bootstrap/**/*.test.ts'],
     testTimeout: 30_000,
+    // Every test's git is cut off from the checkout, the machine's config and any real remote.
+    setupFiles: ['src/testing/git-env.ts'],
     coverage: {
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/testing/**', 'src/bin/talos.ts'],

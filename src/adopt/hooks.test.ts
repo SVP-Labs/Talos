@@ -204,4 +204,22 @@ describe('the hook itself', () => {
     expect(await push(root, { [key]: path, TALOS_DEV: '' }, 'HEAD:refs/heads/work')).toBe(1);
     expect(await ran(root)).toEqual(['check --tiers commit dev=']);
   });
+
+  it('runs the fast tier in a linked worktree without the GIT_DIR git exports there', async () => {
+    const root = await hooked({ 'README.md': '# demo\n' });
+    const bin = join(root, '..', 'bin');
+    await mkdir(bin, { recursive: true });
+    const script = join(bin, 'talos.mjs').replaceAll('\\', '/');
+    await writeFile(
+      script,
+      "import { appendFileSync } from 'node:fs';\nappendFileSync('ran.txt', `dir=${process.env.GIT_DIR ?? ''}\\n`);\n",
+    );
+    await writeFile(join(bin, 'talos'), `#!/bin/sh\nexec node "${script}" "$@"\n`, { mode: 0o755 });
+    const linked = join(root, '..', 'linked');
+    sh(root, 'worktree', 'add', '--quiet', linked);
+    const key = Object.keys(process.env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
+    const path = `${bin}${delimiter}${process.env[key] ?? ''}`;
+    expect(await push(linked, { [key]: path }, 'HEAD:refs/heads/linked')).toBe(0);
+    expect(await ran(linked)).toEqual(['dir=']);
+  });
 });

@@ -27,8 +27,13 @@ if [ "${refs}" -gt 0 ] && [ "${branches}" -eq 0 ]; then
   exit 0
 fi
 
-# Git runs a hook at the top of the working tree. Talos runs the release the repository
-# enforces, through the talos on PATH or else npx; in Talos's own repository, the build at hand.
+# Git runs a hook at the top of the working tree, where git finds the repository again by itself.
+# From a linked worktree it also exports GIT_DIR, which would point every git the fast tier runs,
+# a test's fixture repository among them, at this repository and its remote: so it goes.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_PREFIX
+
+# Talos runs the release the repository enforces, through the talos on PATH or else npx; in
+# Talos's own repository, the build at hand.
 set -- npx --yes @svp-labs/talos
 if command -v talos >/dev/null 2>&1; then
   set -- talos
