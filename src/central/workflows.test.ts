@@ -699,20 +699,32 @@ const canRunScripts =
   (await run('bash', ['--version'], process.env)).code === 0 &&
   (await run('jq', ['--version'], process.env)).code === 0;
 
-/** `gh api [--paginate] <path>` answered from files; an unknown path fails as `gh` does. */
+/**
+ * `gh api [--paginate] [-H <accept>] <path>` answered from files; an unknown path fails as `gh`
+ * does, and with the raw media type a contents answer is its file's text, as GitHub sends it.
+ */
 function fakeGh(answers: Readonly<Record<string, unknown>>): string {
   const directory = mkdtempSync(join(tmpdir(), 'talos-central-gh-'));
   const answersDir = join(directory, 'answers');
   mkdirSync(answersDir);
   for (const [path, body] of Object.entries(answers)) {
-    const content = typeof body === 'string' ? body : JSON.stringify(body);
-    writeFileSync(join(answersDir, path.replaceAll(/[/?=&]/g, '_')), content);
+    const file = join(answersDir, path.replaceAll(/[/?=&]/g, '_'));
+    writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body));
+    if (typeof body === 'object' && body !== null && 'content' in body) {
+      writeFileSync(`${file}.raw`, Buffer.from(String(body.content), 'base64'));
+    }
   }
   const script = [
     '#!/usr/bin/env bash',
-    'path=""',
-    'for arg in "$@"; do case "$arg" in api|--paginate) ;; *) path="$arg" ;; esac; done',
-    `file="${answersDir}/$(printf '%s' "$path" | tr '/?=&' '____')"`,
+    'path="" raw=""',
+    'for arg in "$@"; do',
+    '  case "$arg" in',
+    '    api | --paginate | -H) ;;',
+    '    "Accept: application/vnd.github.raw") raw=".raw" ;;',
+    '    *) path="$arg" ;;',
+    '  esac',
+    'done',
+    `file="${answersDir}/$(printf '%s' "$path" | tr '/?=&' '____')$raw"`,
     '[ -f "$file" ] || { echo "HTTP 404: $path (SVP-Labs/Secret)" >&2; exit 1; }',
     'cat "$file"',
   ].join('\n');
@@ -837,19 +849,23 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
       { ORG: 'SVP-Labs' },
     );
     expect(unpinned.code).toBe(1);
+    const B = 'b'.repeat(40);
+    const base64 = Buffer.from(JSON.stringify({ evaluate: B, canary: B, stable: B })).toString(
+      'base64',
+    );
     const channels = {
       'repos/SVP-Labs/Talos/contents/channels.json?ref=channels': {
-        content: Buffer.from(JSON.stringify({ evaluate: A, canary: A, stable: A })).toString(
-          'base64',
-        ),
+        content: `${base64.replaceAll(/.{60}/g, '$&\n')}\n`,
+        encoding: 'base64',
       },
     };
     const env = {
+      ORG: 'SVP-Labs',
       TALOS_LOOKUP: 'channels',
       GITHUB_REPOSITORY: 'SVP-Labs/Talos',
       WORKFLOW_TOKEN: 'w',
     };
-    expect((await runStep(find, channels, env)).output).toBe(`sha=${A}\n`);
+    expect((await runStep(find, { ...rulesets, ...channels }, env)).output).toBe(`sha=${B}\n`);
   });
 });
 

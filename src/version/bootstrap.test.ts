@@ -296,19 +296,38 @@ const canRunScripts = (await hasTool('bash')) && (await hasTool('jq'));
 
 const TALOS_ID = 900;
 
-/** `gh` as find-pin.sh calls it: `gh api [--paginate] <path>`, answered from files. */
+/** A file as GitHub's contents API answers it: base64 wrapped at 60 characters. */
+function contentsOf(text: string): { content: string; encoding: string } {
+  const base64 = Buffer.from(text).toString('base64');
+  return { content: `${base64.replaceAll(/.{60}/g, '$&\n')}\n`, encoding: 'base64' };
+}
+
+/**
+ * `gh` as find-pin.sh calls it: `gh api [--paginate] [-H <accept>] <path>`, answered from files;
+ * with the raw media type, a contents answer is its file's text, as GitHub sends it.
+ */
 function fakeGh(answers: Record<string, unknown>): string {
   const directory = mkdtempSync(join(tmpdir(), 'talos-fake-gh-'));
   const answersDir = join(directory, 'answers');
   mkdirSync(answersDir);
   for (const [path, body] of Object.entries(answers)) {
-    writeFileSync(join(answersDir, path.replaceAll(/[/?=&]/g, '_')), JSON.stringify(body));
+    const file = join(answersDir, path.replaceAll(/[/?=&]/g, '_'));
+    writeFileSync(file, JSON.stringify(body));
+    if (typeof body === 'object' && body !== null && 'content' in body) {
+      writeFileSync(`${file}.raw`, Buffer.from(String(body.content), 'base64'));
+    }
   }
   const script = [
     '#!/usr/bin/env bash',
-    'path=""',
-    'for arg in "$@"; do case "$arg" in api|--paginate) ;; *) path="$arg" ;; esac; done',
-    `file="${answersDir}/$(printf '%s' "$path" | tr '/?=&' '____')"`,
+    'path="" raw=""',
+    'for arg in "$@"; do',
+    '  case "$arg" in',
+    '    api | --paginate | -H) ;;',
+    '    "Accept: application/vnd.github.raw") raw=".raw" ;;',
+    '    *) path="$arg" ;;',
+    '  esac',
+    'done',
+    `file="${answersDir}/$(printf '%s' "$path" | tr '/?=&' '____')$raw"`,
     '[ -f "$file" ] || { echo "HTTP 404: $path" >&2; exit 1; }',
     'cat "$file"',
   ].join('\n');
@@ -392,14 +411,13 @@ describe.skipIf(!canRunScripts)('bootstrap/find-pin.sh agrees with selectPin', (
     });
   }
 
-  it('reads channels.json in channels mode', async () => {
+  it('reads channels.json in channels mode, however GitHub wraps its base64', async () => {
     const channels = { evaluate: BRANCH, canary: HEAD, stable: BRANCH };
     const answers = {
       'repos/o/r': { id: 1, custom_properties: { talos: 'canary' } },
-      'repos/SVP-Labs/Talos/contents/channels.json?ref=channels': {
-        content: Buffer.from(JSON.stringify(channels)).toString('base64'),
-        encoding: 'base64',
-      },
+      'repos/SVP-Labs/Talos/contents/channels.json?ref=channels': contentsOf(
+        JSON.stringify(channels, null, 2),
+      ),
     };
     expect(await findPin(answers, { TALOS_LOOKUP: 'channels' })).toEqual({
       code: 0,
