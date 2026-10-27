@@ -197,10 +197,13 @@ jobs:
         env:
           VERSION: ${{ needs.pin.outputs.version }}
           RUN_OS: ${{ matrix.os }}
-          TIERS: ${{ join(matrix.tiers, '+') }}
+          TIERS: ${{ matrix.tiers }}
           RUN_SHA: ${{ matrix.sha }}
           TREE: ${{ needs.plan.outputs.tree }}
         run: |
+          # matrix.tiers is a comma-separated string, such as commit,head, and actions/cache
+          # rejects a key with a comma in it.
+          TIERS="${TIERS//,/+}"
           day="$(date -u +%F)"
           printf 'key=talos-base-%s-%s-%s-%s-%s-%s\n' \
             "$VERSION" "$RUN_OS" "$TIERS" "$RUN_SHA" "$TREE" "$day" >> "$GITHUB_OUTPUT"

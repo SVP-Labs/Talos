@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { pickRepositories } from './pick.js';
 import { fakeGitHub, propertiesPath, propertyValues } from './test/fake-github.js';
 import { carriesGeneratedMarker } from '../configs/header.js';
+import { matrixOf } from '../engine/plan.js';
 
 /**
  * The workflows Talos runs and ships, read as data: the rules every one keeps (pinned actions,
@@ -878,23 +879,37 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
   });
 
   it('keeps a multi-tier cache key free of commas, which actions/cache rejects', async () => {
+    const base = 'a'.repeat(40);
+    const [entry] = matrixOf({
+      mode: 'ready',
+      base,
+      head: 'b'.repeat(40),
+      commits: [],
+      runs: [{ sha: base, tiers: ['commit', 'head'], os: 'linux', langs: [], php: '' }],
+    }).include;
+    if (entry === undefined) throw new Error('no matrix entry');
+    // The step's env as Actions would render it, from the matrix `talos plan` actually emits.
+    const values: Record<string, string> = {
+      ...Object.fromEntries(Object.entries(entry).map(([k, v]) => [`matrix.${k}`, v])),
+      'needs.pin.outputs.version': '0.1.3',
+      'needs.plan.outputs.tree': 'c'.repeat(40),
+    };
     const key = stepIn(workflow(FILES.gate).jobs.run, named('key'), 'key');
-    const tiersExpr = typeof key.env?.TIERS === 'string' ? key.env.TIERS : '';
-    const separator = /join\(matrix\.tiers, *'(.+)'\)/.exec(tiersExpr)?.[1];
-    expect(separator).not.toBe(',');
-    const result = await runStep(
-      scriptOf(FILES.gate, "Name the base run's cache entry"),
-      {},
-      {
-        VERSION: '0.1.2',
-        RUN_OS: 'ubuntu-24.04',
-        TIERS: ['commit', 'head'].join(separator ?? ','),
-        RUN_SHA: 'a'.repeat(40),
-        TREE: 'deadbeef',
-      },
+    const env = Object.fromEntries(
+      Object.entries(key.env ?? {}).map(([name, value]) => {
+        const expr = /^\$\{\{ *([\w.]+) *\}\}$/.exec(String(value))?.[1];
+        const rendered = expr === undefined ? undefined : values[expr];
+        if (rendered === undefined) throw new Error(`cannot render ${name}: ${String(value)}`);
+        return [name, rendered];
+      }),
     );
+    expect(env.TIERS).toContain(',');
+    const result = await runStep(key.run ?? '', {}, env);
     expect(result.code).toBe(0);
     expect(result.output).not.toContain(',');
+    expect(result.output).toContain(`key=talos-base-0.1.3-linux-commit+head-${base}-`);
+    const checks = stepIn(workflow(FILES.gate).jobs.run, named('Run the checks'), 'checks');
+    expect(checks.env?.TIERS).toBe('${{ matrix.tiers }}');
   });
 });
 
