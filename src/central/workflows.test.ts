@@ -876,6 +876,26 @@ describe.skipIf(!canRunScripts)('the inline lookup scripts', () => {
     };
     expect((await runStep(find, broken, env)).code).toBe(1);
   });
+
+  it('keeps a multi-tier cache key free of commas, which actions/cache rejects', async () => {
+    const key = stepIn(workflow(FILES.gate).jobs.run, named('key'), 'key');
+    const tiersExpr = typeof key.env?.TIERS === 'string' ? key.env.TIERS : '';
+    const separator = /join\(matrix\.tiers, *'(.+)'\)/.exec(tiersExpr)?.[1];
+    expect(separator).not.toBe(',');
+    const result = await runStep(
+      scriptOf(FILES.gate, "Name the base run's cache entry"),
+      {},
+      {
+        VERSION: '0.1.2',
+        RUN_OS: 'ubuntu-24.04',
+        TIERS: ['commit', 'head'].join(separator ?? ','),
+        RUN_SHA: 'a'.repeat(40),
+        TREE: 'deadbeef',
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).not.toContain(',');
+  });
 });
 
 const canRunPhpScript =

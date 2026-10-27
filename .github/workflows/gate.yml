@@ -197,7 +197,7 @@ jobs:
         env:
           VERSION: ${{ needs.pin.outputs.version }}
           RUN_OS: ${{ matrix.os }}
-          TIERS: ${{ matrix.tiers }}
+          TIERS: ${{ join(matrix.tiers, '+') }}
           RUN_SHA: ${{ matrix.sha }}
           TREE: ${{ needs.plan.outputs.tree }}
         run: |
