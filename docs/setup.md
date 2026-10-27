@@ -134,7 +134,12 @@ With `read:user`, the next `talos govern` reads the installation and shows the A
 ## 2. Org secrets and variables
 
 Under the org's **Settings → Secrets and variables → Actions**, with **Repository access: All
-repositories**, since every governed repository's caller reads them:
+repositories**, since every governed repository's caller reads them. Every variable needs
+**All repositories**, never **Private repositories**: Talos itself is public, its central jobs
+read the same variables, and a variable a repository can't see reaches its workflows as an empty
+string: the runtime sweep, for one, then mints its token with an empty `app-id` and fails.
+
+The secrets:
 
 | Secret                    | What                                                                        |
 | ------------------------- | --------------------------------------------------------------------------- |
@@ -312,6 +317,14 @@ lower-cased `owner/name`:
 
 ```bash
 printf %s SVP-Labs/talos-scratch-<random> | tr A-Z a-z | sha256sum | cut -d' ' -f1
+```
+
+or, in PowerShell:
+
+```powershell
+$name = 'SVP-Labs/talos-scratch-<random>'.ToLowerInvariant()
+-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($name)) |
+  ForEach-Object { $_.ToString('x2') })
 ```
 
 The variable is required: without it no run can prove it watched the canary, so the privacy job
