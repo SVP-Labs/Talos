@@ -285,6 +285,24 @@ describe('the gate', () => {
     expect(php).toBeLessThan(steps.findIndex(named('Run the checks')));
   });
 
+  it("enables Corepack's pnpm before the checks, never prompting or pinning", () => {
+    const steps = jobs.run?.steps ?? [];
+    const pnpm = steps.findIndex(named('Set up pnpm'));
+    expect(steps[pnpm]?.if).toBe("${{ steps.cached.outputs.cache-hit != 'true' }}");
+    const run = steps[pnpm]?.run ?? '';
+    expect(run).toMatch(/^corepack enable pnpm$/m);
+    for (const setting of [
+      'COREPACK_ENABLE_DOWNLOAD_PROMPT=0',
+      'COREPACK_DEFAULT_TO_LATEST=0',
+      'COREPACK_ENABLE_AUTO_PIN=0',
+    ]) {
+      expect(run).toContain(`echo '${setting}'`);
+    }
+    expect(run).toContain('>> "$GITHUB_ENV"');
+    expect(pnpm).toBeGreaterThan(steps.findIndex(named('Set up Node')));
+    expect(pnpm).toBeLessThan(steps.findIndex(named('Run the checks')));
+  });
+
   it("caches a PR's base run by everything its result depends on, and never in the queue", () => {
     const run = jobs.run;
     const key = stepIn(run, named('key'), 'key');
@@ -342,6 +360,20 @@ describe('the caller', () => {
     expect(
       analyze.steps.some((s) => s.run?.includes('job "$EVENT" --phase analyze') === true),
     ).toBe(true);
+  });
+
+  it('leaves pnpm to Talos, which falls back to Corepack, so analyze needs no step of its own', () => {
+    expect(caller.jobs.analyze?.steps.map((s) => s.name)).toEqual([
+      'Find the enforced Talos release',
+      'Check out Talos at the pin',
+      'Check out the default branch',
+      'Set up Node',
+      'Find whether the default branch needs PHP',
+      'Set up PHP',
+      'Analyze',
+      'Hand the results to act',
+    ]);
+    expect(text(FILES.caller)).not.toMatch(/corepack|pnpm/i);
   });
 
   it("acts with the reviewer's token for this repository, never checking out the PR", () => {
