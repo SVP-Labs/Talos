@@ -2,32 +2,9 @@ import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { type Command, parse, required } from './io.js';
 import { loadConfig } from '../config/load.js';
-import { type GatePlan, planFromEvent } from '../engine/plan.js';
+import { matrixOf, planFromEvent } from '../engine/plan.js';
 import { exec } from '../exec/exec.js';
 import { git } from '../repo/git.js';
-
-const RUNNERS = {
-  linux: 'ubuntu-latest',
-  windows: 'windows-latest',
-  macos: 'macos-latest',
-} as const;
-
-/**
- * The run job's matrix: one entry per run, carrying what the gate sets up before Talos runs,
- * `php` (the minor, or empty) and `langs` (comma-separated), read at the run's own commit.
- */
-function matrixOf(gatePlan: GatePlan) {
-  return {
-    include: gatePlan.runs.map((r) => ({
-      sha: r.sha,
-      tiers: r.tiers.join(','),
-      os: r.os,
-      runner: RUNNERS[r.os],
-      langs: r.langs.join(','),
-      php: r.php,
-    })),
-  };
-}
 
 /** `talos plan`: reads the gate's event and writes the plan and the jobs' matrix. */
 export const plan: Command = async (argv, io) => {

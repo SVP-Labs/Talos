@@ -39,6 +39,29 @@ export type GatePlan = {
   readonly runs: readonly RunSpec[];
 };
 
+const RUNNERS = {
+  linux: 'ubuntu-latest',
+  windows: 'windows-latest',
+  macos: 'macos-latest',
+} as const;
+
+/**
+ * The run job's matrix: one entry per run, carrying what the gate sets up before Talos runs,
+ * `php` (the minor, or empty) and `langs` (comma-separated), read at the run's own commit.
+ */
+export function matrixOf(gatePlan: GatePlan) {
+  return {
+    include: gatePlan.runs.map((r) => ({
+      sha: r.sha,
+      tiers: r.tiers.join(','),
+      os: r.os,
+      runner: RUNNERS[r.os],
+      langs: r.langs.join(','),
+      php: r.php,
+    })),
+  };
+}
+
 const pullRequestEvent = z.object({
   pull_request: z.object({
     draft: z.boolean().default(false),
