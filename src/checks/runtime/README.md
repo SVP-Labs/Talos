@@ -89,7 +89,7 @@ any other declaration. A runtime Talos doesn't know is an engine error, since on
 the file.
 
 ```json
-{ "runtimes": { "python": "3.13.17" }, "tools": {} }
+{ "runtimes": { "python": "3.13.18" }, "tools": {} }
 ```
 
 ## Using it without a checkout

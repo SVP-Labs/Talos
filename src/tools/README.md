@@ -8,7 +8,7 @@ it; a check asks `ctx.tools.path(name)` and gets the executable's absolute path.
 
 ```json
 {
-  "runtimes": { "python": "3.13.17" },
+  "runtimes": { "python": "3.13.18" },
   "tools": {
     "hadolint": {
       "version": "2.15.1",
