@@ -453,6 +453,62 @@ describe('reviewJob on a pull request', () => {
     );
   });
 
+  it("passes the owner's own signed PR at evaluate, and lands no debt work or card there", async () => {
+    const owned = debtScenario();
+    owned.properties = { talos: 'evaluate', 'talos-agents': 'false' };
+    const pull = owned.pulls.get(PR);
+    if (pull !== undefined) {
+      pull.user = person(OWNER);
+      pull.author_association = 'OWNER';
+    }
+    owned.commits.set(PR, [
+      { sha: HEAD, verified: true, author: person(OWNER), committer: person(OWNER) },
+    ]);
+    await reviewJobWith(jobContext(owned), deps(fakeModel(APPROVE)));
+    expect(lastCheck(owned)).toMatchObject({ head_sha: HEAD, conclusion: 'success' });
+    expect(output(lastCheck(owned)).title).toBe('Passes: the owner approved');
+    expect(output(lastCheck(owned)).summary).toContain(
+      '- [x] the owner approved: @SvenPGH wrote and signed every commit',
+    );
+
+    const debt = debtScenario();
+    debt.properties = { talos: 'evaluate', 'talos-agents': 'true' };
+    await reviewJobWith(jobContext(debt), deps(fakeModel(APPROVE)));
+    expect(submitted(debt)).toMatchObject([{ event: 'APPROVE' }]);
+    expect(lastCheck(debt).status).toBe('in_progress');
+    expect(output(lastCheck(debt)).title).toBe("Waits for the owner's approval");
+    expect(output(lastCheck(debt)).summary).toContain(
+      '- [ ] the repository is at evaluate: every PR needs the owner',
+    );
+
+    const carded = debtScenario();
+    carded.properties = { talos: 'evaluate', 'talos-agents': 'false' };
+    carded.reviews.set(PR, [
+      {
+        user: app(THEA),
+        state: 'COMMENTED',
+        commit_id: HEAD,
+        submitted_at: '2026-10-23T12:30:00Z',
+        body: `talos-approve card-9 ${HEAD}`,
+      },
+    ]);
+    await reviewJobWith(jobContext(carded), deps(fakeModel(APPROVE)));
+    expect(lastCheck(carded).status).toBe('in_progress');
+    expect(output(lastCheck(carded)).summary).toContain(
+      "- [ ] the owner's card doesn't count here: they approve on GitHub",
+    );
+  });
+
+  it('reads a repository whose channel is unset as at evaluate', async () => {
+    const fake = debtScenario();
+    fake.properties = { 'talos-agents': 'false' };
+    await reviewJobWith(jobContext(fake), deps(fakeModel(APPROVE)));
+    expect(lastCheck(fake).status).toBe('in_progress');
+    expect(output(lastCheck(fake)).summary).toContain(
+      '- [ ] the repository is at evaluate: every PR needs the owner',
+    );
+  });
+
   it('needs the owner for every PR in the Talos repository', async () => {
     const fake = debtScenario();
     await reviewJobWith(

@@ -4,13 +4,13 @@ import { decisionInput, type ReviewFacts, ticketIssue } from './assemble.js';
 import { codeOwnersAt } from './codeowners.js';
 import { decide, type DecisionState } from './conditions.js';
 import {
-  agentsOn,
   closingIssues,
   getPull,
   listIssueEvents,
   listPullCommits,
   listPullFiles,
   listReviews,
+  repoProperties,
 } from './github.js';
 import { extensionFiles } from './guard.js';
 import { claudeCodeModel } from './model.js';
@@ -130,16 +130,17 @@ async function gather(
 ): Promise<ReviewFacts> {
   const { repo } = ctx;
   const pull = await getPull(gh, repo, target.pr);
-  const [config, files, reviews, commits, pullEvents, closing, agents, owners] = await Promise.all([
-    ctx.config(target.group?.headSha ?? pull.baseRef),
-    listPullFiles(gh, repo, pull.number),
-    listReviews(gh, repo, pull.number),
-    listPullCommits(gh, repo, pull.number),
-    listIssueEvents(gh, repo, pull.number),
-    closingIssues(gh, repo, pull.number),
-    agentsOn(gh, repo),
-    codeOwnersAt(gh, repo, target.group?.baseSha ?? pull.baseRef),
-  ]);
+  const [config, files, reviews, commits, pullEvents, closing, properties, owners] =
+    await Promise.all([
+      ctx.config(target.group?.headSha ?? pull.baseRef),
+      listPullFiles(gh, repo, pull.number),
+      listReviews(gh, repo, pull.number),
+      listPullCommits(gh, repo, pull.number),
+      listIssueEvents(gh, repo, pull.number),
+      closingIssues(gh, repo, pull.number),
+      repoProperties(gh, repo),
+      codeOwnersAt(gh, repo, target.group?.baseSha ?? pull.baseRef),
+    ]);
   const ticket = ticketIssue(closing, repo);
   const issue = ticket === undefined ? undefined : await getIssue(gh, repo, ticket.number);
   const issueEvents = issue === undefined ? [] : await listIssueEvents(gh, repo, issue.number);
@@ -147,7 +148,8 @@ async function gather(
     repo,
     who: ctx.who,
     config,
-    agentsOn: agents,
+    agentsOn: properties.agentsOn,
+    onChannel: properties.onChannel,
     pull,
     files,
     reviews,

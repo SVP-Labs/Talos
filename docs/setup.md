@@ -378,18 +378,27 @@ through.
   drift report. C6's trust rule and C17's trusted-`regression` rule then carry the protection
   alone.
 
-### 3. The owner's bypass reaches the merge queue
+### 3. The owner's own PR reaches the merge queue
 
-At `evaluate`, the code-owner ruleset gives you a bypass; the merge-queue ruleset has none.
+At `evaluate`, `talos-owner-review` requires `talos/review` from the reviewer and has no bypass,
+like the merge-queue ruleset. Your own PR passes `talos/review` when you wrote and signed every
+commit, so it needs nobody's approval (X2).
 
-- **Do:** as yourself, file issue #1, push a branch `SCR-1` with two signed commits, each
-  `[SCR-1]: …` and each adding a line to `README.md`, open a PR from it that closes #1, and
-  choose **Merge when ready** (taking the bypass the page offers).
-- **Expect:** the PR joins the merge queue without anyone's approval, and the queue merges it
-  onto `main`.
-- **If it is refused:** while a repository is at `evaluate`, both rules belong in one ruleset, so
-  your bypass covers the queue too; that costs nothing in a phase where nothing is enforced, and
-  ends at `--channel`. Open an issue on Talos to change `talos govern` that way.
+- **Do:** with the scratch repository at `evaluate`, as yourself, file issue #1, push a branch
+  `SCR-1` with two commits you sign, each `[SCR-1]: …` and each adding a line to `README.md`, and
+  open a PR from it that closes #1. Its body needs the sections `## Problem`, `## Discussion`
+  and `## Solution`, each with a line of text: without them `talos/review` fails, and GitHub
+  offers no way to merge. Wait for `talos/review`, then choose **Merge when ready**.
+- **Expect:** `talos/review` passes with "Passes: the owner approved" and the line
+  `[x] the owner approved: @SvenPGH wrote and signed every commit`; the PR joins the merge queue
+  without anyone's approval, and the queue merges it onto `main`.
+- **If `talos/review` waits or fails:** its summary names the unmet line. A commit GitHub shows
+  as unverified, or one made in the web editor (committed by `web-flow`), needs your approval
+  on GitHub like anyone else's PR.
+- **If the queue still refuses it:** read the refusal (`gh pr merge --auto` prints it) and the
+  rulesets with `gh api "repos/SVP-Labs/<scratch>/rulesets?includes_parents=true"`. A leftover
+  rule `talos govern` doesn't write, such as an older `talos-owner-review` asking for a code
+  owner's approval, goes when you run `talos govern SVP-Labs/<scratch>` again.
 
 ### 4. A ruleset's required workflow runs on `merge_group`
 
@@ -442,7 +451,7 @@ talos govern SVP-Labs/Talos --agents on
 ```
 
 It commits the caller and `CODEOWNERS` (`* @SvenPGH`) to `main` before any ruleset exists, creates
-the merge-queue ruleset and, while Talos is at `evaluate`, the code-owner ruleset, and sets the
+the merge-queue ruleset and, while Talos is at `evaluate`, the owner-review ruleset, and sets the
 properties. The three installations hold Talos already (step 1), which `talos govern` shows `ok`
 with the `read:user` scope; without it, it lists each App as a manual step to check
 ([step 1](#adding-a-repository-to-an-installation)). Talos already holds its own `talos.yml`,

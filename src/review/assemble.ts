@@ -17,6 +17,11 @@ export type ReviewFacts = {
   readonly who: Identities;
   readonly config: TalosConfig;
   readonly agentsOn: boolean;
+  /**
+   * The repository is on `canary` or `stable`. At `evaluate` its channel ruleset only watches and
+   * `talos/review` is what holds it, so only the owner lands work: no card, no debt or chore path.
+   */
+  readonly onChannel: boolean;
   readonly pull: Pull;
   readonly files: readonly PullFile[];
   readonly reviews: readonly Review[];
@@ -78,6 +83,7 @@ function unattendedFacts(
     integrity: testIntegrity(facts.files, facts.files.length >= facts.pull.changedFiles),
     protectedPaths: hit,
     isTalos: isTalosRepo(facts.repo, facts.who),
+    onChannel: facts.onChannel,
   };
 }
 
@@ -113,7 +119,7 @@ export function decisionInput(facts: ReviewFacts, run: ReviewerRun | undefined):
       author: pull.author,
       owners: facts.owners.length > 0 ? facts.owners : [who.owner],
       thea: who.thea,
-      theaCounts: hit.length === 0 && !isTalosRepo(facts.repo, who),
+      theaCounts: hit.length === 0 && !isTalosRepo(facts.repo, who) && facts.onChannel,
     }),
     unattended: unattendedFacts(facts, touched, hit),
   };

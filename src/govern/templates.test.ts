@@ -5,6 +5,7 @@ import {
   channelsBranchRuleset,
   isChannel,
   loadTemplates,
+  ownerReviewRuleset,
   parseTemplate,
   pinOf,
   type Templates,
@@ -66,22 +67,18 @@ describe('the ruleset templates', () => {
     });
   });
 
-  it("carry the owner's review rule exactly, with an org admin bypass on PRs only", async () => {
+  it('require talos/review from the reviewer App at evaluate, with no bypass', async () => {
     const { ownerReview } = await templates();
-    expect(ownerReview.rules).toEqual([
+    expect(ownerReview.enforcement).toBe('active');
+    expect(ownerReview.bypass_actors).toEqual([]);
+    expect(ownerReviewRuleset(ownerReview, 5465977).rules).toEqual([
       {
-        type: 'pull_request',
+        type: 'required_status_checks',
         parameters: {
-          required_approving_review_count: 1,
-          require_code_owner_review: true,
-          dismiss_stale_reviews_on_push: true,
-          require_last_push_approval: true,
-          required_review_thread_resolution: false,
+          strict_required_status_checks_policy: false,
+          required_status_checks: [{ context: 'talos/review', integration_id: 5465977 }],
         },
       },
-    ]);
-    expect(ownerReview.bypass_actors).toEqual([
-      { actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' },
     ]);
   });
 

@@ -15,6 +15,9 @@ import {
  */
 const HEAD = 'c'.repeat(40);
 
+/** `talos-reviewer`'s App id in the fake organisation. */
+const REVIEWER_APP_ID = 5465977;
+
 export type World = {
   exists: boolean;
   settings: Record<string, unknown>;
@@ -73,6 +76,7 @@ export function worldApi(world: World, login = 'SvenPGH'): FakeApi {
   let nextRuleset = 100;
   return fakeApi([
     route('GET', /^user$/, json({ login })),
+    route('GET', /^apps\/talos-reviewer$/, json({ id: REVIEWER_APP_ID, slug: 'talos-reviewer' })),
     route('GET', /^repos\/SVP-Labs\/demo$/, () =>
       world.exists ? json({ id: 42, default_branch: 'main', ...world.settings }) : NOT_FOUND,
     ),

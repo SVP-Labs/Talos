@@ -138,15 +138,29 @@ export async function listIssueEvents(gh: GitHub, repo: string, n: number): Prom
 
 const propertySchema = propertyValuesSchema;
 
+export type RepoProperties = {
+  /** The `talos-agents` property is on. */
+  readonly agentsOn: boolean;
+  /** The `talos` property names `canary` or `stable`; at `evaluate`, or unset, it doesn't. */
+  readonly onChannel: boolean;
+};
+
+const ON_CHANNEL: ReadonlySet<string> = new Set(['canary', 'stable']);
+
 /**
- * Whether the repository's `talos-agents` property is on. Read from the properties endpoint,
+ * The repository's `talos-agents` and `talos` properties. Read from the properties endpoint,
  * which refuses a token that can't see them, rather than from the repository's own record, which
- * leaves them out silently and would read as off.
+ * leaves them out silently and would read as off and at `evaluate`.
  */
-export async function agentsOn(gh: GitHub, repo: string): Promise<boolean> {
+export async function repoProperties(gh: GitHub, repo: string): Promise<RepoProperties> {
   const raw = await gh.request<unknown>('GET', `repos/${repo}/properties/values`);
   const values = propertySchema.parse(raw);
-  return values.some((p) => p.property_name === 'talos-agents' && p.value === 'true');
+  const value = (name: string) => values.find((p) => p.property_name === name)?.value;
+  const channel = value('talos');
+  return {
+    agentsOn: value('talos-agents') === 'true',
+    onChannel: typeof channel === 'string' && ON_CHANNEL.has(channel),
+  };
 }
 
 const MOVES: ReadonlySet<string> = new Set(['head_ref_force_pushed', 'base_ref_changed']);

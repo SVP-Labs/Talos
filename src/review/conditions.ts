@@ -31,6 +31,8 @@ export type UnattendedFacts = {
   readonly integrity: { readonly flagged: boolean; readonly reasons: readonly string[] };
   readonly protectedPaths: readonly string[];
   readonly isTalos: boolean;
+  /** The repository is on `canary` or `stable`, not at `evaluate`. */
+  readonly onChannel: boolean;
 };
 
 export type DecisionInput = {
@@ -133,6 +135,9 @@ export function unattendedConditions(facts: UnattendedFacts): Condition[] {
     facts.isTalos
       ? { met: false, line: 'the Talos repository: every PR needs the owner' }
       : { met: true, line: 'not the Talos repository' },
+    facts.onChannel
+      ? { met: true, line: 'the repository is on a channel' }
+      : { met: false, line: 'the repository is at evaluate: every PR needs the owner' },
   ];
 }
 

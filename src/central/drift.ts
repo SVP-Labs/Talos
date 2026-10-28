@@ -37,7 +37,7 @@ export type Expected = {
   readonly codeowners: string;
   /** The merge-queue ruleset as Talos creates it. */
   readonly mergeQueue: unknown;
-  /** The owner-review ruleset as Talos creates it, the one approval gate while at `evaluate`. */
+  /** The owner-review ruleset as Talos creates it: `talos/review` required while at `evaluate`. */
   readonly ownerReview: unknown;
 };
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decide } from './conditions.js';
-import { closingIssues, lastMove } from './github.js';
+import { closingIssues, lastMove, repoProperties } from './github.js';
 import { checkFields, checkSummary, errorFields, reviewerOutcome } from './report.js';
 import {
   diffLines,
@@ -378,6 +378,7 @@ describe('the check run', () => {
       integrity: { flagged: false, reasons: [] },
       protectedPaths: [],
       isTalos: false,
+      onChannel: true,
     },
   });
 
@@ -423,5 +424,40 @@ describe('the check run', () => {
       result: 'skipped',
       detail: 'agents are off here',
     });
+  });
+});
+
+describe('repoProperties', () => {
+  const answering = (values: unknown) =>
+    github('t', {
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify(values), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+    });
+  const value = (name: string, v: unknown) => ({ property_name: name, value: v });
+
+  it('reads agents and whether the repository is on a channel', async () => {
+    expect(
+      await repoProperties(
+        answering([value('talos', 'stable'), value('talos-agents', 'true')]),
+        'o/r',
+      ),
+    ).toEqual({ agentsOn: true, onChannel: true });
+    expect(await repoProperties(answering([value('talos', 'canary')]), 'o/r')).toEqual({
+      agentsOn: false,
+      onChannel: true,
+    });
+  });
+
+  it('reads evaluate, an unset channel and an unknown value as off a channel', async () => {
+    for (const talos of ['evaluate', null, 'nightly', ['canary']]) {
+      const props = await repoProperties(answering([value('talos', talos)]), 'o/r');
+      expect(props.onChannel).toBe(false);
+    }
+    expect((await repoProperties(answering([]), 'o/r')).onChannel).toBe(false);
   });
 });

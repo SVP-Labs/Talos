@@ -8,7 +8,13 @@ import {
   type RepoState,
 } from './state.js';
 import { change, manual, ok, rulesetStep, type Step } from './steps.js';
-import { type Channel, isChannel, type RulesetBody, type Templates } from './templates.js';
+import {
+  type Channel,
+  isChannel,
+  ownerReviewRuleset,
+  type RulesetBody,
+  type Templates,
+} from './templates.js';
 import { oldKitCallers } from '../adopt/scaffold.js';
 
 /** What the owner asked `talos govern` for. */
@@ -24,6 +30,8 @@ export type GovernRequest = {
   /** `assets/codeowners`, with `@OWNER` standing for the owner's login. */
   readonly codeowners: string;
   readonly templates: Templates;
+  /** `talos-reviewer`'s App id: the one source `talos/review` is accepted from. */
+  readonly reviewerAppId: number;
   /** Files written once with the caller when missing, such as `talos new`'s `talos.yml`. */
   readonly seed?: Readonly<Record<string, string>>;
 };
@@ -203,7 +211,14 @@ export function governPlan(state: RepoState, request: GovernRequest): Step[] {
     filesStep(state, request, channel),
     ...settingsSteps(state),
     repoRuleset(state, request.templates.mergeQueue),
-    ...(atEvaluate ? [repoRuleset(state, request.templates.ownerReview)] : []),
+    ...(atEvaluate
+      ? [
+          repoRuleset(
+            state,
+            ownerReviewRuleset(request.templates.ownerReview, request.reviewerAppId),
+          ),
+        ]
+      : []),
     state.alerts
       ? ok('alerts', 'Dependabot alerts are on')
       : change('alerts', 'switch on Dependabot alerts', {

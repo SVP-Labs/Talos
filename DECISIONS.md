@@ -68,3 +68,26 @@ wrote it; from anyone else it is text.
 - the Talos release as the contract's version (every release would look like a breaking change
   to every reader);
 - markers anywhere in a body (a quoted marker in someone's comment would read as Talos's).
+
+### X2 · At `evaluate`, `talos/review` holds the branch
+
+_Decided 2026-10-28, by the owner, after smoke test 3 failed: the owner's own signed PR could
+not enter the merge queue at `evaluate`._
+
+**Decision:** while a repository is at `evaluate`, the repository ruleset `talos-owner-review`
+requires the check `talos/review`, accepted from `talos-reviewer` alone, with no bypass, in
+place of C18's code-owner approval rule. There `talos/review` passes only with the owner's
+approval: a code owner's APPROVE of the head on GitHub, or the owner's own PR with every commit
+signed by them. Thea's cards and the debt-and-chore path don't count until the repository is on
+`canary` or `stable`. The merge queue stays the only way into `main`, and the owner's PR lands
+through the review instead of a bypass, which GitHub doesn't offer at the queue (it answers
+"New changes require approval from someone other than the last pusher").
+
+**Rejected:**
+
+- the reviewer App approving the owner's signed PRs: an App can't be a code owner, so the rule
+  would have to drop its code-owner requirement, and then the reviewer's own APPROVE of an
+  agent's PR would satisfy it, landing Thea's work on a bot's word while nothing enforces
+  `talos/review`;
+- one ruleset holding both the queue and the code-owner rule, with the owner's bypass: the
+  bypass would let the owner merge around the queue.

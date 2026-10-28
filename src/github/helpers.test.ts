@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { listRunArtifacts, listRunJobs, listWorkflowRuns } from './actions.js';
 import { github, type GitHub, GitHubError } from './api.js';
+import { appId } from './apps.js';
 import { downloader } from './artifacts.js';
 import { createCheckRun, listCheckRuns, stateOf, updateCheckRun } from './checks.js';
 import { readFileAt } from './contents.js';
@@ -568,5 +569,23 @@ describe('currentRepository', () => {
     expect(isRepoName('SVP-Labs/Thea')).toBe(true);
     expect(isRepoName('a/b/c')).toBe(false);
     expect(isRepoName('a b/c')).toBe(false);
+  });
+});
+
+describe('appId', () => {
+  it("reads an App's id by its slug or its bot login", async () => {
+    const calls: Call[] = [];
+    const gh = fakeGitHub(
+      { 'GET apps/talos-reviewer': { id: 5465977, slug: 'talos-reviewer' } },
+      calls,
+    );
+    expect(await appId(gh, 'talos-reviewer[bot]')).toBe(5465977);
+    expect(await appId(gh, 'talos-reviewer')).toBe(5465977);
+    expect(calls.map((c) => c.path)).toEqual(['apps/talos-reviewer', 'apps/talos-reviewer']);
+  });
+
+  it('refuses an answer without a numeric id', async () => {
+    const gh = fakeGitHub({ 'GET apps/x': { slug: 'x' } });
+    await expect(appId(gh, 'x')).rejects.toThrow();
   });
 });

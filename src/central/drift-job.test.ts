@@ -9,6 +9,7 @@ import { identities } from '../github/identities.js';
 const WHO = identities({});
 const ASSETS = new URL('../../assets/', import.meta.url);
 const R = 'repos/SVP-Labs/Secret';
+const REVIEWER_APP_ID = 5465977;
 
 const file = (text: string) => ({
   body: {
@@ -31,7 +32,7 @@ const created = (body: unknown) => ({
 });
 
 async function governed(talos = 'stable'): Promise<{ release: Fake; reviewer: Fake }> {
-  const expected = await expectedFromAssets('SvenPGH', ASSETS);
+  const expected = await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS);
   const queue = JSON.parse(
     await readFile(new URL('rulesets/merge-queue.json', ASSETS), 'utf8'),
   ) as object;
@@ -73,12 +74,23 @@ async function governed(talos = 'stable'): Promise<{ release: Fake; reviewer: Fa
 
 describe('expectedFromAssets', () => {
   it('reads the caller, CODEOWNERS for the owner and the merge queue Talos ships', async () => {
-    const expected = await expectedFromAssets('SvenPGH', ASSETS);
+    const expected = await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS);
     expect(expected.caller).toBe(await readFile(new URL('workflows/talos.yml', ASSETS), 'utf8'));
     expect(expected.codeowners).toContain('* @SvenPGH');
     expect(expected.codeowners).not.toContain('@OWNER');
     expect(expected.mergeQueue).toMatchObject({ name: 'talos-merge-queue' });
-    expect(expected.ownerReview).toMatchObject({ name: 'talos-owner-review' });
+    expect(expected.ownerReview).toMatchObject({
+      name: 'talos-owner-review',
+      bypass_actors: [],
+      rules: [
+        {
+          type: 'required_status_checks',
+          parameters: {
+            required_status_checks: [{ context: 'talos/review', integration_id: REVIEWER_APP_ID }],
+          },
+        },
+      ],
+    });
     expect(expected.settings).toBe(GOVERNED_SETTINGS);
   });
 });
@@ -90,7 +102,7 @@ describe('runDrift', () => {
       release: release.gh,
       reviewer: reviewer.gh,
       who: WHO,
-      expected: await expectedFromAssets('SvenPGH', ASSETS),
+      expected: await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS),
     });
     expect(report).toEqual({ governed: 1, differences: 1, filed: 1, closed: 1 });
     const post = reviewer.calls.find((c) => c.method === 'POST');
@@ -113,7 +125,7 @@ describe('runDrift', () => {
       release: release.gh,
       reviewer: reviewer.gh,
       who: WHO,
-      expected: await expectedFromAssets('SvenPGH', ASSETS),
+      expected: await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS),
     });
     expect(report).toEqual({ governed: 0, differences: 0, filed: 0, closed: 0 });
   });
@@ -128,7 +140,7 @@ describe('runDrift', () => {
         release: release.gh,
         reviewer: other.gh,
         who: WHO,
-        expected: await expectedFromAssets('SvenPGH', ASSETS),
+        expected: await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS),
       }),
     ).rejects.toThrow('different repositories');
   });
@@ -136,7 +148,7 @@ describe('runDrift', () => {
   it('reads Dependabot alerts as off on 404 and unknown on any other failure', async () => {
     const { release, reviewer } = await governed();
     release.on('GET', `${R}/vulnerability-alerts`, { status: 404 });
-    const expected = await expectedFromAssets('SvenPGH', ASSETS);
+    const expected = await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS);
     const off = await runDrift({ release: release.gh, reviewer: reviewer.gh, who: WHO, expected });
     expect(off.differences).toBe(2);
     release.on('GET', `${R}/vulnerability-alerts`, { status: 403 });
@@ -147,6 +159,40 @@ describe('runDrift', () => {
       expected,
     });
     expect(unknown.differences).toBe(1);
+  });
+});
+
+describe('runDrift at evaluate', () => {
+  async function atEvaluate(ownerReview: unknown) {
+    const { release, reviewer } = await governed('evaluate');
+    release.on('GET', `${R}/rulesets?includes_parents=false`, {
+      body: [
+        { id: 1, name: 'talos-merge-queue' },
+        { id: 4, name: 'talos-owner-review' },
+      ],
+    });
+    release.on('GET', `${R}/rulesets/4`, { body: { id: 4, ...(ownerReview as object) } });
+    const expected = await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS);
+    await runDrift({ release: release.gh, reviewer: reviewer.gh, who: WHO, expected });
+    return reviewer.calls
+      .filter((c) => c.method === 'POST')
+      .map((c) => (c.body as { body: string }).body.split('\n')[0]);
+  }
+
+  it('accepts the owner rule as govern writes it, and reports the older code-owner rule', async () => {
+    const current = (await expectedFromAssets('SvenPGH', REVIEWER_APP_ID, ASSETS)).ownerReview;
+    expect(await atEvaluate(current)).toEqual([driftMarker('setting:allow_squash_merge')]);
+    const older = {
+      ...(current as object),
+      bypass_actors: [
+        { actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' },
+      ],
+      rules: [{ type: 'pull_request', parameters: { require_code_owner_review: true } }],
+    };
+    expect(await atEvaluate(older)).toEqual([
+      driftMarker('setting:allow_squash_merge'),
+      driftMarker('ruleset:talos-owner-review'),
+    ]);
   });
 });
 
