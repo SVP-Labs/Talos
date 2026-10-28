@@ -236,6 +236,18 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
+      # The runners have npm but not pnpm. Corepack, which comes with Node 22, puts a pnpm on PATH
+      # that runs the version the repository's packageManager names, or else the one this Node
+      # release ships with; it never prompts, and never writes packageManager into package.json.
+      - name: Set up pnpm
+        if: ${{ steps.cached.outputs.cache-hit != 'true' }}
+        run: |
+          corepack enable pnpm
+          {
+            echo 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0'
+            echo 'COREPACK_DEFAULT_TO_LATEST=0'
+            echo 'COREPACK_ENABLE_AUTO_PIN=0'
+          } >> "$GITHUB_ENV"
       - name: Set up PHP
         if: ${{ steps.cached.outputs.cache-hit != 'true' && matrix.php != '' }}
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
