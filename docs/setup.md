@@ -594,6 +594,12 @@ built from source), rustup, Docker on Linux for declared services, and an open n
 outside tool comes from `tools.lock`, checked by its sha256, and each language's own tools from
 the project's lockfile.
 
+For TypeScript, the gate installs with the package manager whose lockfile it finds: npm comes
+with Node, and Corepack, which comes with Node 22, puts `pnpm` on `PATH` on every runner. That
+pnpm is the version `packageManager` in `package.json` names, or else the one Corepack ships
+with that Node release. It never prompts and never writes `packageManager` into the file. A
+`packageManager` that names another manager stops pnpm, which is an engine error.
+
 PHP is the one runtime the gate sets up per project, and each run of its matrix sets up what its
 own commit asks for, so base and head may differ: on a system a PHP component of that commit
 lists, the newest minor any such component's `composer.json` asks for (`config.platform.php`,

@@ -244,4 +244,24 @@ describe.skipIf(process.platform !== 'win32')('exec on a real Windows batch file
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('finds a shim on PATH by its bare name, as pnpm, npm and npx are installed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'talos-exec-'));
+    // The PATH key as the process has it, so the child's environment holds one PATH, not two.
+    const key = Object.keys(process.env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
+    const env = { [key]: dir, PATHEXT: '.COM;.EXE;.BAT;.CMD' };
+    try {
+      await writeFile(join(dir, 'talos-shim.CMD'), shims['line.cmd']);
+      const run = await exec('talos-shim', HOSTILE, { cwd: dir, env });
+      expect({ code: run.code, args: JSON.parse(run.stdout) as unknown }).toEqual({
+        code: 0,
+        args: HOSTILE,
+      });
+      await expect(exec('talos-no-such-shim', [], { cwd: dir, env })).rejects.toThrow(
+        /talos-no-such-shim could not start: spawn talos-no-such-shim ENOENT/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
