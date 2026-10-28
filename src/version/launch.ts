@@ -89,7 +89,13 @@ function defaultDeps(): LaunchDeps {
       }),
     isRunning: async (release) =>
       isVerifiedInstall(await ownInstallMarker(), ownVersion(), release),
-    install: (release) => ensureVerified(release, { exec: realExec, fetch, env }),
+    install: (release) =>
+      ensureVerified(release, {
+        exec: realExec,
+        fetch,
+        env,
+        log: (line) => process.stderr.write(`talos: ${line}\n`),
+      }),
     run: runNode,
   };
 }

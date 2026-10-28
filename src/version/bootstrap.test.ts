@@ -12,7 +12,7 @@ import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { auditProblems, lockedIntegrity } from './install.js';
+import { auditProblems, auditSignatures, lockedIntegrity, npmArguments } from './install.js';
 import { selectChannelPin, selectPin } from './pin.js';
 import {
   decodeProvenance,
@@ -248,6 +248,207 @@ describe('bootstrap: the checkout it runs from', () => {
     expect(bootstrap.npmCli('/nowhere/node.exe', 'win32', { npm_execpath: BOOTSTRAP })).toBe(
       BOOTSTRAP,
     );
+  });
+});
+
+type AuditRun = { readonly status: number | null; readonly stdout: string | null };
+
+const CLEAN: AuditRun = { status: 0, stdout: '{"invalid":[],"missing":[]}' };
+
+function report(invalid: readonly unknown[], missing: readonly unknown[] = []): AuditRun {
+  return { status: 1, stdout: JSON.stringify({ invalid, missing }) };
+}
+
+const RACED = {
+  code: 'EATTESTATIONVERIFY',
+  name: '@sigstore/core',
+  version: '3.1.0',
+  message: 'Unterminated string in JSON at position 4096',
+};
+
+/** `npm audit signatures` answering each run with the next of `runs`, and what it logged. */
+function audits(...runs: AuditRun[]): {
+  problems: () => string[];
+  calls: () => number;
+  logged: string[];
+} {
+  let calls = 0;
+  const logged: string[] = [];
+  const audit = (): AuditRun => {
+    const run = runs[calls];
+    calls += 1;
+    if (run === undefined) throw new Error(`no audit run ${calls} expected`);
+    return run;
+  };
+  return {
+    problems: () => bootstrap.auditSignatures(audit, (line) => logged.push(line)),
+    calls: () => calls,
+    logged,
+  };
+}
+
+/** The engine's verdict on the same runs; an audit that never started is exit 1, no output. */
+async function engineAudits(
+  ...runs: AuditRun[]
+): Promise<{ problems: string[]; calls: number; logged: string[] }> {
+  let calls = 0;
+  const logged: string[] = [];
+  const problems = await auditSignatures(
+    () => {
+      const run = runs[calls];
+      calls += 1;
+      if (run === undefined) throw new Error(`no audit run ${calls} expected`);
+      return Promise.resolve({ code: run.status ?? 1, stdout: run.stdout ?? '' });
+    },
+    (line) => logged.push(line),
+  );
+  return { problems, calls, logged };
+}
+
+describe('bootstrap/launch.ts audits signatures as the engine does', () => {
+  const many = Array.from({ length: 23 }, (_, i) => ({ name: `p${i}`, version: '1.0.0' }));
+  const cases: [string, AuditRun[]][] = [
+    ['a clean audit', [CLEAN]],
+    ['a race the second audit clears', [report([RACED]), CLEAN]],
+    ['invalid signatures twice', [report([RACED]), report([RACED]), CLEAN]],
+    ['missing signatures on the second audit', [report([RACED]), report([], [RACED]), CLEAN]],
+    ['missing signatures', [report([], [RACED]), CLEAN]],
+    ['invalid and missing signatures', [report([RACED], [RACED]), CLEAN]],
+    ['an audit that never started', [{ status: null, stdout: null }, CLEAN]],
+    ['a report without its missing list', [{ status: 1, stdout: '{"invalid":[1]}' }, CLEAN]],
+    ['a clean report and exit 1', [{ ...CLEAN, status: 1 }, CLEAN]],
+    [
+      'packages without the shape npm gives them',
+      [report([{ code: 'x y', name: 'a b', version: '1' }, 'entry'], many), CLEAN],
+    ],
+  ];
+
+  for (const [name, runs] of cases) {
+    it(`on ${name}`, async () => {
+      const ours = audits(...runs);
+      const theirs = { problems: ours.problems(), calls: ours.calls(), logged: ours.logged };
+      expect(theirs).toEqual(await engineAudits(...runs));
+    });
+  }
+
+  it("gives npm the same cache of the run's own", () => {
+    const directory = join(tmpdir(), 'talos-x');
+    const args = ['install', '--ignore-scripts', '@svp-labs/talos@1.2.0'];
+    expect(bootstrap.npmArguments(args, directory)).toEqual(npmArguments(args, directory));
+  });
+});
+
+describe('bootstrap: npm audit signatures', () => {
+  it('audits once when every signature verifies', () => {
+    const npm = audits(CLEAN);
+    expect(npm.problems()).toEqual([]);
+    expect(npm.calls()).toBe(1);
+    expect(npm.logged).toEqual([]);
+  });
+
+  it('passes when an audit that found invalid signatures is clean the second time', () => {
+    const npm = audits(report([RACED]), CLEAN);
+    expect(npm.problems()).toEqual([]);
+    expect(npm.calls()).toBe(2);
+    expect(npm.logged).toEqual([
+      'npm audit signatures: invalid: @sigstore/core@3.1.0 (EATTESTATIONVERIFY)',
+      'npm audit signatures found invalid signatures only: auditing once more',
+    ]);
+  });
+
+  it('refuses when the second audit finds invalid signatures too, and audits no third time', () => {
+    const bad = { code: 'EINTEGRITYSIGNATURE', name: 'left-pad', version: '1.3.0' };
+    const npm = audits(report([RACED]), report([bad]), CLEAN);
+    expect(npm.problems()).toEqual(['1 invalid signatures']);
+    expect(npm.calls()).toBe(2);
+    expect(npm.logged).toEqual([
+      'npm audit signatures: invalid: @sigstore/core@3.1.0 (EATTESTATIONVERIFY)',
+      'npm audit signatures found invalid signatures only: auditing once more',
+      'npm audit signatures: invalid: left-pad@1.3.0 (EINTEGRITYSIGNATURE)',
+    ]);
+  });
+
+  it('refuses when the second audit fails in any other way', () => {
+    expect(audits(report([RACED]), report([], [RACED])).problems()).toEqual([
+      '1 missing signatures',
+    ]);
+    expect(audits(report([RACED]), { status: 1, stdout: 'npm ERR!' }).problems()).toEqual([
+      'npm audit signatures exited 1 without a readable report',
+    ]);
+    expect(audits(report([RACED]), { ...CLEAN, status: 1 }).problems()).toEqual([
+      'npm audit signatures exited 1',
+    ]);
+  });
+
+  it('audits once more for nothing but invalid signatures', () => {
+    const missing = { name: 'left-pad', version: '1.3.0' };
+    const cases: [AuditRun, string[]][] = [
+      [report([], [missing]), ['1 missing signatures']],
+      [report([RACED], [missing]), ['1 invalid signatures', '1 missing signatures']],
+      [{ ...CLEAN, status: 1 }, ['npm audit signatures exited 1']],
+      [{ status: null, stdout: null }, ['npm audit signatures exited 1 without a readable report']],
+      [
+        { status: 1, stdout: '{"invalid":"x","missing":[]}' },
+        ['npm audit signatures exited 1 without a readable report'],
+      ],
+      [
+        { status: 1, stdout: JSON.stringify({ invalid: [RACED] }) },
+        ['npm audit signatures exited 1 without a readable report'],
+      ],
+    ];
+    for (const [run, problems] of cases) {
+      const npm = audits(run, CLEAN);
+      expect(npm.problems()).toEqual(problems);
+      expect(npm.calls()).toBe(1);
+      expect(npm.logged).not.toContain(
+        'npm audit signatures found invalid signatures only: auditing once more',
+      );
+    }
+  });
+
+  it('names each package it objects to, and nothing that lacks the shape npm gives it', () => {
+    const npm = audits(
+      report(
+        [
+          RACED,
+          { code: 'EATTESTATIONVERIFY', name: 'secret org/repo', version: '1.0.0' },
+          { code: 'nope: look here', name: 'ok', version: '1.0.0' },
+          { name: 'ok', version: 'one' },
+          'not an entry',
+        ],
+        [{ name: 'left-pad', version: '1.3.0' }],
+      ),
+    );
+    expect(npm.problems()).toEqual(['5 invalid signatures', '1 missing signatures']);
+    expect(npm.logged).toEqual([
+      'npm audit signatures: invalid: @sigstore/core@3.1.0 (EATTESTATIONVERIFY)',
+      'npm audit signatures: invalid: a package npm did not name (EATTESTATIONVERIFY)',
+      'npm audit signatures: invalid: ok@1.0.0',
+      'npm audit signatures: invalid: a package npm did not name',
+      'npm audit signatures: invalid: a package npm did not name',
+      'npm audit signatures: missing: left-pad@1.3.0',
+    ]);
+    expect(npm.logged.join('\n')).not.toContain('Unterminated');
+  });
+
+  it('names at most twenty packages of each kind', () => {
+    const many = Array.from({ length: 23 }, (_, i) => ({ name: `p${i}`, version: '1.0.0' }));
+    const npm = audits(report([], many));
+    npm.problems();
+    expect(npm.logged).toHaveLength(21);
+    expect(npm.logged.at(19)).toBe('npm audit signatures: missing: p19@1.0.0');
+    expect(npm.logged.at(20)).toBe('npm audit signatures: missing: 3 more');
+  });
+
+  it("gives npm a cache of the run's own, inside its directory", () => {
+    const directory = join(tmpdir(), 'talos-x');
+    expect(bootstrap.npmArguments(['audit', 'signatures', '--json'], directory)).toEqual([
+      'audit',
+      'signatures',
+      '--json',
+      '--cache',
+      join(directory, 'npm-cache'),
+    ]);
   });
 });
 

@@ -184,7 +184,10 @@ stripping its types, with no install step before it:
 - **The version** is `package.json`'s at the pinned commit.
 - **Verification.** The launcher installs `@svp-labs/talos@<version>` with npm (no install
   scripts) into its cache, has `npm audit signatures` check it, and refuses it unless its SLSA
-  provenance names `SVP-Labs/Talos`, the pinned commit and the installed tarball. The package
+  provenance names `SVP-Labs/Talos`, the pinned commit and the installed tarball. npm runs with a
+  cache of the install's own, and an audit that finds invalid signatures and nothing else runs
+  once more: on a cold cache npm's concurrent checks can read sigstore's trusted root while
+  another writes it, and a signature that is really bad fails both times. The package
   ships `npm-shrinkwrap.json`, which `talos shrinkwrap` writes in the release job from a hoisted
   install of `pnpm-lock.yaml`'s production tree and checks against it, so npm installs exactly
   the dependencies the release was built and tested with, the lockfile's overrides and release

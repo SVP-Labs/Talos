@@ -31,6 +31,14 @@ const SHA = 'c'.repeat(40);
 const RELEASE: Release = { version: '1.2.0', sha: SHA };
 const DIGEST = Buffer.alloc(64, 3);
 const INTEGRITY = `sha512-${DIGEST.toString('base64')}`;
+const AUDIT_RACED = JSON.stringify({
+  invalid: [{ code: 'EATTESTATIONVERIFY', name: '@sigstore/core', version: '3.1.0' }],
+  missing: [],
+});
+
+function quiet(): void {
+  // The installer's log, unread.
+}
 
 function attestationsFor(commit: string, digest: Buffer = DIGEST): unknown {
   const statement = {
@@ -81,17 +89,25 @@ function lockfile(version: string, integrity: string): string {
 
 type FakeNpm = { exec: Exec; calls: string[] };
 
-/** npm as far as the installer sees it: install writes the package and its lockfile. */
+/**
+ * npm as far as the installer sees it: install writes the package, its lockfile and its cache;
+ * each audit answers with the next of `audits`, the last one again once they run out. A call
+ * with a cache of the run's own records it as `--cache <own>`.
+ */
 function fakeNpm(
-  options: { installCode?: number; audit?: string; integrity?: string } = {},
+  options: { installCode?: number; audit?: string; audits?: string[]; integrity?: string } = {},
 ): FakeNpm {
   const calls: string[] = [];
+  const audits = options.audits ?? [options.audit ?? '{"invalid":[],"missing":[]}'];
+  let audited = 0;
   const exec: Exec = async (command, args, { cwd }) => {
-    calls.push(`${command} ${args.join(' ')}`);
+    const own = args.at(-2) === '--cache' && args.at(-1) === join(cwd, 'npm-cache');
+    calls.push(`${command} ${(own ? [...args.slice(0, -2), '--cache', '<own>'] : args).join(' ')}`);
     if (args[0] === 'install') {
       if ((options.installCode ?? 0) !== 0) {
         return { code: options.installCode ?? 1, stdout: '', stderr: 'E404' };
       }
+      await mkdir(join(cwd, 'npm-cache', '_tuf'), { recursive: true });
       await mkdir(dirname(binIn(cwd)), { recursive: true });
       await writeFile(binIn(cwd), 'process.exit(0)\n');
       await writeFile(
@@ -100,7 +116,8 @@ function fakeNpm(
       );
       return { code: 0, stdout: '', stderr: '' };
     }
-    const audit = options.audit ?? '{"invalid":[],"missing":[]}';
+    const audit = audits[Math.min(audited, audits.length - 1)] ?? '';
+    audited += 1;
     return { code: audit.includes('"invalid":[]') ? 0 : 1, stdout: audit, stderr: '' };
   };
   return { exec, calls };
@@ -135,13 +152,19 @@ describe('ensureVerified', () => {
     const env = await cache();
     const npm = fakeNpm();
     const reg = registry(attestationsFor(SHA));
-    const installed = await ensureVerified(RELEASE, { exec: npm.exec, fetch: reg.fetch, env });
+    const installed = await ensureVerified(RELEASE, {
+      exec: npm.exec,
+      fetch: reg.fetch,
+      env,
+      log: quiet,
+    });
     const root = entryFor(env.TALOS_CACHE ?? '', RELEASE);
     expect(installed).toEqual({ ...RELEASE, integrity: INTEGRITY, root, bin: binIn(root) });
     expect(npm.calls).toEqual([
-      'npm install --ignore-scripts --no-audit --no-fund --save-exact @svp-labs/talos@1.2.0',
-      'npm audit signatures --json',
+      'npm install --ignore-scripts --no-audit --no-fund --save-exact @svp-labs/talos@1.2.0 --cache <own>',
+      'npm audit signatures --json --cache <own>',
     ]);
+    expect(await exists(join(root, 'npm-cache'))).toBe(false);
     expect(reg.urls).toEqual([
       'https://registry.npmjs.org/-/npm/v1/attestations/%40svp-labs%2Ftalos@1.2.0',
     ]);
@@ -151,19 +174,24 @@ describe('ensureVerified', () => {
     });
 
     const again = fakeNpm();
-    expect(await ensureVerified(RELEASE, { exec: again.exec, fetch: reg.fetch, env })).toEqual(
-      installed,
-    );
+    expect(
+      await ensureVerified(RELEASE, { exec: again.exec, fetch: reg.fetch, env, log: quiet }),
+    ).toEqual(installed);
     expect(again.calls).toEqual([]);
   });
 
   it('reinstalls when the cached lockfile no longer matches its marker', async () => {
     const env = await cache();
     const reg = registry(attestationsFor(SHA));
-    const first = await ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: reg.fetch, env });
+    const first = await ensureVerified(RELEASE, {
+      exec: fakeNpm().exec,
+      fetch: reg.fetch,
+      env,
+      log: quiet,
+    });
     await writeFile(join(first.root, 'package-lock.json'), lockfile('1.2.0', 'sha512-tampered'));
     const npm = fakeNpm();
-    await ensureVerified(RELEASE, { exec: npm.exec, fetch: reg.fetch, env });
+    await ensureVerified(RELEASE, { exec: npm.exec, fetch: reg.fetch, env, log: quiet });
     expect(npm.calls).toHaveLength(2);
   });
 
@@ -171,7 +199,7 @@ describe('ensureVerified', () => {
     const env = await cache();
     const reg = registry(attestationsFor('d'.repeat(40)));
     await expect(
-      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: reg.fetch, env }),
+      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: reg.fetch, env, log: quiet }),
     ).rejects.toThrow(
       `refusing @svp-labs/talos@1.2.0: it was built from commit ${'d'.repeat(40)}, not ${SHA}`,
     );
@@ -182,7 +210,7 @@ describe('ensureVerified', () => {
     const env = await cache();
     const reg = registry(attestationsFor(SHA, Buffer.alloc(64, 9)));
     await expect(
-      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: reg.fetch, env }),
+      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: reg.fetch, env, log: quiet }),
     ).rejects.toThrow('not the installed tarball');
   });
 
@@ -191,15 +219,77 @@ describe('ensureVerified', () => {
     const good = registry(attestationsFor(SHA));
     const badAudit = fakeNpm({ audit: '{"invalid":[{"name":"x"}],"missing":[]}' });
     await expect(
-      ensureVerified(RELEASE, { exec: badAudit.exec, fetch: good.fetch, env }),
+      ensureVerified(RELEASE, { exec: badAudit.exec, fetch: good.fetch, env, log: quiet }),
     ).rejects.toThrow('1 invalid signatures');
     await expect(
-      ensureVerified(RELEASE, { exec: fakeNpm({ installCode: 1 }).exec, fetch: good.fetch, env }),
+      ensureVerified(RELEASE, {
+        exec: fakeNpm({ installCode: 1 }).exec,
+        fetch: good.fetch,
+        env,
+        log: quiet,
+      }),
     ).rejects.toThrow('npm install for @svp-labs/talos exited 1');
     const missing = registry({ error: 'Not found' }, 404);
     await expect(
-      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: missing.fetch, env }),
+      ensureVerified(RELEASE, { exec: fakeNpm().exec, fetch: missing.fetch, env, log: quiet }),
     ).rejects.toThrow('has no provenance on the npm registry');
+  });
+
+  it('audits once more when only invalid signatures fail, and settles when that is clean', async () => {
+    const env = await cache();
+    const logged: string[] = [];
+    const npm = fakeNpm({ audits: [AUDIT_RACED, '{"invalid":[],"missing":[]}'] });
+    const reg = registry(attestationsFor(SHA));
+    const installed = await ensureVerified(RELEASE, {
+      exec: npm.exec,
+      fetch: reg.fetch,
+      env,
+      log: (line) => logged.push(line),
+    });
+    expect(installed.integrity).toBe(INTEGRITY);
+    expect(npm.calls.filter((call) => call.startsWith('npm audit'))).toHaveLength(2);
+    expect(logged).toEqual([
+      'npm audit signatures: invalid: @sigstore/core@3.1.0 (EATTESTATIONVERIFY)',
+      'npm audit signatures found invalid signatures only: auditing once more',
+    ]);
+  });
+
+  it('refuses when the second audit finds invalid signatures too, and caches nothing', async () => {
+    const env = await cache();
+    const logged: string[] = [];
+    const npm = fakeNpm({ audits: [AUDIT_RACED, AUDIT_RACED, '{"invalid":[],"missing":[]}'] });
+    await expect(
+      ensureVerified(RELEASE, {
+        exec: npm.exec,
+        fetch: registry(attestationsFor(SHA)).fetch,
+        env,
+        log: (line) => logged.push(line),
+      }),
+    ).rejects.toThrow('refusing @svp-labs/talos@1.2.0: 1 invalid signatures');
+    expect(npm.calls.filter((call) => call.startsWith('npm audit'))).toHaveLength(2);
+    expect(logged).toHaveLength(3);
+    expect(await exists(entryFor(env.TALOS_CACHE ?? '', RELEASE))).toBe(false);
+  });
+
+  it('audits once only when signatures are missing', async () => {
+    const env = await cache();
+    const logged: string[] = [];
+    const npm = fakeNpm({
+      audits: [
+        '{"invalid":[],"missing":[{"name":"left-pad","version":"1.3.0"}]}',
+        '{"invalid":[],"missing":[]}',
+      ],
+    });
+    await expect(
+      ensureVerified(RELEASE, {
+        exec: npm.exec,
+        fetch: registry(attestationsFor(SHA)).fetch,
+        env,
+        log: (line) => logged.push(line),
+      }),
+    ).rejects.toThrow('1 missing signatures');
+    expect(npm.calls.filter((call) => call.startsWith('npm audit'))).toHaveLength(1);
+    expect(logged).toEqual(['npm audit signatures: missing: left-pad@1.3.0']);
   });
 
   it('refuses when npm installed another version', async () => {
@@ -213,7 +303,12 @@ describe('ensureVerified', () => {
       return result;
     };
     await expect(
-      ensureVerified(RELEASE, { exec: wrong, fetch: registry(attestationsFor(SHA)).fetch, env }),
+      ensureVerified(RELEASE, {
+        exec: wrong,
+        fetch: registry(attestationsFor(SHA)).fetch,
+        env,
+        log: quiet,
+      }),
     ).rejects.toBeInstanceOf(VersionError);
   });
 });
