@@ -20,7 +20,7 @@ export type ApprovalFacts = {
   readonly owners: readonly string[];
   /** Thea's App, whose `talos-approve` review stands for the owner's okay. */
   readonly thea: string;
-  /** False on a PR touching a protected path, and in the Talos repository. */
+  /** False on a PR touching a protected path, in the Talos repository, and at `evaluate`. */
   readonly theaCounts: boolean;
 };
 

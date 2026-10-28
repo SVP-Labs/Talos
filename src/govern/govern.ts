@@ -6,6 +6,7 @@ import { readRepoState } from './state.js';
 import { applySteps, planned, scopeHint, type StepResult } from './steps.js';
 import { loadTemplates } from './templates.js';
 import type { GitHub } from '../github/api.js';
+import { appId } from '../github/apps.js';
 import { type Identities, sameLogin } from '../github/identities.js';
 import { assetsDir } from '../version/self.js';
 
@@ -75,6 +76,7 @@ export async function governRepository(options: GovernOptions): Promise<GovernRe
   });
   const request: GovernRequest = {
     owner: options.who.owner,
+    reviewerAppId: await appId(options.gh, options.who.reviewer),
     agents: options.agents,
     channel: options.channel,
     ...options.assets,

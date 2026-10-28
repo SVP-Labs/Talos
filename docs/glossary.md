@@ -42,7 +42,8 @@ Which pin a repository runs, chosen by its `talos` property: `evaluate`, `canary
 
 **Evaluate**
 The channel every repository comes in at: the gate runs in Evaluate mode, at stable's pin, and
-blocks nothing; a code-owner ruleset requires the owner's approval meanwhile (C18).
+blocks nothing; meanwhile a repository ruleset requires `talos/review`, which passes there only
+with the owner's approval (C18, X2).
 
 **Canary**
 The channel that runs a release first: Talos itself and Thea (C17).

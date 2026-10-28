@@ -17,6 +17,7 @@ const META: UnattendedFacts = {
   integrity: { flagged: false, reasons: [] },
   protectedPaths: [],
   isTalos: false,
+  onChannel: true,
 };
 
 const RULES = [
@@ -154,7 +155,19 @@ describe('decide', () => {
       'test integrity: nothing flagged',
       'touches no protected path',
       'not the Talos repository',
+      'the repository is on a channel',
     ]);
+  });
+
+  it('lands nothing without the owner at evaluate, where talos/review alone holds the branch', () => {
+    const atEvaluate = decide(input({}, { onChannel: false }));
+    expect(atEvaluate.state).toBe('wait');
+    expect(atEvaluate.title).toBe("Waits for the owner's approval");
+    expect(atEvaluate.unattended.at(-1)).toEqual({
+      met: false,
+      line: 'the repository is at evaluate: every PR needs the owner',
+    });
+    expect(decide(input({ owner: OWNER_OK }, { onChannel: false })).state).toBe('pass');
   });
 });
 
@@ -188,6 +201,7 @@ describe('unattendedConditions', () => {
       },
       protectedPaths: ['src/review/job.ts'],
       isTalos: true,
+      onChannel: false,
     });
     expect(lines).toEqual([
       { met: true, line: 'closes one issue, #7' },
@@ -198,6 +212,7 @@ describe('unattendedConditions', () => {
       { met: false, line: 'test integrity: adds 1 skip markers; deletes test files: a.test.ts' },
       { met: false, line: 'touches protected paths: src/review/job.ts' },
       { met: false, line: 'the Talos repository: every PR needs the owner' },
+      { met: false, line: 'the repository is at evaluate: every PR needs the owner' },
     ]);
   });
 

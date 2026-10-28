@@ -22,6 +22,7 @@ import { type GitHub, GitHubError } from '../github/api.js';
 import { readFileAt } from '../github/contents.js';
 import type { Identities } from '../github/identities.js';
 import { getRepository, propertyOf, type Repository } from '../github/repos.js';
+import { ownerReviewRuleset, parseTemplate } from '../govern/templates.js';
 import { fileIssue } from '../jobs/talos-issues.js';
 import { assetsDir } from '../version/self.js';
 
@@ -46,8 +47,15 @@ function parsedJson(text: string): unknown {
   return JSON.parse(text);
 }
 
-/** What `talos govern` writes, read from the assets this release ships. */
-export async function expectedFromAssets(owner: string, dir: URL = assetsDir()): Promise<Expected> {
+/**
+ * What `talos govern` writes, read from the assets this release ships, with `talos/review`
+ * required from the reviewer App whose id is `reviewerAppId`.
+ */
+export async function expectedFromAssets(
+  owner: string,
+  reviewerAppId: number,
+  dir: URL = assetsDir(),
+): Promise<Expected> {
   const text = (path: string): Promise<string> => readFile(new URL(path, dir), 'utf8');
   const [caller, codeowners, mergeQueue, ownerReview] = await Promise.all([
     text('workflows/talos.yml'),
@@ -60,7 +68,7 @@ export async function expectedFromAssets(owner: string, dir: URL = assetsDir()):
     caller,
     codeowners: codeowners.replaceAll('@OWNER', `@${owner}`),
     mergeQueue: parsedJson(mergeQueue),
-    ownerReview: parsedJson(ownerReview),
+    ownerReview: ownerReviewRuleset(parseTemplate('owner-review', ownerReview), reviewerAppId),
   };
 }
 

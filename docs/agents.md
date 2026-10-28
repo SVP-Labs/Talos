@@ -176,7 +176,8 @@ repository is at `evaluate`: there the owner approves on GitHub (C16, C18).
 
 **Debt and chore work** (a PR closing a `chore`, `debt/dead-code` or `debt/other` issue, inside
 the files it names, nothing guarded or protected, test integrity clean) needs no card: the
-reviewer's approval is enough.
+reviewer's approval is enough, except while the repository is at `evaluate`, where every PR
+waits for the owner on GitHub (X2).
 
 ## 8. How work stands: ask, don't remember
 

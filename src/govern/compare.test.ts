@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { covers, rulesetMatches } from './compare.js';
-import { loadTemplates } from './templates.js';
+import { loadTemplates, ownerReviewRuleset } from './templates.js';
 
 describe('covers', () => {
   it('matches scalars exactly', () => {
@@ -30,7 +30,7 @@ describe('covers', () => {
 
 describe('rulesetMatches', () => {
   it("accepts GitHub's answer for the owner-review ruleset", async () => {
-    const { ownerReview } = await loadTemplates();
+    const ownerReview = ownerReviewRuleset((await loadTemplates()).ownerReview, 77);
     const answer = {
       id: 9,
       name: 'talos-owner-review',
@@ -38,28 +38,39 @@ describe('rulesetMatches', () => {
       source_type: 'Repository',
       source: 'o/r',
       enforcement: 'active',
-      bypass_actors: [
-        { actor_id: null, actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' },
-      ],
+      bypass_actors: [],
       conditions: { ref_name: { include: ['~DEFAULT_BRANCH'] } },
       rules: [
         {
-          type: 'pull_request',
+          type: 'required_status_checks',
           parameters: {
-            ...ownerReview.rules[0]?.parameters,
-            allowed_merge_methods: ['merge', 'squash', 'rebase'],
-            automatic_copilot_code_review_enabled: false,
+            do_not_enforce_on_create: false,
+            strict_required_status_checks_policy: false,
+            required_status_checks: [{ context: 'talos/review', integration_id: 77 }],
           },
         },
       ],
       _links: { self: { href: 'x' } },
     };
     expect(rulesetMatches(answer, ownerReview)).toBe(true);
-    const loosened = {
+    const bypassed = {
       ...answer,
-      bypass_actors: [{ actor_type: 'OrganizationAdmin', bypass_mode: 'always' }],
+      bypass_actors: [{ actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' }],
     };
-    expect(rulesetMatches(loosened, ownerReview)).toBe(false);
+    expect(rulesetMatches(bypassed, ownerReview)).toBe(false);
+    const anyApp = {
+      ...answer,
+      rules: [
+        {
+          type: 'required_status_checks',
+          parameters: {
+            strict_required_status_checks_policy: false,
+            required_status_checks: [{ context: 'talos/review' }],
+          },
+        },
+      ],
+    };
+    expect(rulesetMatches(anyApp, ownerReview)).toBe(false);
     expect(rulesetMatches({ ...answer, enforcement: 'evaluate' }, ownerReview)).toBe(false);
   });
 

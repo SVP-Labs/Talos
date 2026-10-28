@@ -53,7 +53,10 @@ type Rule = z.infer<typeof ruleSchema>;
 export type Templates = {
   /** The repository ruleset that requires the merge queue (no bypass). */
   readonly mergeQueue: RulesetBody;
-  /** The repository ruleset that requires the owner's approval while at `evaluate`. */
+  /**
+   * The repository ruleset that requires `talos/review` while at `evaluate`, before the reviewer
+   * App's id is filled in (`ownerReviewRuleset`).
+   */
   readonly ownerReview: RulesetBody;
   /** The org ruleset of one channel, before its name, enforcement and pin are filled in. */
   readonly channel: RulesetBody;
@@ -122,6 +125,17 @@ export type ChannelIds = {
   readonly reviewerAppId: number;
 };
 
+/** A required status check rule's checks, each accepted from the reviewer App alone. */
+function fromReviewer(rule: Rule, reviewerAppId: number): Rule {
+  if (rule.type !== 'required_status_checks') return rule;
+  const parameters = statusChecksParameters.parse(rule.parameters);
+  const checks = parameters.required_status_checks.map((check) => ({
+    context: check.context,
+    integration_id: reviewerAppId,
+  }));
+  return { type: rule.type, parameters: { ...parameters, required_status_checks: checks } };
+}
+
 function pinRule(rule: Rule, sha: string, ids: ChannelIds): Rule {
   if (rule.type === 'workflows') {
     const parameters = workflowsParameters.parse(rule.parameters);
@@ -132,15 +146,16 @@ function pinRule(rule: Rule, sha: string, ids: ChannelIds): Rule {
     }));
     return { type: rule.type, parameters: { ...parameters, workflows } };
   }
-  if (rule.type === 'required_status_checks') {
-    const parameters = statusChecksParameters.parse(rule.parameters);
-    const checks = parameters.required_status_checks.map((check) => ({
-      context: check.context,
-      integration_id: ids.reviewerAppId,
-    }));
-    return { type: rule.type, parameters: { ...parameters, required_status_checks: checks } };
-  }
-  return rule;
+  return fromReviewer(rule, ids.reviewerAppId);
+}
+
+/**
+ * The repository ruleset that holds a repository at `evaluate` to `talos/review`, from the
+ * reviewer App alone, while its channel ruleset only watches. There, `talos/review` passes only
+ * with the owner's approval on GitHub or the owner's signed authorship, never on a bot's word.
+ */
+export function ownerReviewRuleset(template: RulesetBody, reviewerAppId: number): RulesetBody {
+  return { ...template, rules: template.rules.map((rule) => fromReviewer(rule, reviewerAppId)) };
 }
 
 /**

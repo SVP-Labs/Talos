@@ -10,7 +10,12 @@ import {
 import type { LiveRuleset } from './rulesets-api.js';
 import type { RepoState } from './state.js';
 import type { Step } from './steps.js';
-import { loadTemplates, type RulesetBody, type Templates } from './templates.js';
+import {
+  loadTemplates,
+  ownerReviewRuleset,
+  type RulesetBody,
+  type Templates,
+} from './templates.js';
 
 let templates: Templates;
 beforeAll(async () => {
@@ -20,6 +25,11 @@ beforeAll(async () => {
 const CALLER = 'on: [pull_request_target]\n';
 const OWNERS_TEMPLATE = '# owners\n* @OWNER\n';
 const OWNERS = '# owners\n* @SvenPGH\n';
+const REVIEWER_APP_ID = 5465977;
+
+function ownerReview(): RulesetBody {
+  return ownerReviewRuleset(templates.ownerReview, REVIEWER_APP_ID);
+}
 
 function live(body: RulesetBody, id: number): LiveRuleset {
   return { ...body, id };
@@ -72,7 +82,7 @@ function governed(overrides: Partial<RepoState> = {}): RepoState {
     },
     caller: CALLER,
     codeowners: { path: '.github/CODEOWNERS', text: OWNERS },
-    rulesets: [live(templates.mergeQueue, 1), live(templates.ownerReview, 2)],
+    rulesets: [live(templates.mergeQueue, 1), live(ownerReview(), 2)],
     alerts: true,
     properties: { talos: 'evaluate', 'talos-agents': 'false' },
     installations: installations(true),
@@ -83,6 +93,7 @@ function governed(overrides: Partial<RepoState> = {}): RepoState {
 function request(overrides: Partial<GovernRequest> = {}): GovernRequest {
   return {
     owner: 'SvenPGH',
+    reviewerAppId: REVIEWER_APP_ID,
     agents: undefined,
     channel: undefined,
     caller: CALLER,
@@ -175,6 +186,72 @@ describe('governPlan', () => {
     });
   });
 
+  it('requires talos/review from the reviewer App at evaluate, with no bypass', () => {
+    const steps = governPlan(fresh(), request());
+    expect(effectOf(steps, 'ruleset:talos-owner-review')).toEqual({
+      kind: 'create-ruleset',
+      scope: { kind: 'repo', repo: 'SVP-Labs/demo' },
+      body: {
+        ...templates.ownerReview,
+        bypass_actors: [],
+        rules: [
+          {
+            type: 'required_status_checks',
+            parameters: {
+              strict_required_status_checks_policy: false,
+              required_status_checks: [
+                { context: 'talos/review', integration_id: REVIEWER_APP_ID },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("replaces an older owner rule that asked for a code owner's approval", () => {
+    const older: LiveRuleset = {
+      ...live(templates.ownerReview, 2),
+      bypass_actors: [
+        { actor_id: 1, actor_type: 'OrganizationAdmin', bypass_mode: 'pull_request' },
+      ],
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 1,
+            require_code_owner_review: true,
+            dismiss_stale_reviews_on_push: true,
+            require_last_push_approval: true,
+            required_review_thread_resolution: false,
+          },
+        },
+      ],
+    };
+    const steps = governPlan(
+      governed({ rulesets: [live(templates.mergeQueue, 1), older] }),
+      request(),
+    );
+    expect(effectOf(steps, 'ruleset:talos-owner-review')).toEqual({
+      kind: 'update-ruleset',
+      scope: { kind: 'repo', repo: 'SVP-Labs/demo' },
+      id: 2,
+      body: ownerReview(),
+    });
+  });
+
+  it('deletes an owner rule left behind on a repository already on a channel', () => {
+    const state = governed({ properties: { talos: 'canary', 'talos-agents': 'false' } });
+    const steps = governPlan(state, request());
+    expect(summary(steps.filter((s) => s.status === 'change'))).toEqual([
+      'change ruleset:talos-owner-review',
+    ]);
+    expect(effectOf(steps, 'ruleset:talos-owner-review')).toMatchObject({
+      kind: 'delete-ruleset',
+      id: 2,
+    });
+  });
+
   it('keeps a repository at its channel when rerun without --channel', () => {
     const state = governed({
       rulesets: [live(templates.mergeQueue, 1)],
@@ -241,10 +318,7 @@ describe('governPlan', () => {
 
   it('updates a ruleset someone changed by hand', () => {
     const loosened = { ...live(templates.mergeQueue, 1), enforcement: 'disabled' };
-    const steps = governPlan(
-      governed({ rulesets: [loosened, live(templates.ownerReview, 2)] }),
-      request(),
-    );
+    const steps = governPlan(governed({ rulesets: [loosened, live(ownerReview(), 2)] }), request());
     expect(effectOf(steps, 'ruleset:talos-merge-queue')).toMatchObject({
       kind: 'update-ruleset',
       id: 1,

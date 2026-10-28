@@ -311,7 +311,7 @@ architecture rules in the tools' own syntax, never here.
   - the PR closes a `chore`, `debt/dead-code` or `debt/other` issue whose type a person or
     Talos's debt job set, touches only the files that issue names (for a sync chore, the
     generated copies), touches nothing on the guard list or under `protected`, test integrity
-    flagged nothing, and the repository isn't Talos itself (C16).
+    flagged nothing, and the repository is neither Talos itself nor at `evaluate` (C16, X2).
 - **The guard list:** `.github/**`, `CODEOWNERS`, `talos.yml`, the extension files, manifests
   and lockfiles, Dockerfiles and runtime version files, `DECISIONS.md`, `docs/requirements/**`,
   the glossary and `CLAUDE.md`.
@@ -384,9 +384,10 @@ architecture rules in the tools' own syntax, never here.
 - **`talos new <Name> --prefix <P>`:** the owner creates a repository with their own login; the
   prefix must be unused in the org (C23).
 - **`talos govern`:** the owner applies the settings: the caller and `CODEOWNERS`, the
-  merge-queue ruleset, the code-owner ruleset while at `evaluate`, collaborator-only issues and
-  PRs, Dependabot alerts, the properties and the App installations. `--channel canary|stable`
-  moves a green repository on and removes the code-owner ruleset. Where GitHub's API exposes no
+  merge-queue ruleset, the owner-review ruleset while at `evaluate` (it requires `talos/review`
+  from the reviewer App, X2), collaborator-only issues and PRs, Dependabot alerts, the
+  properties and the App installations. `--channel canary|stable` moves a green repository on
+  and removes the owner-review ruleset. Where GitHub's API exposes no
   setting, or refuses the owner's token one (adding a repository to an App's installation), it
   prints the manual step (C29).
 - **`talos adopt`:** writes the files and labels in one bootstrap PR: `talos.yml`, the generated

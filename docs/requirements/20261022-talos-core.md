@@ -599,6 +599,8 @@ leaves the old backlog alone until someone rewrites an issue in the ticket forma
      queue,** whose ruleset has no bypass (C18). If it doesn't, the two rules share one
      ruleset while the repository is at `evaluate`, so the owner's bypass covers the queue
      too; that costs nothing in a phase where nothing is enforced, and ends at `--channel`.
+     _Amended 2026-10-28:_ it doesn't: GitHub offers no bypass at the queue. At `evaluate` the
+     second ruleset requires `talos/review` instead (DECISIONS.md, X2).
 
    _Added 2026-10-23:_ three more assumptions, which Talos's code relies on, get a smoke test on
    the same scratch repository. [Setting Talos up](../setup.md), step 6, runs all six and says
@@ -959,7 +961,8 @@ Dependabot alerts (C29), which her G8 already turns into events.
     (C15) and a PR's own caller never runs on that PR (`pull_request_target` uses the one on
     `main`);
   - creates two repository rulesets: the merge queue (C14), with no bypass; and, while the
-    repository is at `evaluate`, the code-owner approval rule with the owner's bypass (C18);
+    repository is at `evaluate`, the code-owner approval rule with the owner's bypass (C18;
+    _amended 2026-10-28:_ a required `talos/review` from the reviewer App, with no bypass, X2);
   - restricts issue and PR creation to collaborators (C6);
   - switches on Dependabot alerts (C28);
   - sets the `talos` property to `evaluate` and `talos-agents` as asked, and adds the

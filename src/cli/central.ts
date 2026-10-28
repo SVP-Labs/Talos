@@ -8,6 +8,7 @@ import { maskNames, type PrivacyNames, runPrivacy } from '../central/privacy.js'
 import { runtimeAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
 import { runSweep } from '../central/sweep-job.js';
 import { github, type GitHub, type GitHubOptions } from '../github/api.js';
+import { appId } from '../github/apps.js';
 import { downloader } from '../github/artifacts.js';
 import { identities } from '../github/identities.js';
 import { lookupMode } from '../version/pin.js';
@@ -102,7 +103,12 @@ async function drift(env: Env, options: CentralOptions, flags: Flags): Promise<O
   const reviewer = github(token(env, 'TALOS_REVIEWER_TOKEN'), options);
   const report = flags.channelsFile
     ? await runChannelsFileDrift({ release, reviewer, who })
-    : await runDrift({ release, reviewer, who, expected: await expectedFromAssets(who.owner) });
+    : await runDrift({
+        release,
+        reviewer,
+        who,
+        expected: await expectedFromAssets(who.owner, await appId(reviewer, who.reviewer)),
+      });
   return { ok: true, report };
 }
 
