@@ -77,6 +77,8 @@ docstrings
 doctest
 Doctests
 dsse
+EATTESTATIONVERIFY
+EINTEGRITYSIGNATURE
 elif
 ENDOFLIFE
 Errorf

@@ -10,9 +10,17 @@
  * Dependency-free on purpose: nothing is installed before it runs, and Node runs this file as it
  * is, stripping its types, so it holds only syntax that erases (no enums, namespaces or parameter
  * properties). What it reads from npm and the registry is narrowed by hand, field by field. It
- * prints nothing of its own but one generic line when it refuses, since npm's messages can name
- * things a public log must not show. Neither npm nor git is looked up on PATH: npm is the one
- * beside the running Node, and HEAD is read from the checkout's files.
+ * never prints npm's messages, since they can name things a public log must not show: when it
+ * refuses it prints one line of its own, and when signatures fail, the name, version and error
+ * code of each package npm objects to, once each has matched the shape npm gives it. Neither npm
+ * nor git is looked up on PATH: npm is the one beside the running Node, and HEAD is read from the
+ * checkout's files.
+ *
+ * npm verifies signatures many packages at a time, and on a cold cache each of those checks may
+ * fetch sigstore's trusted root and write it into the cache while another reads it, which fails
+ * as an invalid signature. So an audit that finds invalid signatures and nothing else runs once
+ * more, with the cache warm: a signature that is really bad fails both times. Each run gets a
+ * cache of its own, in its temporary directory.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,6 +38,11 @@ const REGISTRY = 'https://registry.npmjs.org';
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const COMMIT = /^[0-9a-f]{40}$/;
 const SHA512 = 'sha512-';
+const PACKAGE_NAME = /^(?:@[a-z0-9][\w.~-]*\/)?[a-z0-9][\w.~-]*$/;
+const ERROR_CODE = /^E[A-Z0-9_]+$/;
+/** How many packages of one kind a failed audit names. */
+const NAMED = 20;
+const NPM_CACHE = 'npm-cache';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -208,6 +221,81 @@ export function auditProblems(code: number, stdout: string): string[] {
   return problems;
 }
 
+/** A list in an audit report, or undefined when the report or the list is not there. */
+function reported(stdout: string, key: 'invalid' | 'missing'): readonly unknown[] | undefined {
+  let report: unknown;
+  try {
+    report = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  const list = field(report, key);
+  return isList(list) ? list : undefined;
+}
+
+/** A package an audit objects to, as `name@version (code)`, with only what has npm's shape. */
+function auditedPackage(entry: unknown): string {
+  const name = field(entry, 'name');
+  const version = field(entry, 'version');
+  const code = field(entry, 'code');
+  const named =
+    typeof name === 'string' &&
+    PACKAGE_NAME.test(name) &&
+    typeof version === 'string' &&
+    VERSION.test(version)
+      ? `${name}@${version}`
+      : 'a package npm did not name';
+  return typeof code === 'string' && ERROR_CODE.test(code) ? `${named} (${code})` : named;
+}
+
+/** One line per package an audit objects to, at most `NAMED` of each kind. */
+function auditFailures(stdout: string): string[] {
+  return (['invalid', 'missing'] as const).flatMap((key) => {
+    const entries = reported(stdout, key) ?? [];
+    const lines = entries
+      .slice(0, NAMED)
+      .map((entry) => `npm audit signatures: ${key}: ${auditedPackage(entry)}`);
+    if (entries.length > NAMED) {
+      lines.push(`npm audit signatures: ${key}: ${entries.length - NAMED} more`);
+    }
+    return lines;
+  });
+}
+
+/** How one audit ended: its problems, a line per package it objects to, and whether to retry. */
+type AuditOutcome = {
+  readonly problems: readonly string[];
+  readonly failures: readonly string[];
+  /** It found invalid signatures and nothing else, in a readable report. */
+  readonly onlyInvalid: boolean;
+};
+
+function auditOutcome(run: NpmRun): AuditOutcome {
+  const stdout = run.stdout ?? '';
+  const invalid = reported(stdout, 'invalid') ?? [];
+  return {
+    problems: auditProblems(run.status ?? 1, stdout),
+    failures: auditFailures(stdout),
+    onlyInvalid: invalid.length > 0 && reported(stdout, 'missing')?.length === 0,
+  };
+}
+
+/**
+ * What `npm audit signatures` objects to, after a second audit when the first found invalid
+ * signatures and nothing else; empty when every signature verified. Logs each package a failed
+ * audit objects to, and the second audit.
+ */
+export function auditSignatures(audit: () => NpmRun, log: (line: string) => void): string[] {
+  let outcome = auditOutcome(audit());
+  if (outcome.problems.length > 0 && outcome.onlyInvalid) {
+    for (const line of outcome.failures) log(line);
+    log('npm audit signatures found invalid signatures only: auditing once more');
+    outcome = auditOutcome(audit());
+  }
+  if (outcome.problems.length > 0) for (const line of outcome.failures) log(line);
+  return [...outcome.problems];
+}
+
 /** The integrity npm recorded for the installed package, when it is the expected version. */
 export function lockedIntegrity(lock: unknown, version: string): string | undefined {
   const entry = field(field(lock, 'packages'), `node_modules/${PACKAGE}`);
@@ -273,10 +361,15 @@ export function npmCli(execPath: string, platform: string, env: Env): string | u
   return [beside, env.npm_execpath].find((path) => path !== undefined && existsSync(path));
 }
 
+/** npm's arguments for a run in `directory`, with a cache of that run's own inside it. */
+export function npmArguments(args: readonly string[], directory: string): string[] {
+  return [...args, '--cache', join(directory, NPM_CACHE)];
+}
+
 function npm(args: readonly string[], cwd: string): NpmRun {
   const cli = npmCli(process.execPath, process.platform, process.env);
   if (cli === undefined) throw new Refusal('npm was not found beside node');
-  return spawnSync(process.execPath, [cli, ...args], {
+  return spawnSync(process.execPath, [cli, ...npmArguments(args, cwd)], {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -307,8 +400,10 @@ async function installVerified(release: Release, directory: string): Promise<str
   const lock: unknown = JSON.parse(readFileSync(join(directory, 'package-lock.json'), 'utf8'));
   const integrity = lockedIntegrity(lock, release.version);
   if (integrity === undefined) throw new Refusal(`npm installed no ${spec}`);
-  const audit = npm(['audit', 'signatures', '--json'], directory);
-  const audited = auditProblems(audit.status ?? 1, audit.stdout ?? '');
+  const audited = auditSignatures(
+    () => npm(['audit', 'signatures', '--json'], directory),
+    (line) => process.stderr.write(`talos bootstrap: ${line}\n`),
+  );
   if (audited.length > 0) throw new Refusal(audited.join('; '));
   await verifiedProvenance(release, integrity);
   return join(directory, 'node_modules', '@svp-labs', 'talos', 'dist', 'bin', 'talos.js');
