@@ -39,6 +39,7 @@ jobs:
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Count the repositories
         id: count
         env:
@@ -163,6 +164,7 @@ jobs:
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Look the repository up by index and mask its name
         id: pick
         env:
@@ -210,6 +212,7 @@ jobs:
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Find the enforced Talos release
         id: find
         env:

@@ -9,8 +9,9 @@ import { listInstallationRepositories, listPropertyValues } from '../github/repo
  * The privacy self-test of the central workflows: every repository name of the organisation is
  * masked first, then the logs of the run's other jobs are searched for them. Talos's runs are
  * public, so a name found there is a leak, and the job fails. The names come from the
- * organisation's custom property listing, which lists every repository the central jobs could
- * name with an organisation permission alone.
+ * organisation's custom property listing, read with a token that holds Metadata read as well:
+ * it lists the public repositories and those the App's installation reaches, which are the ones
+ * the central jobs could name.
  */
 
 /** A repository to look for: its `owner/name`, and its bare name when it is private. */

@@ -931,8 +931,10 @@ The check runs in the gate on every PR, and also hourly, centrally from the Talo
 as `talos-reviewer`, across every governed repository: a new security release in the morning
 can't wait for someone to push. The sweep keeps C15's token scoping: a first step lists the
 governed repositories through the organisation's custom properties, with a token that holds
-that organisation permission alone and reaches no repository, then a matrix job mints one token
-per repository, limited to it and to the two permissions the sweep needs:
+that organisation permission and Metadata read, and nothing more (the listing shows a token the
+public repositories and those its installation reaches; without Metadata, the public ones
+alone), then a matrix job mints one token per repository, limited to it and to the two
+permissions the sweep needs:
 
 ```yaml
 - uses: actions/create-github-app-token@v2
@@ -1021,7 +1023,8 @@ run in the public Talos repository, whose runs anyone can read. So:
 - each job has Talos look its repository up by index (`talos central pick`, at the release the
   job runs; listing the governed repositories, those whose `talos` property names a channel,
   through the organisation's custom properties, with a token that holds that organisation
-  permission alone and reaches no repository: `talos-reviewer`'s for the sweep,
+  permission and Metadata read, and nothing more, so that the listing includes the private
+  repositories the installation reaches: `talos-reviewer`'s for the sweep,
   `talos-release`'s for drift and promotion) and mask the name (`::add-mask::`) before printing
   anything, so no workflow writes a workflow command of its own. Later steps then show it masked, including
   `create-github-app-token`'s `repositories` input, which reads it from that step's output;
