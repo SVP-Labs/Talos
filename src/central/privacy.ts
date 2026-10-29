@@ -82,8 +82,10 @@ export function canaryWatched(watched: readonly WatchedRepo[], digest: string): 
 }
 
 /**
- * Every repository of `org`, the private ones marked, from two listings of its custom property
- * values: all of them, then those the search `is:private` finds.
+ * The repositories of `org` the token can see, the private ones marked, from two listings of its
+ * custom property values: all of them, then those the search `is:private` finds. A token with
+ * Custom properties read and Metadata read sees the public repositories and those its App's
+ * installation reaches.
  */
 export async function organisationRepositories(gh: GitHub, org: string): Promise<Listed[]> {
   const [all, hidden] = await Promise.all([
@@ -98,7 +100,10 @@ export async function organisationRepositories(gh: GitHub, org: string): Promise
 
 /** Where the names come from, and where the masks go. */
 export type PrivacyNames = {
-  /** A token of the organisation's custom property values: Custom properties read. */
+  /**
+   * A token of the organisation's custom property values: Custom properties read and Metadata
+   * read, so the listing has the public repositories and those the installation reaches.
+   */
   readonly properties: GitHub;
   readonly org: string;
   /** The Talos repository, whose name is public and in every log. */
