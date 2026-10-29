@@ -527,15 +527,16 @@ describe('the central jobs in this public repository', () => {
     }
   });
 
-  it("mint no token that reaches every repository of an App's installation", () => {
+  it("mint no token that reads more than metadata across an App's installation", () => {
     for (const path of Object.values(FILES)) {
       for (const [id, job] of jobsOf(path)) {
         for (const step of tokenSteps(job).filter(
           (s) => s.with?.owner !== undefined && s.with.repositories === undefined,
         )) {
           const asked = Object.keys(step.with ?? {}).filter((k) => k.startsWith('permission-'));
+          const metadata = (k: string) => k === 'permission-metadata' && step.with?.[k] === 'read';
           expect(
-            asked.every((k) => k.startsWith('permission-organization-')),
+            asked.every((k) => k.startsWith('permission-organization-') || metadata(k)),
             `${path} ${id} ${step.name ?? ''}`,
           ).toBe(true);
         }
@@ -543,7 +544,7 @@ describe('the central jobs in this public repository', () => {
     }
   });
 
-  it('look repositories up with a token that reads custom properties and nothing more', () => {
+  it('look repositories up with a token that reads custom properties and metadata, nothing more', () => {
     for (const path of CENTRAL) {
       for (const [id, job] of jobsOf(path)) {
         for (const pick of job.steps.filter((s) =>
@@ -556,10 +557,29 @@ describe('the central jobs in this public repository', () => {
           );
           const minted = job.steps.find((s) => s.id === from?.[1]);
           const asked = Object.keys(minted?.with ?? {}).filter((k) => k.startsWith('permission-'));
-          expect(asked, `${path} ${id}`).toEqual(['permission-organization-custom-properties']);
+          expect(asked, `${path} ${id}`).toEqual([
+            'permission-organization-custom-properties',
+            'permission-metadata',
+          ]);
           expect(minted?.with?.['permission-organization-custom-properties']).toBe('read');
+          // Without a repository permission the listing returns the public repositories only.
+          expect(minted?.with?.['permission-metadata']).toBe('read');
         }
       }
+    }
+  });
+
+  it('mint every custom properties token with metadata, so the listing has the private repositories', () => {
+    const minted = CENTRAL.flatMap((path) =>
+      jobsOf(path).flatMap(([id, job]) =>
+        tokenSteps(job)
+          .filter((s) => s.with?.['permission-organization-custom-properties'] !== undefined)
+          .map((step) => ({ where: `${path} ${id} ${step.name ?? ''}`, step })),
+      ),
+    );
+    expect(minted).toHaveLength(9);
+    for (const { where, step } of minted) {
+      expect(step.with?.['permission-metadata'], where).toBe('read');
     }
   });
 

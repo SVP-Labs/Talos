@@ -61,6 +61,7 @@ jobs:
           owner: ${{ github.repository_owner }}
           permission-organization-administration: write
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Find stable's pin
         id: find
         env:
@@ -120,6 +121,7 @@ jobs:
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Look the canary repositories up and mask their names
         id: canary
         env:
@@ -177,6 +179,7 @@ jobs:
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Find the enforced Talos release
         id: find
         env:

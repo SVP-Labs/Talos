@@ -72,8 +72,9 @@ export type PropertyRow = {
 /**
  * The organisation's repositories with their custom property values
  * (`GET /orgs/{org}/properties/values`), narrowed by `query`, a repository search such as
- * `is:private`. An organisation permission (Custom properties, read) is enough, so a token that
- * reaches no repository can list them.
+ * `is:private`. It lists only the repositories the token can see: an App's token needs Custom
+ * properties read and Metadata read, and then lists the public repositories and those its
+ * installation reaches. Without Metadata it lists the public ones alone.
  */
 export async function listPropertyValues(
   gh: GitHub,
