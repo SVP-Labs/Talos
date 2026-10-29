@@ -22,11 +22,6 @@ const relativePath = z
   })
   .transform(canonical);
 
-const exception = z.strictObject({
-  reason: z.string().min(1),
-  expires: z.string().regex(DATE, 'must be a date, YYYY-MM-DD'),
-});
-
 /**
  * A `YYYY-MM-DD` day that exists: one that comes back unchanged through `Date`, so an expiry is
  * never compared as an invalid date, which would never expire.
@@ -38,6 +33,11 @@ const calendarDate = z
     const at = new Date(`${day}T00:00:00Z`);
     return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === day;
   }, 'must be a day of the calendar');
+
+const exception = z.strictObject({
+  reason: z.string().min(1),
+  expires: calendarDate,
+});
 
 /**
  * One zizmor finding a workflow keeps on purpose: matched by rule, file, job and step (its `id`,

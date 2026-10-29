@@ -59,3 +59,31 @@ describe('paths in talos.yml', () => {
     }
   });
 });
+
+describe('supply_chain in talos.yml', () => {
+  const yml = (list: 'allow' | 'exceptions', expires: string): string =>
+    [
+      'name: A',
+      'prefix: A',
+      'supply_chain:',
+      `  ${list}:`,
+      `    "six@1.17.0": { reason: needed, expires: '${expires}' }`,
+      '',
+    ].join('\n');
+
+  it('reads an expiry that is a day of the calendar, a leap day included', () => {
+    for (const list of ['allow', 'exceptions'] as const) {
+      expect(parseConfig(yml(list, '2028-02-29')).supply_chain[list]).toEqual({
+        'six@1.17.0': { reason: 'needed', expires: '2028-02-29' },
+      });
+    }
+  });
+
+  it('refuses an expiry that is not a date or not a day of the calendar', () => {
+    for (const list of ['allow', 'exceptions'] as const) {
+      for (const expires of ['soon', '2027-13-01', '2027-02-30']) {
+        expect(() => parseConfig(yml(list, expires)), `${list} ${expires}`).toThrow(ConfigError);
+      }
+    }
+  });
+});
