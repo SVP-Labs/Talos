@@ -56,7 +56,9 @@ an App you don't own on a governed repository.
 - **Name:** `talos-reviewer`, so its bot is `talos-reviewer[bot]`.
 - **Organization permissions:** Custom properties, **Read-only**. The runtime sweep and the
   privacy self-tests find the governed repositories by their `talos` property, with a token
-  that reaches no repository (C30).
+  that holds this and Metadata read and nothing more. The listing then shows the public
+  repositories and those the installation reaches; without Metadata it would show the public
+  ones alone (C30).
 - **Repository permissions:**
 
   | Permission    | Access         |
@@ -84,14 +86,17 @@ an App you don't own on a governed repository.
 
 - **Repository permissions:**
 
-  | Permission     | Access    | Why                                                     |
-  | -------------- | --------- | ------------------------------------------------------- |
-  | Administration | Read-only | the drift report reads each repository's settings (C29) |
-  | Actions        | Read-only | promotion counts gate runs on canary repositories (C17) |
-  | Metadata       | Read-only | required with any repository permission                 |
+  | Permission     | Access    | Why                                                          |
+  | -------------- | --------- | ------------------------------------------------------------ |
+  | Administration | Read-only | the drift report reads each repository's settings (C29)      |
+  | Actions        | Read-only | promotion counts gate runs on canary repositories (C17)      |
+  | Metadata       | Read-only | the custom property listing shows private repositories (C30) |
 
-  No job holds these for every repository of the installation: each token is minted for the
-  repositories it reads, which the jobs find through the custom properties and mask first.
+  Only Metadata is ever held for every repository of the installation, by the tokens that read
+  the custom property listing, which shows a private repository only to a token with Metadata
+  read on it; `talos.yml` excepts zizmor's `github-app` finding on each of those mints. Every
+  other token is minted for the repositories it reads, which the jobs find through that listing
+  and mask first.
 
   Contents stays off unless smoke test 1 or 5 (step 6) turns on the `channels.json` fallback;
   then it is **Read and write**, its jobs mint contents tokens for the Talos repository only, and
