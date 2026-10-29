@@ -6,8 +6,10 @@ import { listPropertyValues, type PropertyRow } from '../github/repos.js';
 
 /**
  * How a central job learns the repositories it reads while its public log never names them.
- * The organisation's custom property listing, read with a token that reaches no repository,
- * gives the governed repositories in id order, the order the job's matrix of indices counts in.
+ * The organisation's custom property listing, read with a token that holds Custom properties
+ * read and Metadata read and nothing more, gives the governed repositories in id order, the
+ * order the job's matrix of indices counts in: the public ones and those the App's installation
+ * reaches, since without Metadata it would show the public ones alone.
  * The chosen names are masked before anything else is printed, and only then handed to the
  * job's later steps through `$GITHUB_OUTPUT`, which mint a token limited to them.
  */
