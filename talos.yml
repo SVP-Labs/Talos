@@ -17,3 +17,59 @@ licences:
   LGPL-3.0-only: eslint-plugin-sonarjs and its analyzer-commons-configurations, a lint plugin that runs here and in CI, never shipped
   CC-BY-SA-4.0: '@cspell/dict-en-common-misspellings, a spelling dictionary cspell reads, never shipped'
   MPL-2.0: lightningcss, a build dependency of vite (vitest), never shipped
+exceptions:
+  workflows:
+    - rule: zizmor/github-app
+      file: .github/workflows/channels.yml
+      job: channels
+      step: token
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/channels.yml
+      job: channels
+      step: properties
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/channels.yml
+      job: privacy
+      step: properties
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/drift.yml
+      job: list
+      step: listing
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/drift.yml
+      job: drift
+      step: listing
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/drift.yml
+      job: privacy
+      step: properties
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/runtime-sweep.yml
+      job: list
+      step: listing
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/runtime-sweep.yml
+      job: sweep
+      step: listing
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
+    - rule: zizmor/github-app
+      file: .github/workflows/runtime-sweep.yml
+      job: privacy
+      step: properties
+      reason: the custom property listing shows a private repository only to a token with Metadata read on it, so this token spans the installation
+      expires: 2027-10-28
