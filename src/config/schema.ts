@@ -28,6 +28,18 @@ const exception = z.strictObject({
 });
 
 /**
+ * A `YYYY-MM-DD` day that exists: one that comes back unchanged through `Date`, so an expiry is
+ * never compared as an invalid date, which would never expire.
+ */
+const calendarDate = z
+  .string()
+  .regex(DATE, 'must be a date, YYYY-MM-DD')
+  .refine((day) => {
+    const at = new Date(`${day}T00:00:00Z`);
+    return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === day;
+  }, 'must be a day of the calendar');
+
+/**
  * One zizmor finding a workflow keeps on purpose: matched by rule, file, job and step (its `id`,
  * or its `name` when it has none), never by line, with a reason and an expiry like any exception.
  */
@@ -37,7 +49,7 @@ const workflowException = z.strictObject({
   job: z.string().min(1),
   step: z.string().min(1),
   reason: z.string().min(1),
-  expires: z.string().regex(DATE, 'must be a date, YYYY-MM-DD'),
+  expires: calendarDate,
 });
 
 const component = z.strictObject({

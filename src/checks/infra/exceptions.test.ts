@@ -158,11 +158,13 @@ describe('exceptions.workflows in talos.yml', () => {
     expect(parseConfig('name: X\nprefix: X\n').exceptions).toEqual({ workflows: [] });
   });
 
-  it('refuses another tool, a missing reason, a bad date and any other field', () => {
+  it('refuses another tool, a missing reason, a bad or impossible date and any other field', () => {
     const bad = [
       CONFIG.replace('zizmor/github-app', 'actionlint/expression'),
       CONFIG.replace('      reason: the listing needs Metadata read across the installation\n', ''),
       CONFIG.replace('2027-04-29', 'soon'),
+      CONFIG.replace('2027-04-29', '2027-13-01'),
+      CONFIG.replace('2027-04-29', '2027-02-30'),
       CONFIG.replace('      job: privacy\n', '      job: privacy\n      line: 61\n'),
     ];
     for (const text of bad) expect(() => parseConfig(text), text).toThrow();
