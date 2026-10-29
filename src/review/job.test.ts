@@ -22,8 +22,17 @@ import { identities } from '../github/identities.js';
 const WHO = identities({});
 const GROUP_SHA = 'd'.repeat(40);
 
+/** What `talos/review` published, in order: each new run's body, and each update's. */
 function checkRuns(fake: FakePrGitHub): Record<string, unknown>[] {
-  return fake.bodies('POST', 'repos/o/r/check-runs');
+  return fake.calls
+    .filter(
+      (c) =>
+        (c.method === 'POST' && c.path === 'repos/o/r/check-runs') ||
+        (c.method === 'PATCH' && c.path.startsWith('repos/o/r/check-runs/')),
+    )
+    .map((c): Record<string, unknown> =>
+      typeof c.body === 'object' && c.body !== null ? { ...c.body } : {},
+    );
 }
 
 function urlOf(input: Parameters<typeof fetch>[0]): string {
@@ -379,6 +388,72 @@ describe('reviewJob on a pull request', () => {
     expect(output(lastCheck(fake)).summary).toContain(
       '- [x] the owner approved: @SvenPGH on GitHub',
     );
+  });
+
+  it('decides again into the run still waiting on the head, never beside it', async () => {
+    const fake = debtScenario();
+    const issue = fake.issues.get(ISSUE);
+    if (issue !== undefined) issue.labels = ['feature'];
+    await reviewJobWith(jobContext(fake), deps(fakeModel(APPROVE)));
+    await reviewJobWith(
+      jobContext(fake, { event: 'pull_request_target', payload: pullPayload('edited') }),
+      deps(fakeModel(APPROVE)),
+    );
+    expect(fake.writes().filter((w) => w.includes('check-runs'))).toEqual([
+      'POST repos/o/r/check-runs',
+      'PATCH repos/o/r/check-runs/9001',
+    ]);
+    expect(fake.checkRuns).toHaveLength(1);
+    expect(fake.checkRuns[0]).toMatchObject({ head_sha: HEAD, status: 'in_progress' });
+    expect(output(lastCheck(fake)).title).toBe("Waits for the owner's approval");
+
+    fake.reviews.get(PR)?.push({
+      user: person(OWNER),
+      state: 'APPROVED',
+      commit_id: HEAD,
+      submitted_at: '2026-10-23T12:30:00Z',
+      body: '',
+    });
+    await reviewJobWith(
+      jobContext(fake, { event: 'pull_request_review', payload: reviewPayload(OWNER, 'OWNER') }),
+      deps(fakeModel(APPROVE)),
+    );
+    expect(fake.checkRuns).toHaveLength(1);
+    expect(fake.checkRuns[0]).toMatchObject({ status: 'completed', conclusion: 'success' });
+  });
+
+  it('starts a new run once the one on the head has completed', async () => {
+    const fake = debtScenario();
+    await reviewJobWith(jobContext(fake), deps(fakeModel(APPROVE)));
+    expect(fake.checkRuns[0]).toMatchObject({ status: 'completed', conclusion: 'success' });
+    await reviewJobWith(
+      jobContext(fake, { event: 'pull_request_target', payload: pullPayload('edited') }),
+      deps(fakeModel(APPROVE)),
+    );
+    expect(fake.checkRuns).toHaveLength(2);
+    expect(fake.writes().some((w) => w.startsWith('PATCH'))).toBe(false);
+  });
+
+  it('never takes over a talos/review in progress that another App published', async () => {
+    const fake = debtScenario();
+    fake.checkRuns.push({
+      id: 77,
+      name: 'talos/review',
+      head_sha: HEAD,
+      status: 'in_progress',
+      conclusion: null,
+      app: { id: 3, slug: 'someone-else' },
+    });
+    await reviewJobWith(jobContext(fake), deps(fakeModel(APPROVE)));
+    const list = fake.calls.find((c) => c.method === 'GET' && c.path.includes('/check-runs'));
+    const name = encodeURIComponent('talos/review');
+    expect(list?.path).toBe(
+      `repos/o/r/commits/${HEAD}/check-runs?filter=latest&check_name=${name}&per_page=100`,
+    );
+    expect(fake.writes().filter((w) => w.includes('check-runs'))).toEqual([
+      'POST repos/o/r/check-runs',
+    ]);
+    expect(fake.checkRuns[0]).toMatchObject({ id: 77, status: 'in_progress' });
   });
 
   it("voids the owner's approval with a later force-push", async () => {

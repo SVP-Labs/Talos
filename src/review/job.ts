@@ -20,7 +20,12 @@ import { ConfigError } from '../config/load.js';
 import { PACKS } from '../core/registry.js';
 import { exec } from '../exec/exec.js';
 import { type GitHub, GitHubError } from '../github/api.js';
-import { createCheckRun } from '../github/checks.js';
+import {
+  type CheckRunFields,
+  createCheckRun,
+  listCheckRuns,
+  updateCheckRun,
+} from '../github/checks.js';
 import { type Identities, sameLogin } from '../github/identities.js';
 import type { JobContext, JobOutcome } from '../jobs/context.js';
 import { getIssue } from '../ticket/github.js';
@@ -173,6 +178,28 @@ function safeDetail(error: unknown): string {
     : 'an error while reading the PR';
 }
 
+/**
+ * Publishes `talos/review` on a commit: into the reviewer's run still in progress there, so a
+ * commit never keeps a waiting run behind a newer one, or as a new run where none is.
+ */
+async function publish(
+  gh: GitHub,
+  ctx: JobContext,
+  headSha: string,
+  fields: CheckRunFields,
+): Promise<void> {
+  const runs = await listCheckRuns(gh, ctx.repo, headSha, {
+    name: CHECK_NAME,
+    app: ctx.who.reviewer,
+  });
+  const open = runs.find((run) => run.status !== 'completed');
+  if (open === undefined) {
+    await createCheckRun(gh, ctx.repo, { name: CHECK_NAME, headSha, ...fields });
+  } else {
+    await updateCheckRun(gh, ctx.repo, open.id, fields);
+  }
+}
+
 async function decideAndPublish(
   gh: GitHub,
   ctx: JobContext,
@@ -189,11 +216,7 @@ async function decideAndPublish(
   const state: DecisionState =
     target.group !== undefined && decision.state === 'wait' ? 'fail' : decision.state;
   const headSha = target.group?.headSha ?? facts.pull.headSha;
-  await createCheckRun(gh, ctx.repo, {
-    name: CHECK_NAME,
-    headSha,
-    ...checkFields(decision, state, run),
-  });
+  await publish(gh, ctx, headSha, checkFields(decision, state, run));
   const where = target.group === undefined ? `#${target.pr}` : `#${target.pr} in the merge queue`;
   return [
     ...(run === undefined ? [] : [reviewerOutcome(run)]),
@@ -215,11 +238,7 @@ export async function reviewJobWith(ctx: JobContext, deps: ReviewDeps): Promise<
     return await decideAndPublish(gh, ctx, target, deps);
   } catch (error) {
     const detail = safeDetail(error);
-    await createCheckRun(gh, ctx.repo, {
-      name: CHECK_NAME,
-      headSha: target.sha,
-      ...errorFields(detail),
-    }).catch(() => undefined);
+    await publish(gh, ctx, target.sha, errorFields(detail)).catch(() => undefined);
     throw error;
   }
 }
