@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFor, installTs } from './install.js';
 import { parseConfig } from '../../config/load.js';
 import { EngineError } from '../../core/check.js';
 import { silentLogger } from '../../core/log.js';
-import { ExecError, type Exec } from '../../exec/exec.js';
+import { exec, ExecError, type Exec } from '../../exec/exec.js';
 import { MINIMAL_CONFIG, noTools, tempRepo } from '../../testing/engine.js';
 
 describe('installFor', () => {
@@ -139,6 +142,44 @@ describe('installTs', () => {
         );
         expect(calls.map((c) => c.command)).toEqual([command]);
       }
+    });
+
+    describe('through the real exec, on a PATH without pnpm', () => {
+      afterEach(() => {
+        vi.unstubAllEnvs();
+      });
+
+      /**
+       * A directory to be all of PATH, holding a `corepack` that writes its arguments to `args`
+       * beside itself: a shell script for POSIX, a batch file for Windows.
+       */
+      async function stubbedPath(withCorepack: boolean): Promise<string> {
+        const dir = await mkdtemp(join(tmpdir(), 'talos-path-'));
+        if (withCorepack) {
+          await writeFile(join(dir, 'corepack'), '#!/bin/sh\necho "$@" > "${0%/*}/args"\n', {
+            mode: 0o755,
+          });
+          await writeFile(join(dir, 'corepack.cmd'), '@echo %*> "%~dp0args"\r\n');
+        }
+        vi.stubEnv('PATH', dir);
+        return dir;
+      }
+
+      it("falls back to Corepack on exec's own error for a program it can't start", async () => {
+        const root = await tempRepo({ 'pnpm-lock.yaml': '' });
+        const dir = await stubbedPath(true);
+        await installTs({ ...base, root, exec });
+        const args = (await readFile(join(dir, 'args'), 'utf8')).replaceAll('"', '').trim();
+        expect(args).toBe('pnpm install --frozen-lockfile');
+      });
+
+      it('names both when neither starts', async () => {
+        const root = await tempRepo({ 'pnpm-lock.yaml': '' });
+        await stubbedPath(false);
+        await expect(installTs({ ...base, root, exec })).rejects.toThrow(
+          /^pnpm or corepack is needed to install \.: pnpm could not start: .*; corepack could not start: /,
+        );
+      });
     });
   });
 
