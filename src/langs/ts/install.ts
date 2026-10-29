@@ -73,23 +73,34 @@ function couldNotStart(error: unknown): boolean {
   return error instanceof ExecError && error.message.includes(' could not start: ');
 }
 
+/** An install that ran, as its command line, and what it returned. */
+type Ran = { readonly line: string; readonly result: ExecResult };
+
+const lineOf = (run: { readonly command: string; readonly args: readonly string[] }): string =>
+  [run.command, ...run.args].join(' ');
+
 /** Runs the install, or its fallback when the package manager can't start. */
 async function runInstall(
   ctx: InstallContext,
   install: InstallCommand,
   dir: string,
   root: string,
-): Promise<ExecResult> {
+): Promise<Ran> {
   try {
-    return await ctx.exec(install.command, install.args, { cwd: dir, env: TOOL_ENV });
+    const result = await ctx.exec(install.command, install.args, { cwd: dir, env: TOOL_ENV });
+    return { line: lineOf(install), result };
   } catch (error) {
     const { fallback } = install;
     if (fallback === undefined || !couldNotStart(error)) {
       throw new EngineError(`${install.command} is needed to install ${root}: ${reasonOf(error)}`);
     }
-    ctx.log.debug(`${root}: ${fallback.command} ${fallback.args.join(' ')}`);
+    ctx.log.debug(`${root}: ${lineOf(fallback)}`);
     try {
-      return await ctx.exec(fallback.command, fallback.args, { cwd: dir, env: fallback.env });
+      const result = await ctx.exec(fallback.command, fallback.args, {
+        cwd: dir,
+        env: fallback.env,
+      });
+      return { line: lineOf(fallback), result };
     } catch (fallbackError) {
       throw new EngineError(
         `${install.command} or ${fallback.command} is needed to install ${root}: ` +
@@ -108,13 +119,11 @@ export async function installTs(ctx: InstallContext): Promise<void> {
   for (const dir of upwards(resolve(ctx.root, root), resolve(ctx.root))) {
     const install = installFor(await lockFilesIn(dir));
     if (install === undefined) continue;
-    ctx.log.debug(`${root}: ${install.command} ${install.args.join(' ')}`);
-    const result = await runInstall(ctx, install, dir, root);
+    ctx.log.debug(`${root}: ${lineOf(install)}`);
+    const { line, result } = await runInstall(ctx, install, dir, root);
     if (result.code !== 0) {
       const detail = `${result.stderr}\n${result.stdout}`.trim().split('\n').slice(-15).join('\n');
-      throw new EngineError(
-        `${install.command} ${install.args.join(' ')} failed in ${root}:\n${detail}`,
-      );
+      throw new EngineError(`${line} failed in ${root}:\n${detail}`);
     }
     return;
   }
