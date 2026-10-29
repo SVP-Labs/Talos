@@ -1,6 +1,6 @@
 {
   "name": "@svp-labs/talos",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "One kit for every SVP-Labs project: the engineering standard, the check engine and the agent loop.",
   "license": "MIT",
   "type": "module",
