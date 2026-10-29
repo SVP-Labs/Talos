@@ -117,6 +117,26 @@ describe('installTs', () => {
       );
     });
 
+    it('names the install that ran when it fails: the fallback, not the pnpm that never started', async () => {
+      const root = await tempRepo({ 'pnpm-lock.yaml': '' });
+      const exec: Exec = (command) =>
+        command === 'pnpm'
+          ? Promise.reject(new ExecError('pnpm could not start: spawn pnpm ENOENT'))
+          : Promise.resolve({ code: 1, stdout: '', stderr: 'ERR_PNPM_IGNORED_BUILDS' });
+      await expect(installTs({ ...base, root, exec })).rejects.toThrow(
+        /^corepack pnpm install --frozen-lockfile failed in \.:\nERR_PNPM_IGNORED_BUILDS$/,
+      );
+    });
+
+    it('still names pnpm when pnpm itself starts and fails', async () => {
+      const root = await tempRepo({ 'pnpm-lock.yaml': '' });
+      const exec: Exec = () =>
+        Promise.resolve({ code: 1, stdout: '', stderr: 'ERR_PNPM_OUTDATED_LOCKFILE' });
+      await expect(installTs({ ...base, root, exec })).rejects.toThrow(
+        /^pnpm install --frozen-lockfile failed in \.:\nERR_PNPM_OUTDATED_LOCKFILE$/,
+      );
+    });
+
     it("falls back only when pnpm can't start, not when it times out", async () => {
       const root = await tempRepo({ 'pnpm-lock.yaml': '' });
       const calls: string[] = [];

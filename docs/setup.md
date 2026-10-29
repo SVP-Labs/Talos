@@ -602,8 +602,8 @@ with that Node release. It never prompts and never writes `packageManager` into 
 
 Talos doesn't rely on that step alone: where no `pnpm` is on `PATH`, it installs with
 `corepack pnpm`, with the same settings. That is how the caller's scheduled analysis, which sets
-up Node and nothing more, installs pnpm repositories, and how a machine with Node 22 but no pnpm
-does. Only when neither starts is the install an engine error.
+up Node (and PHP where a component needs it) but no pnpm, installs pnpm repositories, and how a
+machine with Node 22 but no pnpm does. Only when neither starts is the install an engine error.
 
 PHP is the one runtime the gate sets up per project, and each run of its matrix sets up what its
 own commit asks for, so base and head may differ: on a system a PHP component of that commit
