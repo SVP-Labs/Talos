@@ -22,6 +22,9 @@ patchedDependencies:
 overrides:
   markdownlint-cli2>markdown-it: 15.0.3
   markdownlint-cli2>smol-toml: 1.9.1
+  # markdownlint 0.42.0, the newest, pins re2js 2.8.6, whose lookbehind matching takes quadratic
+  # time; 2.8.7 fixes it.
+  markdownlint>re2js: 2.8.7
   # micromark-extension-math asks for katex 0.16, and no 0.16 release has the fix; markdownlint
   # loads it for the math syntax only, never rendering with katex.
   micromark-extension-math>katex: 0.18.2
