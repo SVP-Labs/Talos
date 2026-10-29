@@ -100,6 +100,8 @@ export class FakePrGitHub {
   /** The PR number → closing issues as `owner/name#N`. */
   readonly closing = new Map<number, string[]>();
   properties: Record<string, string | null> = { talos: 'canary', 'talos-agents': 'true' };
+  /** The check runs created on `o/r`, as they stand after any update. */
+  readonly checkRuns: Json[] = [];
   /** `METHOD path` → status: every such call fails with it. */
   readonly failures = new Map<string, number>();
   now = '2026-10-23T12:00:00Z';
@@ -156,7 +158,8 @@ export class FakePrGitHub {
     if (contents?.[1] !== undefined) {
       return this.contentRoute(contents[1], url.searchParams.get('ref') ?? '');
     }
-    if (call.method === 'POST' && path === 'repos/o/r/check-runs') return this.checkRun(call);
+    const checks = this.checkRunRoute(call, url);
+    if (checks !== undefined) return checks;
     if (call.method === 'POST' && path === 'graphql') return this.graphql(call);
     if (call.method === 'GET' && path === 'repos/o/r/properties/values') {
       return this.reply(200, this.propertyValues());
@@ -312,7 +315,7 @@ export class FakePrGitHub {
   private checkRun(call: Call): Response {
     const body = record(call.body);
     this.nextId += 1;
-    return this.reply(201, {
+    const run: Json = {
       id: this.nextId,
       name: body.name,
       head_sha: body.head_sha,
@@ -321,7 +324,47 @@ export class FakePrGitHub {
       started_at: this.now,
       completed_at: body.completed_at ?? null,
       app: { id: 2, slug: 'talos-reviewer' },
-    });
+    };
+    this.checkRuns.push(run);
+    return this.reply(201, run);
+  }
+
+  private checkRunRoute(call: Call, url: URL): Response | undefined {
+    const path = url.pathname.slice(1);
+    if (call.method === 'POST' && path === 'repos/o/r/check-runs') return this.checkRun(call);
+    const update = /^repos\/o\/r\/check-runs\/(\d+)$/.exec(path);
+    if (call.method === 'PATCH' && update !== null) {
+      return this.updateCheckRun(call, Number(update[1]));
+    }
+    const runs = /^repos\/o\/r\/commits\/([0-9a-f]+)\/check-runs$/.exec(path);
+    if (call.method === 'GET' && runs?.[1] !== undefined) {
+      return this.listCheckRuns(runs[1], url.searchParams.get('check_name'));
+    }
+    return undefined;
+  }
+
+  private updateCheckRun(call: Call, id: number): Response {
+    const run = this.checkRuns.find((r) => r.id === id);
+    if (run === undefined) return this.reply(404, { message: 'Not Found' });
+    const body = record(call.body);
+    if (body.conclusion !== undefined) {
+      run.status = 'completed';
+      run.conclusion = body.conclusion;
+      run.completed_at = body.completed_at ?? this.now;
+    } else if (body.status !== undefined) {
+      run.status = body.status;
+    }
+    return this.reply(200, run);
+  }
+
+  /** The newest run of each name on a commit, as `filter=latest` lists them. */
+  private listCheckRuns(sha: string, name: string | null): Response {
+    const latest = new Map<unknown, Json>();
+    for (const run of this.checkRuns) {
+      if (run.head_sha === sha && (name === null || run.name === name)) latest.set(run.name, run);
+    }
+    const runs = [...latest.values()];
+    return this.reply(200, { total_count: runs.length, check_runs: runs });
   }
 
   private graphql(call: Call): Response {
