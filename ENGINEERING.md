@@ -176,7 +176,9 @@ merge group   fast tier on every commit of the group; head tier on its tip
   at a time, one file each, `ai/eligible` at `priority/p3`.
 - **No baselines, ignore lists or inline suppressions.** A suppression comment
   (`eslint-disable`, `# noqa`, `@phpstan-ignore` and the like) is itself a finding. Fix the
-  code.
+  code. The only exceptions are owned ones in `talos.yml`, each with a reason and an expiry:
+  advisories (section 12) and a zizmor finding a workflow keeps on purpose, named by rule, file,
+  job and step (section 9).
 
 ### 5.3 Tests, coverage, mutation, types
 
@@ -296,8 +298,13 @@ the owner (C24). It holds the project's name and ticket prefix, its components (
 operating systems), `exclude`, `tests.full`, the services the gate starts (images pinned by
 digest), one `setup` script, `mutation` paths, the size budget, `licences` beyond the org's
 allowlist, the brief and glossary paths, `protected` paths, custom `checks`,
-`agents.max_claims` and `supply_chain` exceptions. Tool options stay in the extension files and
-architecture rules in the tools' own syntax, never here.
+`agents.max_claims`, `supply_chain` exceptions and `exceptions.workflows`. Tool options stay in
+the extension files and architecture rules in the tools' own syntax, never here.
+
+- An `exceptions.workflows` entry keeps one zizmor finding: its `rule`, `file`, `job` and `step`
+  (the step's `id`, else its `name`), never a line, with a `reason` and an `expires` date at most
+  a year ahead. Once it expires it fails every change; an entry that matches nothing, or runs
+  past a year, is a finding. No other tool's findings can be excepted.
 
 ## 10. Review and landing
 

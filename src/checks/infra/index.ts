@@ -1,6 +1,7 @@
 import { actionlint } from './actionlint.js';
 import { INFRA_GENERATED, mayHaveShellScripts } from './configs.js';
 import { dockerfile } from './dockerfile.js';
+import { applyExceptions, configText, workflowSteps } from './exceptions.js';
 import {
   actionFiles,
   dependabotFiles,
@@ -25,11 +26,19 @@ function zizmorInputs(files: readonly string[]): string[] {
   return [...workflowFiles(files), ...actionFiles(files), ...dependabotFiles(files)];
 }
 
-/** actionlint for correctness, then zizmor for security. */
-async function workflows(ctx: CheckContext): Promise<Finding[]> {
+/**
+ * actionlint for correctness, then zizmor for security, less the zizmor findings `talos.yml`
+ * excepts. `now` is the clock the exceptions' expiry is read against.
+ */
+export async function workflows(ctx: CheckContext, now = new Date()): Promise<Finding[]> {
   const files = ctx.facts.files;
   const correctness = await actionlint(ctx, workflowFiles(files));
-  const security = await zizmor(ctx, zizmorInputs(files));
+  const security = await applyExceptions(await zizmor(ctx, zizmorInputs(files)), {
+    entries: ctx.config.exceptions.workflows,
+    now,
+    stepName: workflowSteps(ctx.root),
+    configText: await configText(ctx.root),
+  });
   return [...correctness, ...security];
 }
 
@@ -67,10 +76,10 @@ const checks: Check[] = [
     id: 'infra/workflows',
     title: 'actionlint, and zizmor at its pedantic persona',
     applies: (ctx: ApplyContext) =>
-      zizmorInputs(ctx.facts.files).length > 0
+      zizmorInputs(ctx.facts.files).length > 0 || ctx.config.exceptions.workflows.length > 0
         ? APPLIES
         : skip('the repository has no workflows, actions or Dependabot config'),
-    run: workflows,
+    run: (ctx: CheckContext) => workflows(ctx),
   },
 ];
 

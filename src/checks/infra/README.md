@@ -56,6 +56,15 @@ check. What a project can still do is suppress one finding in place (`# shellche
 `# hadolint ignore=`, `# zizmor: ignore[...]`, `[Diagnostics.CodeAnalysis.SuppressMessage]`),
 which counts as a suppression like any other.
 
+A zizmor finding a workflow keeps on purpose is excepted in `talos.yml` instead, under
+`exceptions.workflows` (`exceptions.ts`). zizmor reports each finding's route
+(`jobs.<id>.steps[<n>]`), and the check reads the workflow to name that step by its `id`, or its
+`name` when it has none. An unexpired entry whose rule, file, job and step all match leaves the
+finding out. An expired entry excepts nothing and is `infra/exception-expired` on every change.
+An entry that matched nothing is `infra/exception-unused`, and one that runs more than a year is
+`infra/exception-too-long`; each points at its line in `talos.yml`. The check runs whenever there
+are entries, even without a workflow, so a stale one is reported.
+
 ## Test projects
 
 `test-projects/infra/` holds a failing project per check and `clean`, which has a file of every
