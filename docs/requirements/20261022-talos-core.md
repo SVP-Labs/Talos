@@ -780,10 +780,23 @@ agents: { max_claims: 2 }
 supply_chain: # C27; every entry has a reason and an expiry
   allow: {} # young releases, e.g. "pkg@1.2.3": { reason: "…", expires: 2026-10-30 }
   exceptions: {} # advisories, e.g. "GHSA-xxxx-xxxx-xxxx": { reason: "…", expires: 2026-11-15 }
+exceptions:
+  workflows: [] # zizmor findings kept on purpose, see below
 ```
 
 Tool options stay in the C10 extension files and architecture rules in the tools' own syntax
 (C21), not here.
+
+`exceptions.workflows` is the one way to keep a zizmor finding, when a workflow has to do on
+purpose what an audit warns about (talos-release's property listing token reaching its whole
+installation, which `github-app` flags). Each entry names the finding's `rule`
+(`zizmor/<audit>`), `file`, `job` and `step` (the step's `id`, or its `name` when it has none),
+never a line, which moves with every edit above it, and gives a `reason` and an `expires` date at
+most a year ahead. An entry excepts only the finding that matches all four. It fails every change
+once it expires (`infra/exception-expired`), and is a finding when it matches nothing
+(`infra/exception-unused`) or runs past a year (`infra/exception-too-long`). Inline
+`zizmor: ignore` comments stay suppressions, and no other tool's findings can be excepted: an
+exception lives here, where every change needs the owner, or nowhere.
 
 **Rejected:** services taken from the project's `docker-compose.yml` (it starts the app's own
 services too, and its images aren't pinned by digest).

@@ -41,11 +41,19 @@ function zizmorArgs(config: string): string[] {
 
 const point = z.object({ row: z.number().int(), column: z.number().int() });
 
+/** A step of a route: a mapping's key or a sequence's index. */
+const routePart = z.union([
+  z.object({ Key: z.string() }).transform((part) => part.Key),
+  z.object({ Index: z.number().int() }).transform((part) => part.Index),
+  z.unknown().transform(() => undefined),
+]);
+
 const location = z.object({
   symbolic: z.object({
     key: z.object({ Local: z.object({ verbatim_path: z.string() }).optional() }),
     annotation: z.string(),
     kind: z.string(),
+    route: z.object({ route: z.array(routePart) }).optional(),
   }),
   concrete: z.object({ location: z.object({ start_point: point, end_point: point }) }),
 });
@@ -82,20 +90,47 @@ function toFinding(r: z.infer<typeof result>): Finding {
   };
 }
 
-/** zizmor's JSON output as findings; findings an ignore comment covers are left out. */
-export function parseZizmor(stdout: string): Finding[] {
+/** The step of a workflow job a finding is in: the job's id and the step's index. */
+export type StepAt = { readonly job: string; readonly index: number };
+
+/** A zizmor finding, and the step it is in when it is in one. */
+export type ZizmorResult = { readonly finding: Finding; readonly step?: StepAt };
+
+/** `jobs.<id>.steps[<n>]` at the start of a route: the step it reaches. */
+function stepOf(at: ZizmorLocation | undefined): StepAt | undefined {
+  const [jobs, job, steps, index] = at?.symbolic.route?.route ?? [];
+  if (jobs !== 'jobs' || typeof job !== 'string' || steps !== 'steps') return undefined;
+  return typeof index === 'number' ? { job, index } : undefined;
+}
+
+function toResult(r: z.infer<typeof result>): ZizmorResult {
+  const primary = r.locations.find((l) => l.symbolic.kind === 'Primary') ?? r.locations[0];
+  const step = stepOf(primary);
+  return { finding: toFinding(r), ...(step === undefined ? {} : { step }) };
+}
+
+/** zizmor's JSON output, each finding with its step; ignored findings are left out. */
+export function parseZizmorResults(stdout: string): ZizmorResult[] {
   const parsed = z.array(result).safeParse(parseJson(stdout, 'zizmor'));
   if (!parsed.success) throw new EngineError('zizmor printed JSON Talos cannot read');
-  return parsed.data.filter((r) => !r.ignored).map(toFinding);
+  return parsed.data.filter((r) => !r.ignored).map(toResult);
+}
+
+/** zizmor's JSON output as findings; findings an ignore comment covers are left out. */
+export function parseZizmor(stdout: string): Finding[] {
+  return parseZizmorResults(stdout).map((r) => r.finding);
 }
 
 /** zizmor over the workflows, the action definitions and Dependabot's config. */
-export async function zizmor(ctx: CheckContext, inputs: readonly string[]): Promise<Finding[]> {
+export async function zizmor(
+  ctx: CheckContext,
+  inputs: readonly string[],
+): Promise<ZizmorResult[]> {
   if (inputs.length === 0) return [];
   const tool = await ctx.tools.path('zizmor');
   const config = join(ctx.scratch, 'zizmor.yml');
   await writeFile(config, ZIZMOR_CONFIG);
   const run = await ctx.exec(tool, [...zizmorArgs(config), '--', ...inputs], { cwd: ctx.root });
   if (run.code !== 0) throw toolFailed('zizmor', run);
-  return parseZizmor(run.stdout);
+  return parseZizmorResults(run.stdout);
 }

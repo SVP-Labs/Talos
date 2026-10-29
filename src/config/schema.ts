@@ -27,6 +27,19 @@ const exception = z.strictObject({
   expires: z.string().regex(DATE, 'must be a date, YYYY-MM-DD'),
 });
 
+/**
+ * One zizmor finding a workflow keeps on purpose: matched by rule, file, job and step (its `id`,
+ * or its `name` when it has none), never by line, with a reason and an expiry like any exception.
+ */
+const workflowException = z.strictObject({
+  rule: z.string().regex(/^zizmor\/[a-z0-9-]+$/, 'must be a zizmor rule, zizmor/<audit>'),
+  file: relativePath,
+  job: z.string().min(1),
+  step: z.string().min(1),
+  reason: z.string().min(1),
+  expires: z.string().regex(DATE, 'must be a date, YYYY-MM-DD'),
+});
+
 const component = z.strictObject({
   lang: z.enum(['ts', 'py', 'php', 'lua', 'rust']),
   root: relativePath.default('.'),
@@ -79,7 +92,11 @@ export const talosConfigSchema = z.strictObject({
       exceptions: z.record(z.string().min(1), exception).default({}),
     })
     .default({ allow: {}, exceptions: {} }),
+  exceptions: z
+    .strictObject({ workflows: z.array(workflowException).default([]) })
+    .default({ workflows: [] }),
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;
 export type ExceptionEntry = z.infer<typeof exception>;
+export type WorkflowException = z.infer<typeof workflowException>;
