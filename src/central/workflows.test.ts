@@ -534,7 +534,10 @@ describe('the central jobs in this public repository', () => {
           (s) => s.with?.owner !== undefined && s.with.repositories === undefined,
         )) {
           const asked = Object.keys(step.with ?? {}).filter((k) => k.startsWith('permission-'));
-          const metadata = (k: string) => k === 'permission-metadata' && step.with?.[k] === 'read';
+          // Metadata read only beside the custom property listing, which needs it.
+          const lists = step.with?.['permission-organization-custom-properties'] === 'read';
+          const metadata = (k: string) =>
+            k === 'permission-metadata' && step.with?.[k] === 'read' && lists;
           expect(
             asked.every((k) => k.startsWith('permission-organization-') || metadata(k)),
             `${path} ${id} ${step.name ?? ''}`,
