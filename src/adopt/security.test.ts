@@ -93,10 +93,35 @@ describe('securityMigration', () => {
     });
     expect(out.moved).toEqual([]);
     expect(out.next).toEqual([
-      "osv-scanner.toml ignores GHSA-1 without a reason or an expiry: give it both under talos.yml's supply_chain.exceptions",
+      "osv-scanner.toml ignores GHSA-1 without a reason or a real expiry: give it both under talos.yml's supply_chain.exceptions",
       "osv-scanner.toml overrides left-pad, which talos.yml can't say: add its licence under licences with a reason, or drop it",
       "x/osv-scanner.toml can't be read: move its exceptions into talos.yml by hand",
     ]);
+  });
+
+  it('moves an ignoreUntil only when it is a day of the calendar', () => {
+    const vuln = (id: string, until: string) =>
+      `[[IgnoredVulns]]\nid = "${id}"\nignoreUntil = "${until}"\nreason = "not reachable"\n`;
+    const out = migrate({
+      'osv-scanner.toml': [
+        vuln('GHSA-leap', '2028-02-29'),
+        vuln('GHSA-time', '2027-01-08T12:00:00Z'),
+        vuln('GHSA-feb', '2027-02-30'),
+        vuln('GHSA-month', '2027-13-01'),
+      ].join('\n'),
+    });
+    expect(out.additions.exceptions).toEqual({
+      'GHSA-leap': { reason: 'not reachable', expires: '2028-02-29' },
+      'GHSA-time': { reason: 'not reachable', expires: '2027-01-08' },
+    });
+    expect(out.moved).toEqual([]);
+    expect(out.next).toEqual(
+      ['GHSA-feb', 'GHSA-month'].map(
+        (id) =>
+          `osv-scanner.toml ignores ${id} without a reason or a real expiry: give it both under ` +
+          "talos.yml's supply_chain.exceptions",
+      ),
+    );
   });
 
   it("moves .gitleaks.toml's own rules into the project file the base extends", () => {

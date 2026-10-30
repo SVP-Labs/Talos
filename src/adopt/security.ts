@@ -61,9 +61,13 @@ const osvSchema = z.looseObject({
 
 type Osv = z.infer<typeof osvSchema>;
 
+/** The `YYYY-MM-DD` a value starts with, when that is a day of the calendar. */
 function dateOf(value: unknown): string | undefined {
-  if (value instanceof Date) return /^\d{4}-\d{2}-\d{2}/.exec(value.toISOString())?.[0];
-  return typeof value === 'string' ? /^\d{4}-\d{2}-\d{2}/.exec(value)?.[0] : undefined;
+  const text = value instanceof Date ? value.toISOString() : value;
+  const day = typeof text === 'string' ? /^\d{4}-\d{2}-\d{2}/.exec(text)?.[0] : undefined;
+  if (day === undefined) return undefined;
+  const at = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === day ? day : undefined;
 }
 
 const DEPRECATED_GNU = /^(A?GPL|LGPL|GFDL)-(\d\.\d)(\+?)$/;
@@ -97,7 +101,7 @@ function collectVulns(file: string, osv: Osv, into: Collected): boolean {
     const reason = vuln.reason?.trim() ?? '';
     if (expires === undefined || reason === '') {
       into.next.push(
-        `${file} ignores ${vuln.id} without a reason or an expiry: give it both under ` +
+        `${file} ignores ${vuln.id} without a reason or a real expiry: give it both under ` +
           "talos.yml's supply_chain.exceptions",
       );
       whole = false;
