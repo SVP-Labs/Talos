@@ -7,7 +7,7 @@ loop, the events that drive it, and the contracts an agent reads. Decisions writ
 
 Thea's side of it is built in her hub, which holds her App: her tasks hold no GitHub
 credentials, and her session holds no token (her brief,
-[Thea and Talos](https://github.com/SVP-Labs/Thea/blob/main/docs/requirements/20261023-thea-talos.md)).
+[Thea and Talos](https://github.com/SVP-Labs/Thea/blob/main/docs/requirements/20261030-thea-talos.md)).
 
 ## The loop
 

@@ -478,7 +478,7 @@ release is cut).
 
 **Her hub first** (C18 step 2). Before her repository comes in, her hub gains, in her own
 repository and under her own briefs, everything Talos expects of her
-([Thea and Talos](https://github.com/SVP-Labs/Thea/blob/main/docs/requirements/20261023-thea-talos.md)):
+([Thea and Talos](https://github.com/SVP-Labs/Thea/blob/main/docs/requirements/20261030-thea-talos.md)):
 
 - pushes that land on a `<P>-<N>` branch she holds the claim for;
 - claiming through a hub tool, and the hub handing each task the enforced release;
