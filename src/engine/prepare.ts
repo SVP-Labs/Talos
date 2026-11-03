@@ -171,6 +171,13 @@ async function runSetupScript(
 ): Promise<void> {
   if (plan.config.setup === undefined) return;
   const script = join(plan.root, plan.config.setup);
+  if (plan.side === 'base' && !(await present(script))) {
+    engine.log.warn(
+      `the base commit has no ${plan.config.setup}, the setup script talos.yml names: ` +
+        'its run goes without one',
+    );
+    return;
+  }
   const shell = plan.os === 'windows' ? 'bash.exe' : 'bash';
   await execOk(engine.exec, shell, [script], { cwd: plan.root, env, timeoutMs: 60 * 60 * 1000 });
 }
