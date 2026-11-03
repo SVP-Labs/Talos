@@ -135,6 +135,25 @@ describe('prepare: setup and installs', () => {
     expect(calls[0]?.env).toEqual({});
   });
 
+  it('runs a base commit without the setup script it lacks, and says so', async () => {
+    const root = await tempRepo({ 'old/setup.sh': 'true\n' });
+    const { engine, calls, warnings } = engineWith(() => '');
+    const missing = testPlan(root, [], configWith('setup: scripts/setup.sh\n'));
+    await prepare(engine, { ...missing, side: 'base' });
+    expect(calls).toEqual([]);
+    expect(warnings).toEqual([
+      'the base commit has no scripts/setup.sh, the setup script talos.yml names: ' +
+        'its run goes without one',
+    ]);
+    const present = testPlan(root, [], configWith('setup: old/setup.sh\n'));
+    await prepare(engine, { ...present, side: 'base' });
+    await prepare(engine, { ...missing, side: 'head' });
+    expect(calls.map((c) => c.args)).toEqual([
+      [join(root, 'old/setup.sh')],
+      [join(root, 'scripts/setup.sh')],
+    ]);
+  });
+
   it('records a component whose install failed, and installs only the components on this OS', async () => {
     const installed: string[] = [];
     const pack = (lang: 'ts' | 'py'): Pack => ({
