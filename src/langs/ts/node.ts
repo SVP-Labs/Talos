@@ -63,14 +63,15 @@ async function readManifest(dir: string): Promise<InstalledPackage | undefined> 
 }
 
 /**
- * The package as the component resolves it: its own `node_modules`, then each parent's up to the
- * repository root (a workspace hoists them there).
+ * The package as `from` resolves it, the component's root unless given: its own `node_modules`,
+ * then each parent's up to the repository root (a workspace hoists them there).
  */
 export async function installedPackage(
   ctx: Pick<CheckContext, 'root' | 'component'>,
   name: string,
+  from: string = componentDir(ctx),
 ): Promise<InstalledPackage | undefined> {
-  for (const dir of upwards(componentDir(ctx), resolve(ctx.root))) {
+  for (const dir of upwards(from, resolve(ctx.root))) {
     const found = await readManifest(join(dir, 'node_modules', name));
     if (found !== undefined) return found;
   }

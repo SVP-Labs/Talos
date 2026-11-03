@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { join, posix } from 'node:path';
+import { join, posix, resolve } from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 import { z } from 'zod';
 import { sentence } from './lint.js';
@@ -155,9 +155,17 @@ export function failureFindings(
   });
 }
 
-async function playwright(ctx: CheckContext): Promise<NodeTool> {
+/**
+ * Playwright as the suite's config resolves it: from the package holding the config (a workspace
+ * package below the component, often), then upward from there.
+ */
+export async function playwrightTool(
+  ctx: Pick<CheckContext, 'root' | 'component'>,
+  suite: Suite,
+): Promise<NodeTool> {
+  const from = resolve(ctx.root, posix.dirname(suite.config));
   for (const name of ['@playwright/test', 'playwright']) {
-    const pkg = await installedPackage(ctx, name);
+    const pkg = await installedPackage(ctx, name, from);
     const script = pkg === undefined ? undefined : binScript(pkg, 'playwright');
     if (script !== undefined) return { name: 'playwright', script };
   }
@@ -165,7 +173,7 @@ async function playwright(ctx: CheckContext): Promise<NodeTool> {
 }
 
 async function runSuite(ctx: CheckContext, suite: Suite, index: number): Promise<Finding[]> {
-  const tool = await playwright(ctx);
+  const tool = await playwrightTool(ctx, suite);
   const cwd = posix.dirname(suite.config);
   const report = join(ctx.scratch, `playwright-${index}.xml`);
   const filter = posix.relative(cwd, suite.path);

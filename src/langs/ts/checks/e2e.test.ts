@@ -1,7 +1,16 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { errorLine, failureFindings, parseJunitFailures, playwrightSuites } from './e2e.js';
+import {
+  errorLine,
+  failureFindings,
+  parseJunitFailures,
+  playwrightSuites,
+  playwrightTool,
+} from './e2e.js';
 import { parseConfig } from '../../../config/load.js';
+import { EngineError } from '../../../core/check.js';
 import { repoFacts } from '../../../repo/facts.js';
+import { tempRepo } from '../../../testing/engine.js';
 
 /** Recorded from @playwright/test 1.56.1 --reporter=junit, one test failing. */
 const RECORDED = `<testsuites id="" name="" tests="2" failures="1" skipped="0" errors="0" time="0.74">
@@ -51,6 +60,42 @@ describe('playwrightSuites', () => {
 
   it('finds none without a Playwright config', () => {
     expect(playwrightSuites(context(yml, ['apps/web/e2e/home.spec.ts']))).toEqual([]);
+  });
+});
+
+describe('playwrightTool', () => {
+  const manifest = (version: string): string =>
+    JSON.stringify({ version, bin: { playwright: 'cli.js' } });
+  const suite = { path: 'apps/web/e2e', config: 'apps/web/playwright.config.ts' };
+  const ctx = (root: string) => ({
+    root,
+    component: { lang: 'ts' as const, root: '.', os: ['linux' as const] },
+  });
+
+  it("finds Playwright in the workspace package holding the suite's config", async () => {
+    const root = await tempRepo({
+      'package.json': '{}',
+      'apps/web/package.json': '{}',
+      'apps/web/node_modules/@playwright/test/package.json': manifest('1.56.1'),
+    });
+    expect((await playwrightTool(ctx(root), suite)).script).toBe(
+      join(root, 'apps/web/node_modules/@playwright/test/cli.js'),
+    );
+  });
+
+  it('looks upward from that package, to the one the workspace hoists', async () => {
+    const root = await tempRepo({
+      'apps/web/package.json': '{}',
+      'node_modules/playwright/package.json': manifest('1.56.1'),
+    });
+    expect((await playwrightTool(ctx(root), suite)).script).toBe(
+      join(root, 'node_modules/playwright/cli.js'),
+    );
+  });
+
+  it('names the fix when no package up from the config has it', async () => {
+    const root = await tempRepo({ 'apps/web/package.json': '{}' });
+    await expect(playwrightTool(ctx(root), suite)).rejects.toThrow(EngineError);
   });
 });
 
