@@ -212,4 +212,47 @@ describe('prepare: generated files', () => {
     const targets = generatedTargets(packs, { ...plan, side: 'alone' }).map(targetPath);
     expect(targets).toEqual(['base.json', 'tool/base.toml', 'svc/tool/base.toml']);
   });
+
+  const extended: Pack[] = [
+    {
+      name: 'ext',
+      checks: [],
+      generated: [
+        {
+          path: 'lint.config.js',
+          scope: 'component',
+          langs: ['ts'],
+          applies: () => true,
+          render: () => "import project from './lint.project.js';\n",
+          extension: {
+            path: 'lint.project.js',
+            initial: (ctx) => `export default []; // ${ctx.component?.root ?? ''}\n`,
+          },
+        },
+      ],
+    },
+  ];
+  const twoComponents = configWith(
+    'components:\n  - { lang: ts, root: . }\n  - { lang: ts, root: web }\n',
+  );
+
+  it('gives a base commit each extension file it lacks as adoption writes it, keeping its own', async () => {
+    const root = await tempRepo({ 'web/lint.project.js': 'export default [strict];\n' });
+    const { engine } = engineWith(() => '', extended);
+    await prepare(engine, { ...testPlan(root, [], twoComponents), side: 'base' });
+    expect(await readFile(join(root, 'lint.project.js'), 'utf8')).toBe('export default []; // .\n');
+    expect(await readFile(join(root, 'web/lint.project.js'), 'utf8')).toBe(
+      'export default [strict];\n',
+    );
+  });
+
+  it('leaves a missing extension file missing outside a base run', async () => {
+    const root = await tempRepo({});
+    const { engine } = engineWith(() => '', extended);
+    for (const side of ['head', 'alone'] as const) {
+      await prepare(engine, { ...testPlan(root, [], twoComponents), side });
+    }
+    await expect(readFile(join(root, 'lint.project.js'), 'utf8')).rejects.toThrow();
+    await expect(readFile(join(root, 'web/lint.project.js'), 'utf8')).rejects.toThrow();
+  });
 });
