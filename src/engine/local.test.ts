@@ -1,11 +1,13 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cachedRun, runAt } from './local.js';
+import { cachedRun, changesBetween, runAt } from './local.js';
+import { decide, statusOf } from './verdict.js';
 import { parseConfig } from '../config/load.js';
-import { APPLIES, type Check } from '../core/check.js';
-import { exec } from '../exec/exec.js';
+import { APPLIES, type Check, EngineError } from '../core/check.js';
+import type { Pack } from '../core/pack.js';
+import { type Exec, exec } from '../exec/exec.js';
 import { type ChangeSet } from '../repo/changes.js';
 import { type Git, git, revParse } from '../repo/git.js';
 import { testEngine } from '../testing/engine.js';
@@ -167,5 +169,97 @@ describe('runAt for the weekly mutation report', () => {
     await runAt(engine, at);
     await runAt(engine, { ...at, mutateAll: true });
     expect(seen).toEqual([['web/src/risk.ts'], ['web', '.']]);
+  });
+});
+
+describe('an adoption PR', () => {
+  /** A linter whose generated config imports the project's extension file, as ESLint's does. */
+  const linting: Pack = {
+    name: 'lint',
+    generated: [
+      {
+        path: 'lint.config.txt',
+        scope: 'repo',
+        applies: () => true,
+        render: () => 'lint.project.txt\n',
+        extension: { path: 'lint.project.txt', initial: () => '' },
+      },
+    ],
+    checks: [
+      {
+        id: 'x/lint',
+        tier: 'head',
+        scope: 'repo',
+        title: 'lint',
+        applies: () => APPLIES,
+        run: async (ctx) => {
+          const imported = (await readFile(join(ctx.root, 'lint.config.txt'), 'utf8')).trim();
+          await readFile(join(ctx.root, imported)).catch(() => {
+            throw new EngineError(`Cannot find module ${imported}`);
+          });
+          const sources = ctx.facts.files.filter((file) => file.startsWith('src/'));
+          const texts = await Promise.all(sources.map((f) => readFile(join(ctx.root, f), 'utf8')));
+          return sources.flatMap((file, index) =>
+            (texts[index] ?? '').includes('debt')
+              ? [{ rule: 'x/debt', message: 'debt', location: { file, line: 1 } }]
+              : [],
+          );
+        },
+      },
+    ],
+  };
+
+  async function commit(repo: Git, files: Readonly<Record<string, string>>): Promise<string> {
+    for (const [path, text] of Object.entries(files)) {
+      await mkdir(dirname(join(repo.root, path)), { recursive: true });
+      await writeFile(join(repo.root, path), text);
+    }
+    await repo.run(['add', '-A']);
+    await repo.run([...COMMIT, 'commit', '-q', '-m', '[A-1]: Change']);
+    return revParse(repo, 'HEAD');
+  }
+
+  it('judges only what the PR adds, though the base lacks the files adoption adds', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'talos-adopt-'));
+    const repo = git(exec, root);
+    await repo.run(['init', '-q']);
+    const base = await commit(repo, { 'src/old.txt': 'debt\n' });
+    const yml = 'name: A\nprefix: A\nsetup: scripts/talos-setup.sh\n';
+    const head = await commit(repo, {
+      'talos.yml': yml,
+      'scripts/talos-setup.sh': 'true\n',
+      'lint.config.txt': 'lint.project.txt\n',
+      'lint.project.txt': '',
+      'src/new.txt': 'debt\n',
+    });
+    const setups: string[] = [];
+    const engine = {
+      ...testEngine([linting]),
+      exec: ((command, args, options) => {
+        if (command !== 'bash') return exec(command, args, options);
+        setups.push(args.join(' '));
+        return Promise.resolve({ code: 0, stdout: '', stderr: '' });
+      }) satisfies Exec,
+    };
+    const changes = await changesBetween(repo, base, head);
+    const common = { tiers: ['head' as const], os: 'linux' as const, changes };
+    const results = [
+      await cachedRun(engine, repo, {
+        ...common,
+        sha: base,
+        side: 'base',
+        config: parseConfig(yml),
+      }),
+      await runAt(engine, { ...common, root, sha: head, side: 'head' }),
+    ];
+    const verdict = decide(results, [{ sha: head, against: base, tier: 'head', changes }], []);
+    expect(verdict.faults).toEqual([]);
+    expect(verdict.findings.map((f) => [f.location?.file, f.isNew])).toEqual([
+      ['src/new.txt', true],
+      ['src/old.txt', false],
+    ]);
+    expect(verdict.blocking.map((f) => f.location?.file)).toEqual(['src/new.txt']);
+    expect(statusOf(verdict)).toBe('red');
+    expect(setups).toEqual([join(root, 'scripts/talos-setup.sh')]);
   });
 });

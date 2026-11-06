@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { dirname, join } from 'node:path';
 import { type Engine, installKey, type RunPlan } from './run.js';
@@ -37,19 +37,37 @@ export function targetPath(target: Target): string {
   return componentPath(target.component, target.file.path);
 }
 
-/** The gate never trusts the repository's copy of a base config: it writes its own. */
+async function present(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function put(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content);
+}
+
+/**
+ * The gate never trusts the repository's copy of a base config: it writes its own. A base commit
+ * that predates an extension file gets the one `talos adopt` writes, which adds nothing, so its
+ * base config loads there as it will once the file is committed.
+ */
 async function writeGenerated(engine: Engine, plan: RunPlan): Promise<void> {
   const ctx = { facts: plan.facts, config: plan.config, side: plan.side, tiers: plan.tiers };
   for (const target of generatedTargets(engine.packs, ctx)) {
-    const path = join(plan.root, targetPath(target));
-    const content = target.file.render({
+    const render = {
       config: plan.config,
       facts: plan.facts,
       version: engine.version,
       ...(target.component ? { component: target.component } : {}),
-    });
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, content);
+    };
+    await put(join(plan.root, targetPath(target)), target.file.render(render));
+    const extension = target.file.extension;
+    if (plan.side !== 'base' || extension === undefined) continue;
+    const path = join(plan.root, componentPath(target.component, extension.path));
+    if (!(await present(path))) await put(path, extension.initial(render));
   }
 }
 
@@ -153,6 +171,13 @@ async function runSetupScript(
 ): Promise<void> {
   if (plan.config.setup === undefined) return;
   const script = join(plan.root, plan.config.setup);
+  if (plan.side === 'base' && !(await present(script))) {
+    engine.log.warn(
+      `the base commit has no ${plan.config.setup}, the setup script talos.yml names: ` +
+        'its run goes without one',
+    );
+    return;
+  }
   const shell = plan.os === 'windows' ? 'bash.exe' : 'bash';
   await execOk(engine.exec, shell, [script], { cwd: plan.root, env, timeoutMs: 60 * 60 * 1000 });
 }
