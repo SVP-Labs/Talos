@@ -1,11 +1,12 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { type Command, parse } from './io.js';
 import { loadConfig } from '../config/load.js';
 import { renderConfigs } from '../configs/files.js';
 import type { ApplyContext } from '../core/check.js';
 import type { Pack } from '../core/pack.js';
 import { PACKS } from '../core/registry.js';
+import { present, put } from '../engine/prepare.js';
 import { exec as realExec, type Exec } from '../exec/exec.js';
 import { capped } from '../govern/output.js';
 import { repoFacts } from '../repo/facts.js';
@@ -21,18 +22,6 @@ export type Written = {
 
 async function current(path: string): Promise<string | undefined> {
   return readFile(path, 'utf8').catch(() => undefined);
-}
-
-async function present(path: string): Promise<boolean> {
-  return access(path).then(
-    () => true,
-    () => false,
-  );
-}
-
-async function put(path: string, content: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content);
 }
 
 /**

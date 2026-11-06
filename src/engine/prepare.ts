@@ -37,14 +37,14 @@ export function targetPath(target: Target): string {
   return componentPath(target.component, target.file.path);
 }
 
-async function present(path: string): Promise<boolean> {
+export async function present(path: string): Promise<boolean> {
   return access(path).then(
     () => true,
     () => false,
   );
 }
 
-async function put(path: string, content: string): Promise<void> {
+export async function put(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content);
 }
