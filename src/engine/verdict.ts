@@ -23,7 +23,8 @@ export type Verdict = {
   readonly findings: readonly Located[];
   readonly blocking: readonly Located[];
   readonly faults: readonly EngineFault[];
-  readonly withoutBase: readonly NoBase[];
+  /** Checks judged on head alone; the text report and the job summary list them, not the JSON. */
+  readonly withoutBase?: readonly NoBase[];
 };
 
 function resultFor(

@@ -319,7 +319,7 @@ describe('an adoption PR', () => {
     for (const results of [[baseRun, headRun], passedOn]) {
       const verdict = decide(results, comparisons, []);
       expect(verdict.faults).toEqual([]);
-      expect(verdict.withoutBase.map((o) => [o.check, o.sha, o.reason])).toEqual([
+      expect(verdict.withoutBase?.map((o) => [o.check, o.sha, o.reason])).toEqual([
         ['x/e2e', base, reason],
       ]);
       expect(statusOf(verdict)).toBe('green');

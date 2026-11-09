@@ -35,14 +35,12 @@ it can read, its `status` is `unknown`, beside the `repo`, `pr` and `head` it lo
 
 Everything in `talos.verdict/1` is capped, so an event can carry it whole. Text is clipped with `…`:
 a rule at 100 characters (as a `byRule` key too), a file at 300, a flaky test's id at 300, a fault's
-`check` at 100, the release in `talos` at 50, a message at 200 and a fault's reason at 300;
-`withoutBase` clips its `check` and `reason` as `faults` does. `byRule` counts the 40 rules with
-the most blocking findings, and `withoutBase` lists at most five checks. The whole verdict is at
-most 48 KiB as compact JSON, since escaped text can take six bytes a character: past that the gate
-lists fewer flaky tests, then fewer checks judged without a base, then fewer blocking findings,
-with `truncated`. `talos findings` passes no verdict past any of these caps, a forged artifact's
-included, and answers `unknown` with `error` instead, so its answer stays well inside the 64 KB
-Thea's hub reads.
+`check` at 100, the release in `talos` at 50, a message at 200 and a fault's reason at 300. `byRule`
+counts the 40 rules with the most blocking findings. The whole verdict is at most 48 KiB as compact
+JSON, since escaped text can take six bytes a character: past that the gate lists fewer flaky tests,
+then fewer blocking findings, with `truncated`. `talos findings` passes no verdict past any of these
+caps, a forged artifact's included, and answers `unknown` with `error` instead, so its answer stays
+well inside the 64 KB Thea's hub reads.
 
 ## Flags and exit codes
 

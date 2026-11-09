@@ -348,7 +348,7 @@ describe('talos.verdict/1 from talos findings', () => {
       sha: HEAD,
     };
     const verdict = compactVerdict(
-      { findings: [located], blocking: [located], faults: [], withoutBase: [] },
+      { findings: [located], blocking: [located], faults: [] },
       { talos: '1.4.0', repo: 'o/r', pr: 5, mode: 'ready', base: MAIN, head: HEAD },
     );
     uploaded(JSON.stringify(verdict));
