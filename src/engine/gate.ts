@@ -3,7 +3,13 @@ import { join } from 'node:path';
 import { changesBetween } from './local.js';
 import type { GatePlan } from './plan.js';
 import { printedBytes, VERDICT_CAPS } from './verdict-caps.js';
-import { type Comparison, type Located, statusOf, type Verdict } from './verdict.js';
+import {
+  type Comparison,
+  type EngineFault,
+  type Located,
+  statusOf,
+  type Verdict,
+} from './verdict.js';
 import { mergeFinding, subjectFindings, ticketOf } from '../checks/process/commits.js';
 import type { TalosConfig } from '../config/schema.js';
 import type { Reported } from '../core/finding.js';
@@ -102,20 +108,38 @@ function countedByRule(blocking: readonly Located[]): Record<string, number> {
   return Object.fromEntries(most.slice(0, CAP.rules));
 }
 
-type Listed = { readonly blocking: readonly unknown[]; readonly flaky: readonly unknown[] };
+/** A fault, or a check judged without a base, as the compact verdict lists it. */
+function placedCheck(f: EngineFault): Record<string, string> {
+  return {
+    sha: f.sha,
+    os: f.os,
+    check: clip(f.check, CAP.check),
+    reason: clip(f.reason ?? '', CAP.reason),
+  };
+}
+
+type Listed = {
+  readonly blocking: readonly unknown[];
+  readonly flaky: readonly unknown[];
+  readonly withoutBase: readonly unknown[];
+};
+
+/** One item less: a flaky test, else a check judged without a base, else a finding. */
+function shorter<T extends Listed & { readonly truncated: boolean }>(fit: T): T {
+  if (fit.flaky.length > 0) return { ...fit, flaky: fit.flaky.slice(0, -1) };
+  if (fit.withoutBase.length > 0) return { ...fit, withoutBase: fit.withoutBase.slice(0, -1) };
+  return { ...fit, blocking: fit.blocking.slice(0, -1), truncated: true };
+}
 
 /**
- * The verdict with its lists cut, flaky tests first, until it fits {@link VERDICT_CAPS}' bytes;
- * what stays outside the lists is capped so that it always fits.
+ * The verdict with its lists cut, flaky tests first, then the checks judged without a base, then
+ * blocking findings, until it fits {@link VERDICT_CAPS}' bytes; what stays outside the lists is
+ * capped so that it always fits.
  */
 function fitted<T extends Listed & { readonly truncated: boolean }>(verdict: T): T {
   let fit = verdict;
-  while (printedBytes(fit) > CAP.bytes && fit.flaky.length + fit.blocking.length > 0) {
-    fit =
-      fit.flaky.length > 0
-        ? { ...fit, flaky: fit.flaky.slice(0, -1) }
-        : { ...fit, blocking: fit.blocking.slice(0, -1), truncated: true };
-  }
+  const items = (v: T) => v.flaky.length + v.withoutBase.length + v.blocking.length;
+  while (printedBytes(fit) > CAP.bytes && items(fit) > 0) fit = shorter(fit);
   return fit;
 }
 
@@ -151,12 +175,7 @@ export function compactVerdict(
       line: f.location?.line ?? null,
       message: clip(f.message, CAP.message),
     })),
-    faults: verdict.faults.slice(0, CAP.faults).map((f) => ({
-      sha: f.sha,
-      os: f.os,
-      check: clip(f.check, CAP.check),
-      reason: clip(f.reason ?? '', CAP.reason),
-    })),
+    faults: verdict.faults.slice(0, CAP.faults).map(placedCheck),
     flaky: verdict.findings
       .filter((f) => f.rule === 'tests/flaky')
       .slice(0, CAP.listed)
@@ -164,6 +183,7 @@ export function compactVerdict(
         id: clip(f.key ?? f.message, CAP.test),
         file: f.location === undefined ? null : clip(f.location.file, CAP.path),
       })),
+    withoutBase: verdict.withoutBase.slice(0, CAP.withoutBase).map(placedCheck),
     truncated: verdict.blocking.length > CAP.listed || verdict.faults.length > CAP.faults,
   });
 }

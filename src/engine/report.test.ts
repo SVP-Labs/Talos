@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { annotations, markdownSummary, textReport } from './report.js';
-import type { EngineFault, Located, Verdict } from './verdict.js';
+import type { EngineFault, Located, NoBase, Verdict } from './verdict.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -37,8 +37,24 @@ function unplaced(finding: Located): Located {
   return rest;
 }
 
-function verdictOf(findings: readonly Located[], faults: readonly EngineFault[] = []): Verdict {
-  return { findings, blocking: findings.filter((f) => f.blocking), faults };
+const noBase: NoBase = {
+  check: 'ts/e2e',
+  tier: 'head',
+  status: 'skipped',
+  reason: 'the base commit has no setup.sh',
+  withoutBase: true,
+  durationMs: 0,
+  findings: [],
+  sha: SHA,
+  os: 'linux',
+};
+
+function verdictOf(
+  findings: readonly Located[],
+  faults: readonly EngineFault[] = [],
+  withoutBase: readonly NoBase[] = [],
+): Verdict {
+  return { findings, blocking: findings.filter((f) => f.blocking), faults, withoutBase };
 }
 
 describe('textReport', () => {
@@ -62,6 +78,18 @@ describe('textReport', () => {
   it('says only the counts when nothing blocks', () => {
     expect(textReport(verdictOf([]))).toBe(
       '0 blocking finding(s), 0 existing or informational, 0 engine error(s)\n',
+    );
+  });
+
+  it('says which checks were judged on head alone, and why, after the engine errors', () => {
+    expect(textReport(verdictOf([], [fault], [noBase]))).toBe(
+      [
+        'ENGINE ERROR py/types at 0123456789ab (macos): basedpyright crashed',
+        'NO BASE ts/e2e at 0123456789ab (linux), judged on head alone: ' +
+          'the base commit has no setup.sh',
+        '0 blocking finding(s), 0 existing or informational, 1 engine error(s)',
+        '',
+      ].join('\n'),
     );
   });
 
@@ -120,6 +148,21 @@ describe('markdownSummary', () => {
         String.raw`| 0123456789ab | src/p\|q.ts:1 | eslint/complexity | new | a \| b c |`,
         '',
         '1 blocking, 1 existing or informational.',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('lists the checks judged on head alone under their own heading', () => {
+    expect(markdownSummary(verdictOf([], [], [noBase]))).toBe(
+      [
+        '## Talos: green',
+        '',
+        '### Judged on head alone, without a base',
+        '',
+        '- **ts/e2e** at 0123456789ab (linux): the base commit has no setup.sh',
+        '',
+        '0 blocking, 0 existing or informational.',
         '',
       ].join('\n'),
     );

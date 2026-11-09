@@ -213,7 +213,7 @@ function withoutBase(plan: RunPlan, outcome: Outcome): Outcome {
   const reason =
     `the base commit has no ${plan.withoutSetup}, the setup script talos.yml names, and the ` +
     `check faults there without it: ${outcome.reason ?? ''}`;
-  return { ...outcome, status: 'skipped', reason };
+  return { ...outcome, status: 'skipped', reason, withoutBase: true };
 }
 
 /** Runs every applicable check of the plan's tiers at one checkout; never throws for a check. */

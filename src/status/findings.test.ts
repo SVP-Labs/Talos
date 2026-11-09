@@ -212,7 +212,7 @@ describe('prFindings', () => {
     const blocking = Array.from({ length: 60 }, (_, n) => located(n));
     const flaky = blocking.map((f) => ({ ...f, rule: 'tests/flaky', key: odd(500) }));
     const written = compactVerdict(
-      { findings: [...blocking, ...flaky], blocking, faults: [] },
+      { findings: [...blocking, ...flaky], blocking, faults: [], withoutBase: [] },
       { talos: '1.4.0', mode: 'ready', base: SHA, head: SHA },
     );
     const deps = withArchive(makeZip({ 'verdict.json': JSON.stringify(written, null, 2) }));

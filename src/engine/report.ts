@@ -18,6 +18,10 @@ export function textReport(verdict: Verdict): string {
       `ENGINE ERROR ${fault.check} at ${short(fault.sha)} (${fault.os}): ${fault.reason ?? ''}`,
     );
   }
+  for (const noBase of verdict.withoutBase) {
+    const at = `${noBase.check} at ${short(noBase.sha)} (${noBase.os})`;
+    lines.push(`NO BASE ${at}, judged on head alone: ${noBase.reason ?? ''}`);
+  }
   for (const finding of verdict.blocking) {
     const why = finding.why === 'new' ? '' : ` (${finding.why})`;
     lines.push(
@@ -70,10 +74,14 @@ export function markdownSummary(verdict: Verdict): string {
   const faults = verdict.faults.map(
     (f) => `- **${f.check}** at ${short(f.sha)} (${f.os}): ${cell(f.reason ?? '')}`,
   );
+  const noBase = verdict.withoutBase.map(
+    (f) => `- **${f.check}** at ${short(f.sha)} (${f.os}): ${cell(f.reason ?? '')}`,
+  );
   return [
     `## Talos: ${head}`,
     '',
     ...(faults.length > 0 ? ['### Engine errors', '', ...faults, ''] : []),
+    ...(noBase.length > 0 ? ['### Judged on head alone, without a base', '', ...noBase, ''] : []),
     ...(rows.length > 0
       ? [
           '| commit | where | rule | why | message |',

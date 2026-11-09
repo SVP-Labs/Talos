@@ -55,7 +55,7 @@ function fault(n: number, reason: string): EngineFault {
 }
 
 const VERDICTS: Record<string, Verdict> = {
-  green: { findings: [], blocking: [], faults: [] },
+  green: { findings: [], blocking: [], faults: [], withoutBase: [] },
   'red, more than the list holds': (() => {
     const { location: _location, ...first } = located(0, {
       message: 'x'.repeat(500),
@@ -63,7 +63,7 @@ const VERDICTS: Record<string, Verdict> = {
     });
     const blocking = [first, ...Array.from({ length: 24 }, (_, n) => located(n + 1))];
     const existing = located(99, { blocking: false, why: 'existing', isNew: false });
-    return { findings: [...blocking, existing], blocking, faults: [] };
+    return { findings: [...blocking, existing], blocking, faults: [], withoutBase: [] };
   })(),
   'red, with every text past its cap': (() => {
     const long = (n: number) =>
@@ -83,6 +83,7 @@ const VERDICTS: Record<string, Verdict> = {
       findings: [...blocking, flaky],
       blocking,
       faults: [{ ...fault(0, 'r'), check: `custom/${'c'.repeat(200)}` }],
+      withoutBase: [],
     };
   })(),
   'red, past the size an event holds': (() => {
@@ -103,7 +104,7 @@ const VERDICTS: Record<string, Verdict> = {
         location: { file: odd(500), line: 1 },
       }),
     );
-    return { findings: [...blocking, ...flaky], blocking, faults: [] };
+    return { findings: [...blocking, ...flaky], blocking, faults: [], withoutBase: [] };
   })(),
   'an engine error with flaky tests': {
     findings: [
@@ -111,6 +112,20 @@ const VERDICTS: Record<string, Verdict> = {
     ],
     blocking: [],
     faults: Array.from({ length: 6 }, (_, n) => fault(n, 'r'.repeat(n === 0 ? 1000 : 10))),
+    withoutBase: [],
+  },
+  'green, with checks judged without a base': {
+    findings: [],
+    blocking: [],
+    faults: [],
+    withoutBase: Array.from({ length: 7 }, (_, n) => ({
+      ...fault(n, 'w'.repeat(n === 0 ? 1000 : 10)),
+      check: n === 0 ? `ts/${'e'.repeat(200)}` : `ts/e2e-${n}`,
+      status: 'skipped' as const,
+      withoutBase: true as const,
+      sha: BASE,
+      os: 'linux' as const,
+    })),
   },
 };
 
@@ -157,6 +172,18 @@ describe('talos.verdict/1', () => {
     expect(capped.counts).toMatchObject({ blocking: 45 });
     expect(capped.faults).toMatchObject([{ check: `custom/${'c'.repeat(92)}…` }]);
     expect(capped.flaky).toEqual([{ id: `${'k'.repeat(299)}…`, file: `${'p'.repeat(299)}…` }]);
+  });
+
+  it('lists at most five checks judged without a base, clipped as faults are', () => {
+    const noBase = compactVerdict(VERDICTS['green, with checks judged without a base']!, CONTEXT);
+    expect(noBase).toMatchObject({ status: 'green', truncated: false, faults: [] });
+    const listed = z
+      .array(z.object({ sha: z.string(), check: z.string(), reason: z.string() }))
+      .parse(noBase.withoutBase);
+    expect(listed.map((f) => [f.sha, f.check.length, f.reason.length])).toEqual([
+      [BASE, 100, 300],
+      ...[1, 2, 3, 4].map((n) => [BASE, `ts/e2e-${n}`.length, 10]),
+    ]);
   });
 
   it('lists no more than fits in 48 KiB, however its text escapes', () => {
@@ -207,6 +234,16 @@ describe('talos.verdict/1', () => {
       { ...good, faults: [{ sha: HEAD, os: 'linux', check: 'c'.repeat(101), reason: '' }] },
       { ...good, flaky: [{ id: 'i'.repeat(301), file: null }] },
       { ...good, flaky: [{ id: 'i', file: 'f'.repeat(301) }] },
+      {
+        ...good,
+        withoutBase: Array.from({ length: 6 }, () => ({
+          sha: BASE,
+          os: 'linux',
+          check: 'c',
+          reason: '',
+        })),
+      },
+      { ...good, withoutBase: [{ sha: BASE, os: 'linux', check: 'c', reason: 'r'.repeat(301) }] },
     ];
     for (const value of bad) expect(contract.safeParse(value).success).toBe(false);
     const { truncated: _truncated, ...missing } = good;

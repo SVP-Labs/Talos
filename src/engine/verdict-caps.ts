@@ -9,6 +9,8 @@ export const VERDICT_CAPS = {
   /** Blocking findings and flaky tests listed. */
   listed: 20,
   faults: 5,
+  /** Checks judged without a base. */
+  withoutBase: 5,
   /** Rules `counts.byRule` counts: those with the most blocking findings. */
   rules: 40,
   message: 200,

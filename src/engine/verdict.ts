@@ -16,10 +16,14 @@ export type Located = Judged & { readonly sha: string };
 
 export type EngineFault = Outcome & { readonly sha: string; readonly os: Os };
 
+/** A check with no base result at `sha`, judged on head alone. */
+export type NoBase = Outcome & { readonly sha: string; readonly os: Os };
+
 export type Verdict = {
   readonly findings: readonly Located[];
   readonly blocking: readonly Located[];
   readonly faults: readonly EngineFault[];
+  readonly withoutBase: readonly NoBase[];
 };
 
 function resultFor(
@@ -55,7 +59,17 @@ function compareOne(results: readonly RunResult[], comparison: Comparison, os: O
   return judged.map((finding) => ({ ...finding, sha: comparison.sha }));
 }
 
-/** Judges every comparison on every OS, adds commit-level findings, and collects engine faults. */
+/** Every outcome `keep` picks, with the commit and OS of its run. */
+function placed(results: readonly RunResult[], keep: (outcome: Outcome) => boolean): EngineFault[] {
+  return results.flatMap((r) =>
+    r.outcomes.filter(keep).map((o) => ({ ...o, sha: r.sha, os: r.os })),
+  );
+}
+
+/**
+ * Judges every comparison on every OS, adds commit-level findings, and collects engine faults and
+ * the checks judged without a base.
+ */
 export function decide(
   results: readonly RunResult[],
   comparisons: readonly Comparison[],
@@ -70,10 +84,12 @@ export function decide(
     why: f.policy === 'info' ? 'info' : 'new',
   }));
   const findings = dedupe([...compared, ...fromCommits]);
-  const faults = results.flatMap((r) =>
-    r.outcomes.filter((o) => o.status === 'error').map((o) => ({ ...o, sha: r.sha, os: r.os })),
-  );
-  return { findings, blocking: findings.filter((f) => f.blocking), faults };
+  return {
+    findings,
+    blocking: findings.filter((f) => f.blocking),
+    faults: placed(results, (o) => o.status === 'error'),
+    withoutBase: placed(results, (o) => o.withoutBase === true),
+  };
 }
 
 export type GateStatus = 'green' | 'red' | 'engine-error';
