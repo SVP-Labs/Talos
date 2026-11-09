@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { annotations, markdownSummary, textReport } from './report.js';
-import type { EngineFault, Located, NoBase, Verdict } from './verdict.js';
+import type { Located, PlacedOutcome, Verdict } from './verdict.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -20,7 +20,7 @@ function located(overrides: Partial<Located> = {}): Located {
   };
 }
 
-const fault: EngineFault = {
+const fault: PlacedOutcome = {
   check: 'py/types',
   tier: 'commit',
   status: 'error',
@@ -37,7 +37,7 @@ function unplaced(finding: Located): Located {
   return rest;
 }
 
-const noBase: NoBase = {
+const noBase: PlacedOutcome = {
   check: 'ts/e2e',
   tier: 'head',
   status: 'skipped',
@@ -51,8 +51,8 @@ const noBase: NoBase = {
 
 function verdictOf(
   findings: readonly Located[],
-  faults: readonly EngineFault[] = [],
-  withoutBase: readonly NoBase[] = [],
+  faults: readonly PlacedOutcome[] = [],
+  withoutBase: readonly PlacedOutcome[] = [],
 ): Verdict {
   return { findings, blocking: findings.filter((f) => f.blocking), faults, withoutBase };
 }
