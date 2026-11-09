@@ -52,6 +52,11 @@ export type RunPlan = {
    * component that can't be installed there isn't there yet, and its checks skip.
    */
   readonly borrowed?: boolean;
+  /**
+   * The base commit lacks the setup script `talos.yml` names, and its run went without it: a
+   * check that faults there has no base result, and is judged on head alone.
+   */
+  readonly withoutSetup?: string;
   readonly concurrency?: number;
 };
 
@@ -200,6 +205,17 @@ async function runTask(shared: Shared, task: Task): Promise<Outcome> {
   }
 }
 
+/** A fault at a base run that went without its setup script: no base result, not an error. */
+function withoutBase(plan: RunPlan, outcome: Outcome): Outcome {
+  if (plan.side !== 'base' || plan.withoutSetup === undefined || outcome.status !== 'error') {
+    return outcome;
+  }
+  const reason =
+    `the base commit has no ${plan.withoutSetup}, the setup script talos.yml names, and the ` +
+    `check faults there without it: ${outcome.reason ?? ''}`;
+  return { ...outcome, status: 'skipped', reason };
+}
+
 /** Runs every applicable check of the plan's tiers at one checkout; never throws for a check. */
 export async function runChecks(engine: Engine, plan: RunPlan): Promise<RunResult> {
   const scratchRoot = await mkdtemp(join(tmpdir(), `talos-${plan.sha.slice(0, 8)}-`));
@@ -216,7 +232,7 @@ export async function runChecks(engine: Engine, plan: RunPlan): Promise<RunResul
       `${tasks.length} checks at ${plan.sha.slice(0, 12)} (${plan.tiers.join(', ')})`,
     );
     const outcomes = await inPool(tasks, plan.concurrency ?? 2, async (task) => {
-      const outcome = await runTask(shared, task);
+      const outcome = withoutBase(plan, await runTask(shared, task));
       const at = outcome.component === undefined ? '' : `@${outcome.component}`;
       engine.log.debug(`${outcome.check}${at}: ${outcome.status}`);
       return outcome;
