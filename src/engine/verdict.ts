@@ -14,17 +14,18 @@ export type Comparison = {
 
 export type Located = Judged & { readonly sha: string };
 
-export type EngineFault = Outcome & { readonly sha: string; readonly os: Os };
-
-/** A check with no base result at `sha`, judged on head alone. */
-export type NoBase = Outcome & { readonly sha: string; readonly os: Os };
+/**
+ * A check's outcome with the commit and OS of its run: an engine fault, or a check judged on head
+ * alone because it has no base result at `sha`.
+ */
+export type PlacedOutcome = Outcome & { readonly sha: string; readonly os: Os };
 
 export type Verdict = {
   readonly findings: readonly Located[];
   readonly blocking: readonly Located[];
-  readonly faults: readonly EngineFault[];
+  readonly faults: readonly PlacedOutcome[];
   /** Checks judged on head alone; the text report and the job summary list them, not the JSON. */
-  readonly withoutBase?: readonly NoBase[];
+  readonly withoutBase?: readonly PlacedOutcome[];
 };
 
 function resultFor(
@@ -61,7 +62,10 @@ function compareOne(results: readonly RunResult[], comparison: Comparison, os: O
 }
 
 /** Every outcome `keep` picks, with the commit and OS of its run. */
-function placed(results: readonly RunResult[], keep: (outcome: Outcome) => boolean): EngineFault[] {
+function placed(
+  results: readonly RunResult[],
+  keep: (outcome: Outcome) => boolean,
+): PlacedOutcome[] {
   return results.flatMap((r) =>
     r.outcomes.filter(keep).map((o) => ({ ...o, sha: r.sha, os: r.os })),
   );

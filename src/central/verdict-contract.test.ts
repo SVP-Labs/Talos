@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { compactVerdict } from '../engine/gate.js';
-import type { EngineFault, Located, Verdict } from '../engine/verdict.js';
+import type { Located, PlacedOutcome, Verdict } from '../engine/verdict.js';
 
 /**
  * `docs/contracts/verdict.schema.json` is the published shape of `talos.verdict/1`, which the
@@ -41,7 +41,7 @@ function located(n: number, extra: Partial<Located> = {}): Located {
   };
 }
 
-function fault(n: number, reason: string): EngineFault {
+function fault(n: number, reason: string): PlacedOutcome {
   return {
     check: `ts/check-${n}`,
     tier: 'commit',
