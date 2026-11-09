@@ -1,12 +1,15 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { type Io, UsageError } from './io.js';
-import { currentOs, run, tiersOf } from './run.js';
+import { currentOs, run, runWith, tiersOf } from './run.js';
+import { verdict } from './verdict.js';
+import { APPLIES, EngineError } from '../core/check.js';
 import { parseRunResult, type RunResult } from '../core/result.js';
-import { exec } from '../exec/exec.js';
+import { type Exec, exec } from '../exec/exec.js';
 import { type Git, git } from '../repo/git.js';
+import { testEngine } from '../testing/engine.js';
 
 const COMMIT = ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false'];
 
@@ -100,5 +103,81 @@ describe('talos run', () => {
     expect(currentOs('win32')).toBe('windows');
     expect(currentOs('darwin')).toBe('macos');
     expect(currentOs('linux')).toBe('linux');
+  });
+
+  it("runs a base without head's setup script as the gate does, and its verdict judges head alone", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'talos-run-setup-'));
+    const repo = git(exec, cwd);
+    const commit = async (files: Readonly<Record<string, string>>): Promise<string> => {
+      for (const [path, content] of Object.entries(files)) {
+        await mkdir(join(cwd, path, '..'), { recursive: true });
+        await writeFile(join(cwd, path), content);
+      }
+      await repo.run(['add', '-A']);
+      await repo.run([...COMMIT, 'commit', '-q', '-m', '[A-1]: Build the app']);
+      return (await repo.run(['rev-parse', 'HEAD'])).trim();
+    };
+    await repo.run(['init', '-q']);
+    const base = await commit({ 'app/main.txt': 'app\n' });
+    const head = await commit({
+      'talos.yml': 'name: A\nprefix: A\nsetup: .github/talos-setup.sh\n',
+      '.github/talos-setup.sh': 'mkdir -p dist && touch dist/app.js\n',
+    });
+    // The suite's global setup imports the bundle the setup script builds.
+    const suite = {
+      id: 'x/e2e',
+      tier: 'head' as const,
+      scope: 'repo' as const,
+      title: 'e2e',
+      applies: () => APPLIES,
+      run: async (ctx: { readonly root: string }) => {
+        const bundle = await readFile(join(ctx.root, 'dist/app.js'), 'utf8').catch(() => undefined);
+        if (bundle === undefined) {
+          throw new EngineError('exited 1 with no failed test: MODULE_NOT_FOUND');
+        }
+        return [];
+      },
+    };
+    const setupRuns = async (dir: string): Promise<void> => {
+      await mkdir(join(dir, 'dist'), { recursive: true });
+      await writeFile(join(dir, 'dist/app.js'), '');
+    };
+    const engine = {
+      ...testEngine([{ name: 'e2e', checks: [suite] }]),
+      exec: (async (command, args, options) => {
+        if (command !== 'bash') return exec(command, args, options);
+        await setupRuns(options.cwd);
+        return { code: 0, stdout: '', stderr: '' };
+      }) satisfies Exec,
+    };
+    const results = join(cwd, '..', `${head}-results`);
+    await mkdir(results, { recursive: true });
+    for (const [sha, side] of [
+      [base, 'base'],
+      [head, 'head'],
+    ] as const) {
+      await repo.run(['checkout', '-q', sha]);
+      const flags = ['--os', 'linux', '--tiers', 'head', '--range', `${base}..${head}`];
+      const out = ['--side', side, '--config-from', head, '--out', join(results, `${side}.json`)];
+      expect(await runWith(() => engine)([...flags, ...out], ioAt(cwd))).toBe(0);
+    }
+    const atBase = parseRunResult(await readFile(join(results, 'base.json'), 'utf8'));
+    expect(atBase.outcomes.map((o) => [o.check, o.status, o.withoutBase])).toEqual([
+      ['x/e2e', 'skipped', true],
+    ]);
+    const plan = join(cwd, '..', `${head}-plan.json`);
+    await writeFile(
+      plan,
+      JSON.stringify({ mode: 'draft', base, head, commits: [head], branch: 'A-1', runs: [] }),
+    );
+    const errors: string[] = [];
+    const io = { ...ioAt(cwd), err: (text: string) => errors.push(text) };
+    const verdictFiles = ['--sarif', `${plan}.sarif`, '--json', `${plan}.verdict.json`];
+    expect(await verdict(['--plan', plan, '--results', results, ...verdictFiles], io)).toBe(0);
+    expect(errors.join('')).toContain(
+      `NO BASE x/e2e at ${base.slice(0, 12)} (linux), judged on head alone: the base commit has ` +
+        'no .github/talos-setup.sh',
+    );
+    expect(await readFile(`${plan}.verdict.json`, 'utf8')).toContain('"status": "green"');
   });
 });

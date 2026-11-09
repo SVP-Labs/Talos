@@ -4,7 +4,7 @@ import { CONFIG_FILE, parseConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
 import type { Os, Tier } from '../core/check.js';
 import { changesBetween, runAt } from '../engine/local.js';
-import type { Side } from '../engine/run.js';
+import type { Engine, Side } from '../engine/run.js';
 import { createEngine } from '../engine/session.js';
 import { type Git, git, revParse, showFile } from '../repo/git.js';
 
@@ -46,39 +46,44 @@ async function borrowedConfig(
  * end this checkout is, and `--config-from <ref>` whose `talos.yml` judges a checkout without
  * one, as the base of the PR that adopts Talos is.
  */
-export const run: Command = async (argv, io) => {
-  const { values } = parse(argv, {
-    tiers: { type: 'string', default: 'commit,head' },
-    os: { type: 'string' },
-    range: { type: 'string' },
-    side: { type: 'string' },
-    only: { type: 'string' },
-    out: { type: 'string' },
-    'config-from': { type: 'string' },
-    verbose: { type: 'boolean', default: false },
-  });
-  const os = values.os ?? currentOs();
-  if (!OSES.has(os)) throw new UsageError(`--os takes linux, windows or macos`);
-  const engine = createEngine(values.verbose);
-  const repo = git(engine.exec, io.cwd);
-  const sha = await revParse(repo, 'HEAD');
-  const [from, to] = values.range?.split('..') ?? [];
-  const side = sideOf(values.range, values.side);
-  const changes =
-    from === undefined || to === undefined ? undefined : await changesBetween(repo, from, to);
-  const config = await borrowedConfig(repo, values['config-from']);
-  const result = await runAt(engine, {
-    root: io.cwd,
-    sha,
-    tiers: tiersOf(values.tiers),
-    os: os as Os,
-    side,
-    ...(changes ? { changes } : {}),
-    ...(values.only ? { only: values.only.split(',') } : {}),
-    ...(config ? { config } : {}),
-  });
-  const text = `${JSON.stringify(result)}\n`;
-  if (values.out === undefined) io.out(text);
-  else await writeFile(values.out, text);
-  return 0;
-};
+export function runWith(makeEngine: (verbose: boolean) => Engine): Command {
+  return async (argv, io) => {
+    const { values } = parse(argv, {
+      tiers: { type: 'string', default: 'commit,head' },
+      os: { type: 'string' },
+      range: { type: 'string' },
+      side: { type: 'string' },
+      only: { type: 'string' },
+      out: { type: 'string' },
+      'config-from': { type: 'string' },
+      verbose: { type: 'boolean', default: false },
+    });
+    const os = values.os ?? currentOs();
+    if (!OSES.has(os)) throw new UsageError(`--os takes linux, windows or macos`);
+    const engine = makeEngine(values.verbose);
+    const repo = git(engine.exec, io.cwd);
+    const sha = await revParse(repo, 'HEAD');
+    const [from, to] = values.range?.split('..') ?? [];
+    const side = sideOf(values.range, values.side);
+    const changes =
+      from === undefined || to === undefined ? undefined : await changesBetween(repo, from, to);
+    const config = await borrowedConfig(repo, values['config-from']);
+    const result = await runAt(engine, {
+      root: io.cwd,
+      sha,
+      tiers: tiersOf(values.tiers),
+      os: os as Os,
+      side,
+      ...(changes ? { changes } : {}),
+      ...(values.only ? { only: values.only.split(',') } : {}),
+      ...(config ? { config } : {}),
+    });
+    const text = `${JSON.stringify(result)}\n`;
+    if (values.out === undefined) io.out(text);
+    else await writeFile(values.out, text);
+    return 0;
+  };
+}
+
+/** `talos run` with the release's own engine. */
+export const run: Command = runWith(createEngine);
