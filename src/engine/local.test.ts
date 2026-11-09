@@ -265,6 +265,9 @@ describe('an adoption PR', () => {
     expect(setups).toEqual([join(root, 'scripts/talos-setup.sh')]);
   });
 
+  /** How often the e2e suite below started. */
+  const suiteRuns = { count: 0 };
+
   /** An e2e suite that reads the bundle the setup script builds, and fails to start without it. */
   const bundled: Pack = {
     name: 'e2e',
@@ -276,6 +279,7 @@ describe('an adoption PR', () => {
         title: 'e2e',
         applies: () => APPLIES,
         run: async (ctx) => {
+          suiteRuns.count += 1;
           await readFile(join(ctx.root, 'built/bundle.js')).catch(() => {
             throw new EngineError('the suite exited 1 with no failed test: MODULE_NOT_FOUND');
           });
@@ -328,6 +332,9 @@ describe('an adoption PR', () => {
         `NO BASE x/e2e at ${base.slice(0, 12)} (linux), judged on head alone: ${reason}`,
       );
     }
+    // The base run kept no engine error, so it was cached: the suite doesn't start again.
+    expect(suiteRuns.count).toBe(2);
     expect(await cachedRun(engine, repo, atBase)).toEqual(baseRun);
+    expect(suiteRuns.count).toBe(2);
   });
 });
