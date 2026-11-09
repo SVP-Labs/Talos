@@ -100,23 +100,46 @@ describe('decide', () => {
       { ...broken, sha: HEAD, os: 'windows' },
     ]);
   });
+
+  it('judges on head alone a check that has no base result, and lists it apart from faults', () => {
+    const noBase = outcome([], {
+      check: 'ts/e2e',
+      status: 'skipped',
+      reason: 'the base commit has no setup.sh',
+      withoutBase: true,
+    });
+    const results = [
+      result(BASE, [noBase]),
+      result(HEAD, [outcome([reported('e2e')], { check: 'ts/e2e' })]),
+    ];
+    const verdict = decide(results, [comparison()], []);
+    expect(verdict.faults).toEqual([]);
+    expect(verdict.withoutBase).toEqual([{ ...noBase, sha: BASE, os: 'linux' }]);
+    expect(verdict.blocking.map((f) => [f.fingerprint, f.why])).toEqual([['e2e', 'new']]);
+    expect(statusOf(verdict)).toBe('red');
+  });
 });
 
 describe('statusOf and exitCode', () => {
   const located = { ...reported('x'), sha: HEAD, isNew: true, blocking: true, why: 'new' as const };
   const fault = { ...outcome([], { status: 'error' }), sha: HEAD, os: 'linux' as const };
   const cases: [string, Verdict, string, number][] = [
-    ['nothing', { findings: [], blocking: [], faults: [] }, 'green', 0],
+    ['nothing', { findings: [], blocking: [], faults: [], withoutBase: [] }, 'green', 0],
     [
       'only existing',
-      { findings: [{ ...located, blocking: false }], blocking: [], faults: [] },
+      { findings: [{ ...located, blocking: false }], blocking: [], faults: [], withoutBase: [] },
       'green',
       0,
     ],
-    ['a blocking finding', { findings: [located], blocking: [located], faults: [] }, 'red', 1],
+    [
+      'a blocking finding',
+      { findings: [located], blocking: [located], faults: [], withoutBase: [] },
+      'red',
+      1,
+    ],
     [
       'an engine error',
-      { findings: [located], blocking: [located], faults: [fault] },
+      { findings: [located], blocking: [located], faults: [fault], withoutBase: [] },
       'engine-error',
       2,
     ],

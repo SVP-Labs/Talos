@@ -51,6 +51,13 @@ const count = z.number().int().nonnegative();
 const sha = z.string().regex(/^[0-9a-f]{40}$/);
 const rule = z.string().min(1).max(CAP.rule);
 const path = z.string().max(CAP.path).nullable();
+/** A check at one commit and OS, with why it is listed. */
+const placedCheck = z.object({
+  sha,
+  os: z.enum(['linux', 'windows', 'macos']),
+  check: z.string().min(1).max(CAP.check),
+  reason: z.string().max(CAP.reason),
+});
 
 /**
  * Re-checked on the way out: a verdict passes through only in its own capped shape, the one
@@ -87,17 +94,9 @@ const verdictSchema = z
         }),
       )
       .max(CAP.listed),
-    faults: z
-      .array(
-        z.object({
-          sha,
-          os: z.enum(['linux', 'windows', 'macos']),
-          check: z.string().min(1).max(CAP.check),
-          reason: z.string().max(CAP.reason),
-        }),
-      )
-      .max(CAP.faults),
+    faults: z.array(placedCheck).max(CAP.faults),
     flaky: z.array(z.object({ id: z.string().max(CAP.test), file: path })).max(CAP.listed),
+    withoutBase: z.array(placedCheck).max(CAP.withoutBase).optional(),
     truncated: z.boolean(),
   })
   .refine((verdict) => printedBytes(verdict) <= CAP.bytes);

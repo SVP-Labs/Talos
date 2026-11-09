@@ -12,6 +12,11 @@ export type Outcome = {
   readonly status: Status;
   /** Why it was skipped, or what went wrong. */
   readonly reason?: string;
+  /**
+   * Skipped because it faulted at a base run that went without its setup script: the check has
+   * no base result, and the verdict judges it on head alone.
+   */
+  readonly withoutBase?: true;
   readonly durationMs: number;
   readonly findings: readonly Reported[];
 };
@@ -49,6 +54,7 @@ const outcome = z.object({
   component: z.string().optional(),
   status: z.enum(['passed', 'findings', 'skipped', 'error']),
   reason: z.string().optional(),
+  withoutBase: z.literal(true).optional(),
   durationMs: z.number(),
   findings: z.array(reported),
 });
