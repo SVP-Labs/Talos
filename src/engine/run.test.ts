@@ -146,4 +146,19 @@ describe('runChecks after a failed install', () => {
       ['a', 'skipped', 'the component predates talos.yml here: installing py at a: no uv.lock'],
     ]);
   });
+
+  it('gives a check that faults at a base run without the setup script no base result', async () => {
+    const root = await tempRepo({});
+    const plan = { ...testPlan(root, []), only: ['demo/breaks'], withoutSetup: 'scripts/setup.sh' };
+    const base = await runChecks(testEngine([pack]), { ...plan, side: 'base' });
+    expect(base.outcomes.map((o) => [o.status, o.reason])).toEqual([
+      [
+        'skipped',
+        'the base commit has no scripts/setup.sh, the setup script talos.yml names, and the ' +
+          'check faults there without it: tool output unreadable',
+      ],
+    ]);
+    const head = await runChecks(testEngine([pack]), { ...plan, side: 'head' });
+    expect(head.outcomes.map((o) => o.status)).toEqual(['error']);
+  });
 });

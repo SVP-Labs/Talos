@@ -120,8 +120,10 @@ new.
 `prepare()` renders the generated files, starts the services `talos.yml` declares (Linux only;
 each one's address reaches the checks as `TALOS_SERVICE_<NAME>_HOST` and `_PORT`), installs each
 component through its pack's `install()`, and runs the `setup` script. A component whose install
-fails is an engine error for that component's checks alone; the rest of the run goes on.
-`runChecks()` runs the checks two at a time.
+fails is an engine error for that component's checks alone; the rest of the run goes on. A base
+commit that lacks the `setup` script runs without it, and a check that faults there has no base
+result: it is skipped, and the verdict judges it on head alone, as it does a check the base never
+had. `runChecks()` runs the checks two at a time.
 
 The gate is `.github/workflows/gate.yml` in the Talos repository, the path the channel rulesets
 name; it holds no secret and never cancels a run. Each job that runs Talos checks out the Talos

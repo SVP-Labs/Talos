@@ -11,6 +11,8 @@ export type Prepared = {
   readonly env: Readonly<Record<string, string>>;
   /** Components whose dependencies couldn't be installed, by root, with why. */
   readonly failedInstalls: ReadonlyMap<string, string>;
+  /** The setup script `talos.yml` names that a base commit lacks, which its run went without. */
+  readonly withoutSetup?: string;
   release(): Promise<void>;
 };
 
@@ -164,22 +166,24 @@ async function startServices(
   return { env, ids };
 }
 
+/** Runs the setup script; at a base commit that lacks it, says so and answers its path. */
 async function runSetupScript(
   engine: Engine,
   plan: RunPlan,
   env: Record<string, string>,
-): Promise<void> {
-  if (plan.config.setup === undefined) return;
+): Promise<string | undefined> {
+  if (plan.config.setup === undefined) return undefined;
   const script = join(plan.root, plan.config.setup);
   if (plan.side === 'base' && !(await present(script))) {
     engine.log.warn(
       `the base commit has no ${plan.config.setup}, the setup script talos.yml names: ` +
         'its run goes without one',
     );
-    return;
+    return plan.config.setup;
   }
   const shell = plan.os === 'windows' ? 'bash.exe' : 'bash';
   await execOk(engine.exec, shell, [script], { cwd: plan.root, env, timeoutMs: 60 * 60 * 1000 });
+  return undefined;
 }
 
 /** Everything before the checks: generated configs, services, dependencies, the setup script. */
@@ -188,10 +192,11 @@ export async function prepare(engine: Engine, plan: RunPlan): Promise<Prepared> 
   const { env, ids } = await startServices(engine, plan);
   Object.assign(process.env, env);
   const failedInstalls = await installComponents(engine, plan);
-  await runSetupScript(engine, plan, env);
+  const withoutSetup = await runSetupScript(engine, plan, env);
   return {
     env,
     failedInstalls,
+    ...(withoutSetup === undefined ? {} : { withoutSetup }),
     release: async () => {
       for (const id of ids) await engine.exec('docker', ['rm', '-f', id], { cwd: plan.root });
     },

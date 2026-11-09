@@ -139,15 +139,16 @@ describe('prepare: setup and installs', () => {
     const root = await tempRepo({ 'old/setup.sh': 'true\n' });
     const { engine, calls, warnings } = engineWith(() => '');
     const missing = testPlan(root, [], configWith('setup: scripts/setup.sh\n'));
-    await prepare(engine, { ...missing, side: 'base' });
+    const without = await prepare(engine, { ...missing, side: 'base' });
+    expect(without.withoutSetup).toBe('scripts/setup.sh');
     expect(calls).toEqual([]);
     expect(warnings).toEqual([
       'the base commit has no scripts/setup.sh, the setup script talos.yml names: ' +
         'its run goes without one',
     ]);
     const present = testPlan(root, [], configWith('setup: old/setup.sh\n'));
-    await prepare(engine, { ...present, side: 'base' });
-    await prepare(engine, { ...missing, side: 'head' });
+    expect((await prepare(engine, { ...present, side: 'base' })).withoutSetup).toBeUndefined();
+    expect((await prepare(engine, { ...missing, side: 'head' })).withoutSetup).toBeUndefined();
     expect(calls.map((c) => c.args)).toEqual([
       [join(root, 'old/setup.sh')],
       [join(root, 'scripts/setup.sh')],
