@@ -179,43 +179,4 @@ describe('talos verdict', () => {
     expect(await verdict(args(g), ioAt(g.cwd, { GITHUB_OUTPUT: output }))).toBe(2);
     expect(await readFile(output, 'utf8')).toBe('engine_error=true\n');
   });
-
-  it("judges on head alone a check that faulted at a base without head's setup script", async () => {
-    const g = await gate('[A-1]: Add head');
-    await writePlan(g);
-    const reason = 'the base commit has no .github/talos-setup.sh: MODULE_NOT_FOUND';
-    const noBase: RunResult = {
-      talos: '0.0.0',
-      sha: g.base,
-      tiers: ['commit', 'head'],
-      os: 'linux',
-      outcomes: [
-        {
-          check: 'ts/e2e',
-          tier: 'head',
-          status: 'skipped',
-          reason,
-          withoutBase: true,
-          durationMs: 0,
-          findings: [],
-        },
-      ],
-    };
-    await writeFile(join(g.out, 'results', 'linux', `${g.base}.json`), JSON.stringify(noBase));
-    await writeResult(g, g.head, [], 'passed');
-    const summary = join(g.out, 'summary.md');
-    const output = join(g.out, 'output.txt');
-    const io = ioAt(g.cwd, { GITHUB_STEP_SUMMARY: summary, GITHUB_OUTPUT: output });
-    expect(await verdict(args(g), io)).toBe(0);
-    expect(await readJson(join(g.out, 'verdict.json'))).toMatchObject({
-      status: 'green',
-      faults: [],
-      withoutBase: [{ sha: g.base, os: 'linux', check: 'ts/e2e', reason }],
-    });
-    expect(io.stderr.join('')).toContain(
-      `NO BASE ts/e2e at ${g.base.slice(0, 12)} (linux), judged on head alone: ${reason}`,
-    );
-    expect(await readFile(summary, 'utf8')).toContain('### Judged on head alone, without a base');
-    expect(await readFile(output, 'utf8')).toBe('engine_error=false\n');
-  });
 });

@@ -124,22 +124,17 @@ describe('statusOf and exitCode', () => {
   const located = { ...reported('x'), sha: HEAD, isNew: true, blocking: true, why: 'new' as const };
   const fault = { ...outcome([], { status: 'error' }), sha: HEAD, os: 'linux' as const };
   const cases: [string, Verdict, string, number][] = [
-    ['nothing', { findings: [], blocking: [], faults: [], withoutBase: [] }, 'green', 0],
+    ['nothing', { findings: [], blocking: [], faults: [] }, 'green', 0],
     [
       'only existing',
-      { findings: [{ ...located, blocking: false }], blocking: [], faults: [], withoutBase: [] },
+      { findings: [{ ...located, blocking: false }], blocking: [], faults: [] },
       'green',
       0,
     ],
-    [
-      'a blocking finding',
-      { findings: [located], blocking: [located], faults: [], withoutBase: [] },
-      'red',
-      1,
-    ],
+    ['a blocking finding', { findings: [located], blocking: [located], faults: [] }, 'red', 1],
     [
       'an engine error',
-      { findings: [located], blocking: [located], faults: [fault], withoutBase: [] },
+      { findings: [located], blocking: [located], faults: [fault] },
       'engine-error',
       2,
     ],

@@ -18,7 +18,7 @@ export function textReport(verdict: Verdict): string {
       `ENGINE ERROR ${fault.check} at ${short(fault.sha)} (${fault.os}): ${fault.reason ?? ''}`,
     );
   }
-  for (const noBase of verdict.withoutBase) {
+  for (const noBase of verdict.withoutBase ?? []) {
     const at = `${noBase.check} at ${short(noBase.sha)} (${noBase.os})`;
     lines.push(`NO BASE ${at}, judged on head alone: ${noBase.reason ?? ''}`);
   }
@@ -74,7 +74,7 @@ export function markdownSummary(verdict: Verdict): string {
   const faults = verdict.faults.map(
     (f) => `- **${f.check}** at ${short(f.sha)} (${f.os}): ${cell(f.reason ?? '')}`,
   );
-  const noBase = verdict.withoutBase.map(
+  const noBase = (verdict.withoutBase ?? []).map(
     (f) => `- **${f.check}** at ${short(f.sha)} (${f.os}): ${cell(f.reason ?? '')}`,
   );
   return [

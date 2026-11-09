@@ -317,17 +317,13 @@ findings it lists, `talos check` writes every one to `.talos/check/talos.sarif`.
   ],
   "faults": [],
   "flaky": [],
-  "withoutBase": [],
   "truncated": false
 }
 ```
 
 `faults` lists up to five engine errors (`sha`, `os`, `check`, `reason`); `flaky` the tests that
-passed on their rerun; `withoutBase` up to five checks judged on head alone (`sha` is the base),
-because they faulted at a base run that went without the setup script head's `talos.yml` names.
-A verdict from an older release has no `withoutBase`. Every text is capped (rules at 100
-characters, files and test ids at 300) and the whole stays under 48 KiB;
-[contracts/](contracts/README.md) lists each cap.
+passed on their rerun. Every text is capped (rules at 100 characters, files and test ids at 300)
+and the whole stays under 48 KiB; [contracts/](contracts/README.md) lists each cap.
 
 `talos findings --repo <o/n> --pr <N>` prints the verdict of the newest gate run on the PR's
 head, with `head` and `run` added, as Thea's hub reads it for an event. When the merge queue's
