@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cachedRun, changesBetween, runAt } from './local.js';
-import { decide, statusOf } from './verdict.js';
+import { textReport } from './report.js';
+import { decide, exitCode, statusOf } from './verdict.js';
 import { parseConfig } from '../config/load.js';
 import { APPLIES, type Check, EngineError } from '../core/check.js';
 import type { Pack } from '../core/pack.js';
+import { parseRunResult } from '../core/result.js';
 import { type Exec, exec } from '../exec/exec.js';
 import { type ChangeSet } from '../repo/changes.js';
 import { type Git, git, revParse } from '../repo/git.js';
@@ -261,5 +263,71 @@ describe('an adoption PR', () => {
     expect(verdict.blocking.map((f) => f.location?.file)).toEqual(['src/new.txt']);
     expect(statusOf(verdict)).toBe('red');
     expect(setups).toEqual([join(root, 'scripts/talos-setup.sh')]);
+  });
+
+  /** An e2e suite that reads the bundle the setup script builds, and fails to start without it. */
+  const bundled: Pack = {
+    name: 'e2e',
+    checks: [
+      {
+        id: 'x/e2e',
+        tier: 'head',
+        scope: 'repo',
+        title: 'e2e',
+        applies: () => APPLIES,
+        run: async (ctx) => {
+          await readFile(join(ctx.root, 'built/bundle.js')).catch(() => {
+            throw new EngineError('the suite exited 1 with no failed test: MODULE_NOT_FOUND');
+          });
+          return [];
+        },
+      },
+    ],
+  };
+
+  it("judges on head alone a check that faults at a base without head's setup script", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'talos-adopt-'));
+    const repo = git(exec, root);
+    await repo.run(['init', '-q']);
+    const base = await commit(repo, { 'src/app.txt': 'app\n' });
+    const yml = 'name: A\nprefix: A\nsetup: scripts/talos-setup.sh\n';
+    const head = await commit(repo, {
+      'talos.yml': yml,
+      'scripts/talos-setup.sh': 'mkdir -p built && touch built/bundle.js\n',
+    });
+    const engine = {
+      ...testEngine([bundled]),
+      exec: (async (command, args, options) => {
+        if (command !== 'bash') return exec(command, args, options);
+        await mkdir(join(options.cwd, 'built'), { recursive: true });
+        await writeFile(join(options.cwd, 'built/bundle.js'), '');
+        return { code: 0, stdout: '', stderr: '' };
+      }) satisfies Exec,
+    };
+    const changes = await changesBetween(repo, base, head);
+    const common = { tiers: ['head' as const], os: 'linux' as const, changes };
+    const atBase = { ...common, sha: base, side: 'base' as const, config: parseConfig(yml) };
+    const baseRun = await cachedRun(engine, repo, atBase);
+    const headRun = await runAt(engine, { ...common, root, sha: head, side: 'head' });
+    expect(headRun.outcomes.map((o) => [o.check, o.status])).toEqual([['x/e2e', 'passed']]);
+    const reason =
+      'the base commit has no scripts/talos-setup.sh, the setup script talos.yml names, and the ' +
+      'check faults there without it: the suite exited 1 with no failed test: MODULE_NOT_FOUND';
+    const comparisons = [{ sha: head, against: base, tier: 'head' as const, changes }];
+    // `talos check` judges what it ran; the gate's verdict job what its run jobs wrote as JSON.
+    const passedOn = [baseRun, headRun].map((r) => parseRunResult(JSON.stringify(r)));
+    for (const results of [[baseRun, headRun], passedOn]) {
+      const verdict = decide(results, comparisons, []);
+      expect(verdict.faults).toEqual([]);
+      expect(verdict.withoutBase.map((o) => [o.check, o.sha, o.reason])).toEqual([
+        ['x/e2e', base, reason],
+      ]);
+      expect(statusOf(verdict)).toBe('green');
+      expect(exitCode(verdict)).toBe(0);
+      expect(textReport(verdict)).toContain(
+        `NO BASE x/e2e at ${base.slice(0, 12)} (linux), judged on head alone: ${reason}`,
+      );
+    }
+    expect(await cachedRun(engine, repo, atBase)).toEqual(baseRun);
   });
 });
