@@ -148,14 +148,11 @@ describe('prepare: setup and installs', () => {
     expect(calls[0]?.env).toEqual({});
   });
 
-  it.runIf(process.platform === 'win32')(
-    'runs the setup script through the Git Bash in ProgramFiles on Windows',
-    async () => {
-      const programs = await tempRepo({ 'Git/bin/bash.exe': '' });
-      const { calls } = await setupShells(programs);
-      expect(calls[1]?.command).toBe(`${programs}\\Git\\bin\\bash.exe`);
-    },
-  );
+  it('runs the setup script through the Git Bash in ProgramFiles on Windows', async () => {
+    const programs = await tempRepo({ 'Git/bin/bash.exe': '' });
+    const { calls } = await setupShells(programs);
+    expect(calls[1]?.command).toBe(join(programs, 'Git', 'bin', 'bash.exe'));
+  });
 
   it('gives bash a setup script path with forward slashes on Windows', async () => {
     const { engine, calls } = engineWith(() => '');

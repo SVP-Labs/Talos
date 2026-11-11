@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bashFor, customFindings, insideRepo } from './custom.js';
 import { EngineError } from '../../core/check.js';
@@ -65,11 +66,10 @@ describe('bashFor', () => {
   });
 
   it("runs Git Bash on Windows, never Windows' own bash.exe", async () => {
-    const present = (path: string): Promise<boolean> =>
-      Promise.resolve(path === String.raw`D:\Programs\Git\bin\bash.exe`);
-    expect(await bashFor('windows', { ProgramFiles: String.raw`D:\Programs` }, present)).toBe(
-      String.raw`D:\Programs\Git\bin\bash.exe`,
-    );
+    const programs = String.raw`D:\Programs`;
+    const gitBash = join(programs, 'Git', 'bin', 'bash.exe');
+    const present = (path: string): Promise<boolean> => Promise.resolve(path === gitBash);
+    expect(await bashFor('windows', { ProgramFiles: programs }, present)).toBe(gitBash);
     expect(await bashFor('windows', {}, () => Promise.resolve(false))).toBe('bash.exe');
   });
 });
