@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { isAbsolute, posix, relative, win32 } from 'node:path';
+import { isAbsolute, join, posix, relative, win32 } from 'node:path';
 import { z } from 'zod';
 import {
   APPLIES,
@@ -98,7 +98,7 @@ export async function bashFor(
 ): Promise<string> {
   if (os !== 'windows') return 'bash';
   const programs = env.ProgramFiles ?? String.raw`C:\Program Files`;
-  const gitBash = win32.join(programs, 'Git', 'bin', 'bash.exe');
+  const gitBash = join(programs, 'Git', 'bin', 'bash.exe');
   return (await present(gitBash)) ? gitBash : 'bash.exe';
 }
 
