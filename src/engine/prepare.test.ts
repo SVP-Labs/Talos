@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generatedTargets, prepare, targetPath } from './prepare.js';
 import type { Engine } from './run.js';
-import { bashFor } from '../checks/common/custom.js';
 import { parseConfig } from '../config/load.js';
 import type { Logger } from '../core/log.js';
 import type { Pack } from '../core/pack.js';
@@ -123,18 +122,40 @@ describe('prepare: services', () => {
 });
 
 describe('prepare: setup and installs', () => {
-  it("runs the setup script with the services' environment, through Git Bash on Windows", async () => {
-    const root = await tempRepo({});
-    const { engine, calls } = engineWith(() => '');
-    const config = configWith('setup: scripts/setup.sh\n');
-    await prepare(engine, testPlan(root, [], config));
-    await prepare(engine, { ...testPlan(root, [], config), os: 'windows' });
+  /** The shell each setup run went to, with `ProgramFiles` naming `programs` meanwhile. */
+  async function setupShells(programs: string): Promise<{ root: string; calls: Call[] }> {
+    const saved = process.env.ProgramFiles;
+    process.env.ProgramFiles = programs;
+    try {
+      const root = await tempRepo({});
+      const { engine, calls } = engineWith(() => '');
+      const config = configWith('setup: scripts/setup.sh\n');
+      await prepare(engine, testPlan(root, [], config));
+      await prepare(engine, { ...testPlan(root, [], config), os: 'windows' });
+      return { root, calls };
+    } finally {
+      if (saved === undefined) Reflect.deleteProperty(process.env, 'ProgramFiles');
+      else process.env.ProgramFiles = saved;
+    }
+  }
+
+  it("runs the setup script with the services' environment, and bash.exe without Git Bash", async () => {
+    const { root, calls } = await setupShells(await tempRepo({}));
     expect(calls.map((c) => [c.command, ...c.args])).toEqual([
       ['bash', join(root, 'scripts/setup.sh')],
-      [await bashFor('windows', process.env), join(root, 'scripts/setup.sh').replaceAll('\\', '/')],
+      ['bash.exe', join(root, 'scripts/setup.sh').replaceAll('\\', '/')],
     ]);
     expect(calls[0]?.env).toEqual({});
   });
+
+  it.runIf(process.platform === 'win32')(
+    'runs the setup script through the Git Bash in ProgramFiles on Windows',
+    async () => {
+      const programs = await tempRepo({ 'Git/bin/bash.exe': '' });
+      const { calls } = await setupShells(programs);
+      expect(calls[1]?.command).toBe(`${programs}\\Git\\bin\\bash.exe`);
+    },
+  );
 
   it('gives bash a setup script path with forward slashes on Windows', async () => {
     const { engine, calls } = engineWith(() => '');
