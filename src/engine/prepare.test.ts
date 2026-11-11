@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { generatedTargets, prepare, targetPath } from './prepare.js';
 import type { Engine } from './run.js';
+import { bashFor } from '../checks/common/custom.js';
 import { parseConfig } from '../config/load.js';
 import type { Logger } from '../core/log.js';
 import type { Pack } from '../core/pack.js';
@@ -122,7 +123,7 @@ describe('prepare: services', () => {
 });
 
 describe('prepare: setup and installs', () => {
-  it("runs the setup script with the services' environment, through bash.exe on Windows", async () => {
+  it("runs the setup script with the services' environment, through Git Bash on Windows", async () => {
     const root = await tempRepo({});
     const { engine, calls } = engineWith(() => '');
     const config = configWith('setup: scripts/setup.sh\n');
@@ -130,9 +131,19 @@ describe('prepare: setup and installs', () => {
     await prepare(engine, { ...testPlan(root, [], config), os: 'windows' });
     expect(calls.map((c) => [c.command, ...c.args])).toEqual([
       ['bash', join(root, 'scripts/setup.sh')],
-      ['bash.exe', join(root, 'scripts/setup.sh')],
+      [await bashFor('windows', process.env), join(root, 'scripts/setup.sh').replaceAll('\\', '/')],
     ]);
     expect(calls[0]?.env).toEqual({});
+  });
+
+  it('gives bash a setup script path with forward slashes on Windows', async () => {
+    const { engine, calls } = engineWith(() => '');
+    const config = configWith('setup: .github/talos-setup.sh\n');
+    const root = String.raw`C:\Users\me\worktrees\Repo-1\.talos\worktrees\abc-1`;
+    await prepare(engine, { ...testPlan(root, [], config), os: 'windows' });
+    expect(calls.map((c) => c.args)).toEqual([
+      ['C:/Users/me/worktrees/Repo-1/.talos/worktrees/abc-1/.github/talos-setup.sh'],
+    ]);
   });
 
   it('runs a base commit without the setup script it lacks, and says so', async () => {

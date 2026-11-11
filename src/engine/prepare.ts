@@ -2,6 +2,7 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { dirname, join } from 'node:path';
 import { type Engine, installKey, type RunPlan } from './run.js';
+import { bashFor } from '../checks/common/custom.js';
 import type { ApplyContext, Component } from '../core/check.js';
 import type { Generated, Pack } from '../core/pack.js';
 import { execOk } from '../exec/exec.js';
@@ -181,8 +182,9 @@ async function runSetupScript(
     );
     return plan.config.setup;
   }
-  const shell = plan.os === 'windows' ? 'bash.exe' : 'bash';
-  await execOk(engine.exec, shell, [script], { cwd: plan.root, env, timeoutMs: 60 * 60 * 1000 });
+  const shell = await bashFor(plan.os, process.env);
+  const path = plan.os === 'windows' ? script.replaceAll('\\', '/') : script;
+  await execOk(engine.exec, shell, [path], { cwd: plan.root, env, timeoutMs: 60 * 60 * 1000 });
   return undefined;
 }
 

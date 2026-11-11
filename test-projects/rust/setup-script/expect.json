@@ -1,0 +1,1 @@
+{ "checks": ["rust/types"], "clean": true, "os": ["linux", "windows"] }
