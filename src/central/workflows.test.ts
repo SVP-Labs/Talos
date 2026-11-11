@@ -2,12 +2,14 @@ import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { pickRepositories } from './pick.js';
 import { fakeGitHub, propertiesPath, propertyValues } from './test/fake-github.js';
+import { bashFor } from '../checks/common/custom.js';
 import { carriesGeneratedMarker } from '../configs/header.js';
 import { matrixOf } from '../engine/plan.js';
 
@@ -734,6 +736,9 @@ describe('the release and channel workflows', () => {
 
 const exec = promisify(execFile);
 
+/** The bash that runs the scripts: Git Bash on Windows, as the setup script runs. */
+const BASH = await bashFor(process.platform === 'win32' ? 'windows' : 'linux', process.env);
+
 async function run(
   command: string,
   args: string[],
@@ -752,7 +757,7 @@ async function run(
 }
 
 const canRunScripts =
-  (await run('bash', ['--version'], process.env)).code === 0 &&
+  (await run(BASH, ['--version'], process.env)).code === 0 &&
   (await run('jq', ['--version'], process.env)).code === 0;
 
 /**
@@ -805,7 +810,7 @@ async function runStep(
   const output = join(directory, 'output');
   writeFileSync(file, script);
   writeFileSync(output, '');
-  const result = await run('bash', ['--noprofile', '--norc', '-eo', 'pipefail', file], {
+  const result = await run(BASH, ['--noprofile', '--norc', '-eo', 'pipefail', file], {
     PATH: `${fakeGh(answers)}${delimiter}${process.env.PATH ?? ''}`,
     GITHUB_OUTPUT: output,
     ...env,
@@ -988,9 +993,9 @@ describe.skipIf(!canRunPhpScript)('bootstrap/php.sh', () => {
   }
 
   async function php(cwd: string, ...commits: string[]): Promise<{ code: number; stdout: string }> {
-    const script = new URL('bootstrap/php.sh', ROOT).pathname;
+    const script = fileURLToPath(new URL('bootstrap/php.sh', ROOT));
     try {
-      const { stdout } = await exec('bash', [script, ...commits], { cwd });
+      const { stdout } = await exec(BASH, [script, ...commits], { cwd });
       return { code: 0, stdout };
     } catch (error) {
       const failure = error as { code?: unknown };

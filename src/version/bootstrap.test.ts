@@ -23,6 +23,7 @@ import {
   SLSA_PROVENANCE_V1,
 } from './provenance.js';
 import * as bootstrap from '../../bootstrap/launch.js';
+import { bashFor } from '../checks/common/custom.js';
 import type { Ruleset } from '../github/rulesets.js';
 
 /** The dependency-free scripts the workflows run before Talos is installed. */
@@ -493,7 +494,10 @@ async function hasTool(command: string): Promise<boolean> {
   return (await run(command, ['--version'])).code === 0;
 }
 
-const canRunScripts = (await hasTool('bash')) && (await hasTool('jq'));
+/** The bash that runs the scripts: Git Bash on Windows, as the setup script runs. */
+const BASH = await bashFor(process.platform === 'win32' ? 'windows' : 'linux', process.env);
+
+const canRunScripts = (await hasTool(BASH)) && (await hasTool('jq'));
 
 const TALOS_ID = 900;
 
@@ -542,7 +546,7 @@ async function findPin(
   env: Record<string, string> = {},
 ): Promise<{ code: number; stdout: string }> {
   const bin = fakeGh(answers);
-  return run('bash', [join(BOOTSTRAP, 'find-pin.sh')], {
+  return run(BASH, [join(BOOTSTRAP, 'find-pin.sh')], {
     ...process.env,
     PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
     GITHUB_REPOSITORY: 'o/r',
