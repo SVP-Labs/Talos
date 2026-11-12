@@ -11,7 +11,7 @@ import {
 } from './github.js';
 import { LABEL } from './labels.js';
 import { type Issue, type Pull, refSchema, timelineSchema } from './schemas.js';
-import type { GitHub } from '../github/api.js';
+import { GitHubError, type GitHub } from '../github/api.js';
 
 /** A claim idle this long is released, unless a PR from it is ready for review. */
 export const STALE_HOURS = 4;
@@ -148,11 +148,19 @@ async function releaseStale(c: SweepClients, repo: string, stale: Stale): Promis
   }
 }
 
+type SweepFailure = { readonly branch: string; readonly error: string };
+
 export type SweepResult = {
   readonly released: readonly number[];
   readonly kept: number;
-  readonly failed: number;
+  readonly failures: readonly SweepFailure[];
 };
+
+/** A refusal's method, path and status are safe to report; anything else might hold repository
+ *  content. */
+function safeFailure(error: unknown): string {
+  return error instanceof GitHubError ? error.message : 'an error in the sweep';
+}
 
 /** Releases every claim idle longer than {@link STALE_HOURS}; one failure doesn't stop the rest. */
 export async function sweepStaleClaims(
@@ -160,8 +168,8 @@ export async function sweepStaleClaims(
   at: { readonly repo: string; readonly prefix: string; readonly now: Date },
 ): Promise<SweepResult> {
   const released: number[] = [];
+  const failures: SweepFailure[] = [];
   let kept = 0;
-  let failed = 0;
   for (const claim of await ticketBranches(c.gh, at.repo, at.prefix)) {
     try {
       const issue = await getIssue(c.gh, at.repo, claim.issue);
@@ -177,9 +185,9 @@ export async function sweepStaleClaims(
       }
       await releaseStale(c, at.repo, { ...claim, issue, draft, idleHours: verdict.idleHours });
       released.push(claim.issue);
-    } catch {
-      failed += 1;
+    } catch (error) {
+      failures.push({ branch: claim.branch, error: safeFailure(error) });
     }
   }
-  return { released, kept, failed };
+  return { released, kept, failures };
 }
