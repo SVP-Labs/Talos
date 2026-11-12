@@ -460,6 +460,7 @@ describe('the caller', () => {
     expect(token?.with).toMatchObject({
       'permission-contents': 'read',
       'permission-issues': 'write',
+      'permission-pull-requests': 'read',
     });
     expect(token?.with?.['permission-checks']).toBeUndefined();
   });

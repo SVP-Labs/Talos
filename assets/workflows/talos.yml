@@ -408,6 +408,7 @@ jobs:
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
           permission-contents: read
           permission-issues: write
+          permission-pull-requests: read
       - name: Act
         env:
           EVENT: ${{ github.event_name }}
