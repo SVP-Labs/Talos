@@ -10,6 +10,7 @@ import { keepSyncChore } from './sync-chore.js';
 import type { TalosConfig } from '../config/schema.js';
 import type { GitHub } from '../github/api.js';
 import type { Download } from '../github/artifacts.js';
+import { clip } from '../ticket/payload.js';
 import { sweepStaleClaims } from '../ticket/stale.js';
 
 /** What the act phase's scheduled jobs need beyond the job context. */
@@ -63,10 +64,12 @@ export const staleClaims: ActJob = async (ctx, env) => {
     { gh: env.gh, refs: env.actions },
     { repo: ctx.repo, prefix: env.config.prefix, now: ctx.now },
   );
+  const summary = `released ${swept.released.length}, kept ${swept.kept}, ${swept.failures.length} failed`;
+  const why = swept.failures.map((f) => `${f.branch}: ${f.error}`).join('; ');
   return outcome(
     'stale-claims',
-    swept.failed > 0,
-    `released ${swept.released.length}, kept ${swept.kept}, ${swept.failed} failed`,
+    swept.failures.length > 0,
+    clip(why === '' ? summary : `${summary}: ${why}`, 200),
   );
 };
 

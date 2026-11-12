@@ -111,7 +111,7 @@ describe('sweepStaleClaims', () => {
       updated_at: hoursAgo(7),
       head: 'T-1',
     });
-    expect(await sweep()).toEqual({ released: [1], kept: 0, failed: 0 });
+    expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
     expect(fake.pulls[0]?.state).toBe('closed');
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
@@ -136,7 +136,7 @@ describe('sweepStaleClaims', () => {
     fake.refs.set('T-3', 'sha-main');
     fake.addIssue({ number: 4, pull_request: { url: 'x' } });
     fake.refs.set('T-4', 'sha-main');
-    expect(await sweep()).toEqual({ released: [], kept: 4, failed: 0 });
+    expect(await sweep()).toEqual({ released: [], kept: 4, failures: [] });
     expect(fake.writes()).toEqual([]);
   });
 
@@ -160,7 +160,7 @@ describe('sweepStaleClaims', () => {
     });
     fake.failures.set('PATCH repos/o/r/pulls/20', 403);
     fake.failures.set('POST repos/o/r/issues/20/comments', 403);
-    expect(await sweep()).toEqual({ released: [1], kept: 0, failed: 0 });
+    expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
     expect(fake.pulls[0]?.state).toBe('closed');
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
@@ -171,11 +171,15 @@ describe('sweepStaleClaims', () => {
     claimed(1, 10);
     claimed(2, 10);
     fake.failures.set('DELETE repos/o/r/git/refs/heads/T-1', 403);
-    expect(await sweep()).toEqual({ released: [2], kept: 0, failed: 1 });
+    expect(await sweep()).toEqual({
+      released: [2],
+      kept: 0,
+      failures: [{ branch: 'T-1', error: 'DELETE repos/o/r/git/refs/heads/T-1: 403' }],
+    });
     expect(fake.refs.has('T-1')).toBe(true);
     expect(fake.issues.get(1)?.comments).toEqual([]);
     fake.failures.clear();
-    expect(await sweep()).toEqual({ released: [1], kept: 0, failed: 0 });
+    expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
     expect(fake.issues.get(1)?.comments.map((c) => c.body)).toEqual([
@@ -186,8 +190,36 @@ describe('sweepStaleClaims', () => {
   it('leaves the claim whole when it cannot change the labels', async () => {
     claimed(1, 10);
     fake.failures.set('DELETE repos/o/r/issues/1/labels/status/in-progress', 403);
-    expect(await sweep()).toEqual({ released: [], kept: 0, failed: 1 });
+    expect(await sweep()).toEqual({
+      released: [],
+      kept: 0,
+      failures: [
+        { branch: 'T-1', error: 'DELETE repos/o/r/issues/1/labels/status%2Fin-progress: 403' },
+      ],
+    });
     expect(fake.refs.has('T-1')).toBe(true);
     expect(fake.issues.get(1)?.labels).toContain('ai/claimed');
+  });
+
+  it('reports a refused pull-request read with the claim branch and the refusal', async () => {
+    claimed(1, 10);
+    fake.failures.set('GET repos/o/r/pulls', 403);
+    expect(await sweep()).toEqual({
+      released: [],
+      kept: 0,
+      failures: [{ branch: 'T-1', error: 'GET repos/o/r/pulls?state=open&head=o%3AT-1: 403' }],
+    });
+    expect(fake.refs.has('T-1')).toBe(true);
+  });
+
+  it('reports a non-refusal error without repository content', async () => {
+    claimed(1, 10);
+    const issue = fake.issues.get(1);
+    if (issue !== undefined) issue.state = 'pending' as unknown as 'open';
+    expect(await sweep()).toEqual({
+      released: [],
+      kept: 0,
+      failures: [{ branch: 'T-1', error: 'an error in the sweep' }],
+    });
   });
 });
