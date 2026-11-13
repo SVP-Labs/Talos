@@ -64,6 +64,17 @@ export function rerunFiles(failing: readonly TestResult[]): string[] | undefined
   return [...files].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * How a suite fared on the rerun, judged by the tests inside it. When a suite's hook fails, Vitest
+ * reports one failed case named after the suite (`outer > inner`) and skips its tests; a rerun
+ * whose hook passes reports those tests (`outer > inner > adds`) and no case for the suite.
+ */
+function suiteRerun(id: string, after: ReadonlyMap<string, Summary>): Summary | undefined {
+  const inside = [...after].filter(([other]) => other.startsWith(`${id} > `));
+  const failed = inside.find(([, summary]) => summary.state === 'failed');
+  return failed?.[1] ?? inside[0]?.[1];
+}
+
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
   if (rerun?.state === 'passed') {
     return { kind: 'flaky', test: failed, first: 'failed', rerun: 'passed' };
@@ -77,7 +88,7 @@ function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdi
 /**
  * Judges a run and its rerun of the failures: a test that failed and then passed is flaky, one
  * that failed and didn't pass again failed; a test that passed and then failed on the rerun is
- * flaky too.
+ * flaky too. A suite that failed as a whole is judged on the rerun by the tests inside it.
  */
 export function judgeTests(
   first: readonly TestResult[],
@@ -87,7 +98,9 @@ export function judgeTests(
   const after = summarise(rerun);
   const verdicts: TestVerdict[] = [];
   for (const [id, summary] of before) {
-    if (summary.state === 'failed') verdicts.push(afterFailure(summary.result, after.get(id)));
+    if (summary.state === 'failed') {
+      verdicts.push(afterFailure(summary.result, after.get(id) ?? suiteRerun(id, after)));
+    }
   }
   for (const [id, summary] of after) {
     if (summary.state === 'failed' && before.get(id)?.state === 'passed') {
