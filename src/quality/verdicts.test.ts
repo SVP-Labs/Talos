@@ -84,6 +84,33 @@ describe('judgeTests', () => {
     ]);
   });
 
+  it('judges a suite whose hook failed by its tests on the rerun', () => {
+    const hook = result('a.test.ts::merged', 'failed', { message: 'Hook timed out in 10000ms' });
+    const first = [
+      result('a.test.ts::merged > judges', 'skipped'),
+      result('a.test.ts::merged > reports', 'skipped'),
+      result('a.test.ts::other > runs', 'passed'),
+      hook,
+    ];
+    const passing = [
+      result('a.test.ts::merged > judges', 'passed'),
+      result('a.test.ts::merged > reports', 'passed'),
+      result('a.test.ts::merged-too > runs', 'failed'),
+      result('a.test.ts::other > runs', 'passed'),
+    ];
+    expect(judgeTests(first, passing)).toEqual([
+      { kind: 'flaky', test: hook, first: 'failed', rerun: 'passed' },
+    ]);
+    const broken = result('a.test.ts::merged > reports', 'failed', { message: 'broken' });
+    const failing = [result('a.test.ts::merged > judges', 'passed'), broken];
+    expect(judgeTests(first, failing)).toEqual([
+      { kind: 'failed', test: broken, first: 'failed', rerun: 'failed' },
+    ]);
+    expect(judgeTests(first, [result('a.test.ts::merged > judges', 'skipped')])).toEqual([
+      { kind: 'failed', test: hook, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
   it('calls a test that passed and then failed on the rerun flaky', () => {
     const verdicts = judgeTests(
       [result('a', 'failed'), result('z', 'passed')],
