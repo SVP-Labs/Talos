@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generatedTargets, prepare, targetPath } from './prepare.js';
+import { generatedTargets, prepare, RENDERED_VERSION, targetPath } from './prepare.js';
 import type { Engine } from './run.js';
 import { parseConfig } from '../config/load.js';
 import type { Logger } from '../core/log.js';
@@ -37,6 +37,7 @@ function engineWith(
 
 const servers: Server[] = [];
 const touched = new Set<string>();
+const rendered = process.env[RENDERED_VERSION];
 
 /** A port something listens on, as a started service's would. */
 async function listening(): Promise<number> {
@@ -52,6 +53,8 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await new Promise((resolve) => server.close(resolve));
   for (const key of touched) Reflect.deleteProperty(process.env, key);
   touched.clear();
+  if (rendered === undefined) Reflect.deleteProperty(process.env, RENDERED_VERSION);
+  else process.env[RENDERED_VERSION] = rendered;
 });
 
 function configWith(yml: string): ReturnType<typeof parseConfig> {
@@ -71,6 +74,7 @@ describe('prepare: services', () => {
     expect(prepared.env).toEqual({
       TALOS_SERVICE_CACHE_DB_HOST: '127.0.0.1',
       TALOS_SERVICE_CACHE_DB_PORT: String(port),
+      TALOS_RENDERED_VERSION: '9.9.9',
     });
     expect(process.env.TALOS_SERVICE_CACHE_DB_PORT).toBe(String(port));
     expect(calls.map((c) => [c.command, ...c.args])).toEqual([
@@ -105,7 +109,10 @@ describe('prepare: services', () => {
     const config = configWith(`services:\n  worker:\n    image: ${DIGEST}\n`);
     const prepared = await prepare(engine, testPlan(root, [], config));
     touched.add('TALOS_SERVICE_WORKER_HOST');
-    expect(prepared.env).toEqual({ TALOS_SERVICE_WORKER_HOST: '127.0.0.1' });
+    expect(prepared.env).toEqual({
+      TALOS_SERVICE_WORKER_HOST: '127.0.0.1',
+      TALOS_RENDERED_VERSION: '9.9.9',
+    });
   });
 
   it('runs without services off Linux, and says so', async () => {
@@ -113,7 +120,7 @@ describe('prepare: services', () => {
     const { engine, calls, warnings } = engineWith(() => '');
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [5432]\n`);
     const prepared = await prepare(engine, { ...testPlan(root, [], config), os: 'macos' });
-    expect(prepared.env).toEqual({});
+    expect(prepared.env).toEqual({ TALOS_RENDERED_VERSION: '9.9.9' });
     expect(calls).toEqual([]);
     expect(warnings).toEqual(['services run on Linux only; macos runs without them']);
     await prepared.release();
@@ -293,6 +300,15 @@ describe('prepare: generated files', () => {
     expect(await readFile(join(root, 'web/lint.project.js'), 'utf8')).toBe(
       'export default [strict];\n',
     );
+  });
+
+  it('tells the checks, through the environment, which version rendered the files', async () => {
+    const root = await tempRepo({});
+    const { engine } = engineWith(() => '', packs);
+    const prepared = await prepare(engine, testPlan(root, [], configWith('')));
+    expect(await readFile(join(root, 'base.json'), 'utf8')).toBe('repo 9.9.9\n');
+    expect(prepared.env[RENDERED_VERSION]).toBe('9.9.9');
+    expect(process.env[RENDERED_VERSION]).toBe('9.9.9');
   });
 
   it('leaves a missing extension file missing outside a base run', async () => {
