@@ -4,6 +4,7 @@ import { EXTENSION_PATHS, GENERATED_PATHS, TS_GENERATED } from './index.js';
 import { mutateGlobs } from './stryker.js';
 import { parseConfig } from '../../../config/load.js';
 import type { RenderContext } from '../../../core/pack.js';
+import { RENDERED_VERSION } from '../../../engine/prepare.js';
 import { repoFacts } from '../../../repo/facts.js';
 import { ownVersion } from '../../../version/self.js';
 
@@ -13,7 +14,15 @@ function read(path: string): string {
   return readFileSync(new URL(path, repo), 'utf8');
 }
 
-function context(talosYml: string, version = ownVersion()): RenderContext {
+/**
+ * The version the generated files on disk carry: the engine's that rendered them before the checks
+ * ran, or, outside the engine, the version this package regenerates them with.
+ */
+function renderedVersion(env: NodeJS.ProcessEnv = process.env, own = ownVersion()): string {
+  return env[RENDERED_VERSION] ?? own;
+}
+
+function context(talosYml: string, version = renderedVersion()): RenderContext {
   const config = parseConfig(talosYml);
   const component = config.components.find((c) => c.lang === 'ts');
   return {
