@@ -32,14 +32,17 @@ function addHits(hits: Map<number, number>, line: number, value: number): void {
   hits.set(line, (hits.get(line) ?? 0) + Math.max(0, value));
 }
 
-/** LCOV's `SF:` records and their `DA:<line>,<hits>` lines. */
+/**
+ * LCOV's `SF:` records and their `DA:<line>,<hits>` lines. A writer on Windows may give `SF:` a
+ * backslash path; this reads it as the forward-slash one every other writer and `locate` use.
+ */
 export function parseLcov(text: string): RawCoverage {
   const files: RawFile[] = [];
   let current: Map<number, number> | undefined;
   for (const line of text.split(/\r?\n/)) {
     if (line.startsWith('SF:')) {
       current = new Map();
-      files.push({ path: line.slice(3).trim(), hits: current });
+      files.push({ path: line.slice(3).trim().replaceAll('\\', '/'), hits: current });
     } else if (line.startsWith('DA:') && current !== undefined) {
       const [number, hits] = line.slice(3).split(',');
       addHits(current, count(number, 'a line'), count(hits, 'a hit count'));

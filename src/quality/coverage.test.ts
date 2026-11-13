@@ -101,6 +101,12 @@ describe('parseLcov', () => {
     );
     expect(() => parseLcov('SF:a.ts\nDA:1\n')).toThrow('a hit count ""');
   });
+
+  it('normalises a backslash SF: path to forward slashes', () => {
+    expect(hits(parseLcov('SF:src\\clamp.ts\r\nDA:1,1\r\nend_of_record\r\n'))).toEqual({
+      'src/clamp.ts': [[1, 1]],
+    });
+  });
 });
 
 // Recorded from coverage.py 7 (`--cov-report=xml`), trimmed: names relative to <source>.

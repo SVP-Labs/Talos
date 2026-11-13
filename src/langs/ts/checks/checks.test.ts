@@ -336,7 +336,12 @@ describe('the Vitest and Stryker runners', () => {
       expect(run.exitCode).toBe(0);
       expect(await readFile(run.junit[0]?.path ?? '', 'utf8')).toContain('name="clamps"');
       expect(run.coverage?.format).toBe('lcov');
-      expect(await readFile(run.coverage?.path ?? '', 'utf8')).toContain('SF:src/clamp.ts');
+      const lcov = await readFile(run.coverage?.path ?? '', 'utf8');
+      if (process.platform === 'win32') {
+        expect(lcov).toMatch(/SF:src[/\\]clamp\.ts/);
+      } else {
+        expect(lcov).toContain('SF:src/clamp.ts');
+      }
       const rerun = await vitestRunner.run(ctx, {
         suite: 'commit',
         coverage: false,
