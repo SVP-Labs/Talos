@@ -65,14 +65,22 @@ export function rerunFiles(failing: readonly TestResult[]): string[] | undefined
 }
 
 /**
- * How a suite fared on the rerun, judged by the tests inside it. When a suite's hook fails, Vitest
- * reports one failed case named after the suite (`outer > inner`) and skips its tests; a rerun
- * whose hook passes reports those tests (`outer > inner > adds`) and no case for the suite.
+ * How a test's file fared on the rerun, for a test the rerun didn't report. When a suite's hook
+ * fails, Vitest reports one failed case named after the suite and skips its tests; a rerun whose
+ * hook passes reports those tests and no case for the suite. A failure in the file is preferred
+ * over one that passed the first time, since that one gets a verdict of its own.
  */
-function suiteRerun(id: string, after: ReadonlyMap<string, Summary>): Summary | undefined {
-  const inside = [...after].filter(([other]) => other.startsWith(`${id} > `));
-  const failed = inside.find(([, summary]) => summary.state === 'failed');
-  return failed?.[1] ?? inside[0]?.[1];
+function fileRerun(
+  test: TestResult,
+  before: ReadonlyMap<string, Summary>,
+  after: ReadonlyMap<string, Summary>,
+): Summary | undefined {
+  if (test.file === undefined) return undefined;
+  const inFile = [...after.values()].filter((summary) => summary.result.file === test.file);
+  const failed = inFile.filter((summary) => summary.state === 'failed');
+  if (failed.length === 0) return inFile[0];
+  const own = failed.find((summary) => before.get(summary.result.id)?.state !== 'passed');
+  return own ?? { state: 'failed', result: test };
 }
 
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
@@ -88,7 +96,8 @@ function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdi
 /**
  * Judges a run and its rerun of the failures: a test that failed and then passed is flaky, one
  * that failed and didn't pass again failed; a test that passed and then failed on the rerun is
- * flaky too. A suite that failed as a whole is judged on the rerun by the tests inside it.
+ * flaky too. A test the rerun didn't report, such as a suite whose hook failed, is judged by its
+ * file: flaky when the file's tests passed on the rerun, failed when one of them failed.
  */
 export function judgeTests(
   first: readonly TestResult[],
@@ -99,7 +108,9 @@ export function judgeTests(
   const verdicts: TestVerdict[] = [];
   for (const [id, summary] of before) {
     if (summary.state === 'failed') {
-      verdicts.push(afterFailure(summary.result, after.get(id) ?? suiteRerun(id, after)));
+      verdicts.push(
+        afterFailure(summary.result, after.get(id) ?? fileRerun(summary.result, before, after)),
+      );
     }
   }
   for (const [id, summary] of after) {
