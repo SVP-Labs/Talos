@@ -21,12 +21,22 @@ const report = z.object({
 
 type Fragment = { readonly file: string; readonly start: number; readonly end: number };
 
+// Windows resolves long paths to `\\?\C:\...` (jscpd reports it `//?/C:/...`), a prefix that
+// `node:path` does not parse as the drive-rooted path it names, so `relative` cannot strip it.
+const EXTENDED_LENGTH_PREFIX = /^(?:\\\\\?\\|\/\/\?\/)/;
+
+function withoutExtendedLengthPrefix(raw: string): string {
+  return raw.replace(EXTENDED_LENGTH_PREFIX, '');
+}
+
 /**
  * jscpd names a file given on its command line by its base name alone, so the gate asks it for
  * absolute paths and makes them relative here.
  */
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
-  const local = isAbsolute(raw.name) ? relative(root, raw.name) : raw.name;
+  const name = withoutExtendedLengthPrefix(raw.name);
+  const base = withoutExtendedLengthPrefix(root);
+  const local = isAbsolute(name) ? relative(base, name) : name;
   const file = local.replaceAll('\\', '/').replace(/^\.\//, '');
   const start = Math.max(1, raw.start);
   return { file, start, end: Math.max(start, raw.end) };

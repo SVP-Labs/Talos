@@ -73,6 +73,23 @@ describe('cloneFindings', () => {
     expect(cloneFindings('{"duplicates": [], "statistics": {}}', '/repo')).toEqual([]);
   });
 
+  it('makes a Windows extended-length path relative to the root', () => {
+    const extended = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 60,
+          firstFile: { name: '//?/C:/repo/src/x.ts', start: 0, end: 6 },
+          secondFile: { name: String.raw`\\?\C:\repo\src\y.ts`, start: 2, end: 8 },
+        },
+      ],
+    });
+    expect(cloneFindings(extended, String.raw`\\?\C:\repo`)[0]?.location).toEqual({
+      file: 'src/y.ts',
+      line: 2,
+      endLine: 8,
+    });
+  });
+
   it('is an engine error for a report it cannot read', () => {
     expect(() => cloneFindings('not json', '/repo')).toThrow(EngineError);
     expect(() => cloneFindings('{"clones": []}', '/repo')).toThrow(/unknown shape/);
