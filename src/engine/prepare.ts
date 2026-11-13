@@ -7,8 +7,15 @@ import type { ApplyContext, Component } from '../core/check.js';
 import type { Generated, Pack } from '../core/pack.js';
 import { execOk } from '../exec/exec.js';
 
+/**
+ * The variable that names the Talos version the generated files on disk were rendered with: a
+ * check comparing them with its own render can't use its package's version, which a release
+ * commit bumps past the engine's.
+ */
+export const RENDERED_VERSION = 'TALOS_RENDERED_VERSION';
+
 export type Prepared = {
-  /** Environment for the checks: where each declared service listens. */
+  /** Environment for the checks: where each declared service listens, and the rendered version. */
   readonly env: Readonly<Record<string, string>>;
   /** Components whose dependencies couldn't be installed, by root, with why. */
   readonly failedInstalls: ReadonlyMap<string, string>;
@@ -191,10 +198,11 @@ async function runSetupScript(
 /** Everything before the checks: generated configs, services, dependencies, the setup script. */
 export async function prepare(engine: Engine, plan: RunPlan): Promise<Prepared> {
   await writeGenerated(engine, plan);
-  const { env, ids } = await startServices(engine, plan);
+  const { env: serviceEnv, ids } = await startServices(engine, plan);
+  const env = { ...serviceEnv, [RENDERED_VERSION]: engine.version };
   Object.assign(process.env, env);
   const failedInstalls = await installComponents(engine, plan);
-  const withoutSetup = await runSetupScript(engine, plan, env);
+  const withoutSetup = await runSetupScript(engine, plan, serviceEnv);
   return {
     env,
     failedInstalls,
