@@ -48,6 +48,23 @@ describe("Talos's own tool configs", () => {
   });
 });
 
+describe('the version the configs are compared at', () => {
+  const yml = read('talos.yml');
+  const eslint = TS_GENERATED.find((g) => g.path === 'eslint.config.js');
+  const at = (version: string): string | undefined => eslint?.render(context(yml, version));
+  const expected = (env: NodeJS.ProcessEnv): string | undefined =>
+    at(renderedVersion(env, '2.0.0'));
+
+  it("passes a release commit, newer than the engine that rendered its configs, at the engine's", () => {
+    expect(expected({ [RENDERED_VERSION]: '1.9.0' })).toBe(at('1.9.0'));
+    expect(expected({})).toBe(at('2.0.0'));
+  });
+
+  it("fails a release commit whose configs weren't regenerated at the package's version", () => {
+    expect(expected({})).not.toBe(at('1.9.0'));
+  });
+});
+
 describe('rendering for a component', () => {
   const yml = [
     'name: Demo',
