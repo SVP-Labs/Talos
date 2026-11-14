@@ -67,20 +67,25 @@ export function rerunFiles(failing: readonly TestResult[]): string[] | undefined
 /**
  * How a test's file fared on the rerun, for a test the rerun didn't report. When a suite's hook
  * fails, Vitest reports one failed case named after the suite and skips its tests; a rerun whose
- * hook passes reports those tests and no case for the suite. A failure in the file is preferred
- * over one that passed the first time, since that one gets a verdict of its own.
+ * hook passes reports those tests and no case for the suite. A failure in the file is taken over
+ * only once, and only when it has no verdict of its own: one test, one finding.
  */
 function fileRerun(
   test: TestResult,
   before: ReadonlyMap<string, Summary>,
   after: ReadonlyMap<string, Summary>,
+  taken: Set<string>,
 ): Summary | undefined {
   if (test.file === undefined) return undefined;
   const inFile = [...after.values()].filter((summary) => summary.result.file === test.file);
   const failed = inFile.filter((summary) => summary.state === 'failed');
   if (failed.length === 0) return inFile[0];
-  const own = failed.find((summary) => before.get(summary.result.id)?.state !== 'passed');
-  return own ?? { state: 'failed', result: test };
+  const own = failed.find(
+    (summary) => !before.has(summary.result.id) && !taken.has(summary.result.id),
+  );
+  if (own === undefined) return { state: 'failed', result: test };
+  taken.add(own.result.id);
+  return own;
 }
 
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
@@ -106,12 +111,11 @@ export function judgeTests(
   const before = summarise(first);
   const after = summarise(rerun);
   const verdicts: TestVerdict[] = [];
+  const taken = new Set<string>();
   for (const [id, summary] of before) {
-    if (summary.state === 'failed') {
-      verdicts.push(
-        afterFailure(summary.result, after.get(id) ?? fileRerun(summary.result, before, after)),
-      );
-    }
+    if (summary.state !== 'failed') continue;
+    const rerun = after.get(id) ?? fileRerun(summary.result, before, after, taken);
+    verdicts.push(afterFailure(summary.result, rerun));
   }
   for (const [id, summary] of after) {
     if (summary.state === 'failed' && before.get(id)?.state === 'passed') {
