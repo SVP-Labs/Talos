@@ -88,6 +88,15 @@ describe('judgeTests', () => {
     ]);
   });
 
+  it('fails a test with a file that the rerun skipped, however the file’s other tests fared', () => {
+    const plain = inA('merged > judges', 'failed', { message: 'expected 1 to be 2' });
+    const first = [plain, inA('other > runs', 'passed')];
+    const rerun = [inA('merged > judges', 'skipped'), inA('other > runs', 'passed')];
+    expect(judgeTests(first, rerun)).toEqual([
+      { kind: 'failed', test: plain, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
   it('judges a suite whose hook failed by its file’s tests on the rerun', () => {
     const hook = inA('merged', 'failed', { message: 'Hook timed out in 10000ms' });
     const first = [
