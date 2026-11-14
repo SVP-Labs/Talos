@@ -145,6 +145,36 @@ describe('judgeTests', () => {
       ['failed', 'a.test.ts::merged'],
       ['failed', 'a.test.ts::other > runs'],
     ]);
+    const silent = judgeTests(first, [inA('other > runs', 'failed')]);
+    expect(silent[0]?.test.message).toBe(
+      'its file failed on the rerun, at "a.test.ts::other > runs"',
+    );
+  });
+
+  it('judges a failed test as a suite only when the run skipped tests named inside it', () => {
+    const plain = inA('merged', 'failed', { message: 'expected 1 to be 2' });
+    const first = [plain, inA('merged > judges', 'passed'), inA('other > runs', 'skipped')];
+    const rerun = [inA('merged > judges', 'passed'), inA('other > runs', 'passed')];
+    expect(judgeTests(first, rerun)).toEqual([
+      { kind: 'failed', test: plain, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
+  it('never judges a suite with no file by the rerun’s other tests with no file', () => {
+    const hook = result('merged', 'failed', { message: 'Hook timed out in 10000ms' });
+    const first = [hook, result('merged > judges', 'skipped')];
+    expect(judgeTests(first, [result('other > runs', 'passed')])).toEqual([
+      { kind: 'failed', test: hook, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
+  it('fails a suite whose hook failed again on the rerun, by its own result', () => {
+    const hook = inA('merged', 'failed', { message: 'Hook timed out in 10000ms' });
+    const again = inA('merged', 'failed', { message: 'Hook timed out in 30000ms' });
+    const first = [hook, inA('merged > judges', 'skipped')];
+    expect(judgeTests(first, [again, inA('merged > judges', 'skipped')])).toEqual([
+      { kind: 'failed', test: again, first: 'failed', rerun: 'failed' },
+    ]);
   });
 
   it('never hands one rerun failure to two suites of a file', () => {
