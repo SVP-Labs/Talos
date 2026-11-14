@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runChecks } from './run.js';
 import { parseConfig } from '../config/load.js';
 import { APPLIES, type Check, EngineError, skip } from '../core/check.js';
+import { fingerprint } from '../core/fingerprint.js';
 import type { Pack } from '../core/pack.js';
 import { tempRepo, testEngine, testPlan } from '../testing/engine.js';
 
@@ -86,6 +87,39 @@ describe('runChecks', () => {
     expect(windows.outcomes.map((o) => [o.check, o.component])).toEqual([
       ['demo/per-component', 'b'],
     ]);
+  });
+});
+
+describe('runChecks with a finding at a file the engine cannot read', () => {
+  it('reports the finding anyway, identified by its message instead of its code', async () => {
+    const root = await tempRepo({});
+    const gone: Pack = {
+      name: 'gone',
+      checks: [
+        {
+          id: 'demo/gone',
+          tier: 'commit',
+          scope: 'repo',
+          title: 'gone',
+          applies: () => APPLIES,
+          run: () =>
+            Promise.resolve([
+              {
+                rule: 'demo/y',
+                message: 'file is gone',
+                location: { file: 'deleted.ts', line: 1 },
+              },
+            ]),
+        },
+      ],
+    };
+    const result = await runChecks(testEngine([gone]), testPlan(root, []));
+    const [outcome] = result.outcomes;
+    expect(outcome).toMatchObject({ check: 'demo/gone', status: 'findings' });
+    expect(outcome?.findings[0]).toMatchObject({
+      location: { file: 'deleted.ts', line: 1 },
+      fingerprint: fingerprint('demo/y', 'file is gone'),
+    });
   });
 });
 
