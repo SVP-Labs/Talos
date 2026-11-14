@@ -88,21 +88,22 @@ function fileRerun(
   if (test.file === undefined) return undefined;
   const inFile = [...after.values()].filter((summary) => summary.result.file === test.file);
   const failed = inFile.filter((summary) => summary.state === 'failed');
-  if (failed.length === 0) return inFile[0];
+  const [firstFailure] = failed;
+  if (firstFailure === undefined) return inFile[0];
   const own = failed.find(
     (summary) => !before.has(summary.result.id) && !taken.has(summary.result.id),
   );
-  if (own === undefined) return { state: 'failed', result: fileFailure(test, failed[0]) };
+  if (own === undefined) {
+    return { state: 'failed', result: fileFailure(test, firstFailure.result) };
+  }
   taken.add(own.result.id);
   return own;
 }
 
 /** The suite's result, explained by a failure elsewhere in its file rather than its hook's. */
-function fileFailure(suite: TestResult, failed: Summary | undefined): TestResult {
-  const other = failed?.result;
-  const where = other === undefined ? '' : `, at "${clip(other.name, 80)}"`;
-  const why = other?.message === undefined ? '' : `: ${other.message}`;
-  return { ...suite, message: `its file failed on the rerun${where}${why}` };
+function fileFailure(suite: TestResult, other: TestResult): TestResult {
+  const why = other.message === undefined ? '' : `: ${other.message}`;
+  return { ...suite, message: `its file failed on the rerun, at "${clip(other.name, 80)}"${why}` };
 }
 
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
