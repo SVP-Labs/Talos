@@ -118,11 +118,19 @@ describe('judgeTests', () => {
     expect(judgeTests(first, [inA('merged > judges', 'passed'), broken])).toEqual([
       { kind: 'failed', test: broken, first: 'failed', rerun: 'failed' },
     ]);
-    const elsewhere = inA('other > runs', 'failed');
+    const elsewhere = inA('other > runs', 'failed', { message: 'expected 3 to be 4' });
+    const fileFailed = {
+      ...hook,
+      message: 'its file failed on the rerun, at "a.test.ts::other > runs": expected 3 to be 4',
+    };
     expect(judgeTests(first, [inA('merged > judges', 'passed'), elsewhere])).toEqual([
-      { kind: 'failed', test: hook, first: 'failed', rerun: 'failed' },
+      { kind: 'failed', test: fileFailed, first: 'failed', rerun: 'failed' },
       { kind: 'flaky', test: elsewhere, first: 'passed', rerun: 'failed' },
     ]);
+    expect(testFindings(judgeTests(first, [elsewhere]))[0]?.message).toBe(
+      'Test "a.test.ts::merged" failed, and failed again when rerun: its file failed on the' +
+        ' rerun, at "a.test.ts::other > runs": expected 3 to be 4',
+    );
     expect(judgeTests(first, [inA('merged > judges', 'skipped')])).toEqual([
       { kind: 'failed', test: hook, first: 'failed', rerun: 'missing' },
     ]);
