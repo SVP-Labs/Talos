@@ -65,7 +65,15 @@ export function rerunFiles(failing: readonly TestResult[]): string[] | undefined
 }
 
 /**
- * How a test's file fared on the rerun, for a test the rerun didn't report. When a suite's hook
+ * Whether a failed case is a suite whose hook failed: the run skipped tests inside it, named
+ * `<suite> > <test>`. Any other failed test the rerun didn't report still counts as failed.
+ */
+function isSuite(id: string, first: readonly TestResult[]): boolean {
+  return first.some((result) => result.status === 'skipped' && result.id.startsWith(`${id} > `));
+}
+
+/**
+ * How a suite's file fared on the rerun, for a suite the rerun didn't report. When a suite's hook
  * fails, Vitest reports one failed case named after the suite and skips its tests; a rerun whose
  * hook passes reports those tests and no case for the suite. A failure in the file is taken over
  * only once, and only when it has no verdict of its own: one test, one finding.
@@ -101,8 +109,8 @@ function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdi
 /**
  * Judges a run and its rerun of the failures: a test that failed and then passed is flaky, one
  * that failed and didn't pass again failed; a test that passed and then failed on the rerun is
- * flaky too. A test the rerun didn't report, such as a suite whose hook failed, is judged by its
- * file: flaky when the file's tests passed on the rerun, failed when one of them failed.
+ * flaky too. A suite whose hook failed, which the rerun doesn't report, is judged by its file:
+ * flaky when the file's tests passed on the rerun, failed when one of them failed.
  */
 export function judgeTests(
   first: readonly TestResult[],
@@ -114,8 +122,11 @@ export function judgeTests(
   const taken = new Set<string>();
   for (const [id, summary] of before) {
     if (summary.state !== 'failed') continue;
-    const rerun = after.get(id) ?? fileRerun(summary.result, before, after, taken);
-    verdicts.push(afterFailure(summary.result, rerun));
+    let again = after.get(id);
+    if (again === undefined && isSuite(id, first)) {
+      again = fileRerun(summary.result, before, after, taken);
+    }
+    verdicts.push(afterFailure(summary.result, again));
   }
   for (const [id, summary] of after) {
     if (summary.state === 'failed' && before.get(id)?.state === 'passed') {
