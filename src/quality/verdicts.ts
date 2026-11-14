@@ -76,7 +76,8 @@ function isSuite(id: string, first: readonly TestResult[]): boolean {
  * How a suite's file fared on the rerun, for a suite the rerun didn't report. When a suite's hook
  * fails, Vitest reports one failed case named after the suite and skips its tests; a rerun whose
  * hook passes reports those tests and no case for the suite. A failure in the file is taken over
- * only once, and only when it has no verdict of its own: one test, one finding.
+ * only once, and only when it has no verdict of its own: one test, one finding. Otherwise the suite
+ * keeps its own result, its message saying which test of the file failed.
  */
 function fileRerun(
   test: TestResult,
@@ -91,9 +92,17 @@ function fileRerun(
   const own = failed.find(
     (summary) => !before.has(summary.result.id) && !taken.has(summary.result.id),
   );
-  if (own === undefined) return { state: 'failed', result: test };
+  if (own === undefined) return { state: 'failed', result: fileFailure(test, failed[0]) };
   taken.add(own.result.id);
   return own;
+}
+
+/** The suite's result, explained by a failure elsewhere in its file rather than its hook's. */
+function fileFailure(suite: TestResult, failed: Summary | undefined): TestResult {
+  const other = failed?.result;
+  const where = other === undefined ? '' : `, at "${clip(other.name, 80)}"`;
+  const why = other?.message === undefined ? '' : `: ${other.message}`;
+  return { ...suite, message: `its file failed on the rerun${where}${why}` };
 }
 
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
