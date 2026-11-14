@@ -64,6 +64,47 @@ export function rerunFiles(failing: readonly TestResult[]): string[] | undefined
   return [...files].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Whether a failed case is a suite whose hook failed: the run skipped tests inside it, named
+ * `<suite> > <test>`. Any other failed test the rerun didn't report still counts as failed.
+ */
+function isSuite(id: string, first: readonly TestResult[]): boolean {
+  return first.some((result) => result.status === 'skipped' && result.id.startsWith(`${id} > `));
+}
+
+/**
+ * How a suite's file fared on the rerun, for a suite the rerun didn't report. When a suite's hook
+ * fails, Vitest reports one failed case named after the suite and skips its tests; a rerun whose
+ * hook passes reports those tests and no case for the suite. A failure in the file is taken over
+ * only once, and only when it has no verdict of its own: one test, one finding. Otherwise the suite
+ * keeps its own result, its message saying which test of the file failed.
+ */
+function fileRerun(
+  test: TestResult,
+  before: ReadonlyMap<string, Summary>,
+  after: ReadonlyMap<string, Summary>,
+  taken: Set<string>,
+): Summary | undefined {
+  if (test.file === undefined) return undefined;
+  const inFile = [...after.values()].filter((summary) => summary.result.file === test.file);
+  const failed = inFile.filter((summary) => summary.state === 'failed');
+  if (failed.length === 0) return inFile[0];
+  const own = failed.find(
+    (summary) => !before.has(summary.result.id) && !taken.has(summary.result.id),
+  );
+  if (own === undefined) return { state: 'failed', result: fileFailure(test, failed[0]) };
+  taken.add(own.result.id);
+  return own;
+}
+
+/** The suite's result, explained by a failure elsewhere in its file rather than its hook's. */
+function fileFailure(suite: TestResult, failed: Summary | undefined): TestResult {
+  const other = failed?.result;
+  const where = other === undefined ? '' : `, at "${clip(other.name, 80)}"`;
+  const why = other?.message === undefined ? '' : `: ${other.message}`;
+  return { ...suite, message: `its file failed on the rerun${where}${why}` };
+}
+
 function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdict {
   if (rerun?.state === 'passed') {
     return { kind: 'flaky', test: failed, first: 'failed', rerun: 'passed' };
@@ -77,7 +118,8 @@ function afterFailure(failed: TestResult, rerun: Summary | undefined): TestVerdi
 /**
  * Judges a run and its rerun of the failures: a test that failed and then passed is flaky, one
  * that failed and didn't pass again failed; a test that passed and then failed on the rerun is
- * flaky too.
+ * flaky too. A suite whose hook failed, which the rerun doesn't report, is judged by its file:
+ * flaky when the file's tests passed on the rerun, failed when one of them failed.
  */
 export function judgeTests(
   first: readonly TestResult[],
@@ -86,8 +128,14 @@ export function judgeTests(
   const before = summarise(first);
   const after = summarise(rerun);
   const verdicts: TestVerdict[] = [];
+  const taken = new Set<string>();
   for (const [id, summary] of before) {
-    if (summary.state === 'failed') verdicts.push(afterFailure(summary.result, after.get(id)));
+    if (summary.state !== 'failed') continue;
+    let again = after.get(id);
+    if (again === undefined && isSuite(id, first)) {
+      again = fileRerun(summary.result, before, after, taken);
+    }
+    verdicts.push(afterFailure(summary.result, again));
   }
   for (const [id, summary] of after) {
     if (summary.state === 'failed' && before.get(id)?.state === 'passed') {

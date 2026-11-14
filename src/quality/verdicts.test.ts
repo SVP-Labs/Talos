@@ -12,6 +12,10 @@ function result(id: string, status: TestResult['status'], fields: Partial<TestRe
   return { id, name: id, status, ...fields };
 }
 
+function inA(name: string, status: TestResult['status'], fields: Partial<TestResult> = {}) {
+  return result(`a.test.ts::${name}`, status, { file: 'a.test.ts', ...fields });
+}
+
 describe('failingTests', () => {
   it('keeps one result per failing test id, errors included', () => {
     const results = [
@@ -81,6 +85,80 @@ describe('judgeTests', () => {
     expect(verdicts).toEqual([
       { kind: 'failed', test: result('a', 'failed'), first: 'failed', rerun: 'missing' },
       { kind: 'failed', test: result('b', 'errored'), first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
+  it('fails a test with a file that the rerun skipped, however the file’s other tests fared', () => {
+    const plain = inA('merged > judges', 'failed', { message: 'expected 1 to be 2' });
+    const first = [plain, inA('other > runs', 'passed')];
+    const rerun = [inA('merged > judges', 'skipped'), inA('other > runs', 'passed')];
+    expect(judgeTests(first, rerun)).toEqual([
+      { kind: 'failed', test: plain, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
+  it('judges a suite whose hook failed by its file’s tests on the rerun', () => {
+    const hook = inA('merged', 'failed', { message: 'Hook timed out in 10000ms' });
+    const first = [
+      inA('merged > judges', 'skipped'),
+      inA('merged > reports', 'skipped'),
+      inA('other > runs', 'passed'),
+      hook,
+    ];
+    const passing = [
+      inA('merged > judges', 'passed'),
+      inA('merged > reports', 'passed'),
+      inA('other > runs', 'passed'),
+      result('b.test.ts::merged > runs', 'failed', { file: 'b.test.ts' }),
+    ];
+    expect(judgeTests(first, passing)).toEqual([
+      { kind: 'flaky', test: hook, first: 'failed', rerun: 'passed' },
+    ]);
+    const broken = inA('merged > reports', 'failed', { message: 'broken' });
+    expect(judgeTests(first, [inA('merged > judges', 'passed'), broken])).toEqual([
+      { kind: 'failed', test: broken, first: 'failed', rerun: 'failed' },
+    ]);
+    const elsewhere = inA('other > runs', 'failed', { message: 'expected 3 to be 4' });
+    const fileFailed = {
+      ...hook,
+      message: 'its file failed on the rerun, at "a.test.ts::other > runs": expected 3 to be 4',
+    };
+    expect(judgeTests(first, [inA('merged > judges', 'passed'), elsewhere])).toEqual([
+      { kind: 'failed', test: fileFailed, first: 'failed', rerun: 'failed' },
+      { kind: 'flaky', test: elsewhere, first: 'passed', rerun: 'failed' },
+    ]);
+    expect(testFindings(judgeTests(first, [elsewhere]))[0]?.message).toBe(
+      'Test "a.test.ts::merged" failed, and failed again when rerun: its file failed on the' +
+        ' rerun, at "a.test.ts::other > runs": expected 3 to be 4',
+    );
+    expect(judgeTests(first, [inA('merged > judges', 'skipped')])).toEqual([
+      { kind: 'failed', test: hook, first: 'failed', rerun: 'missing' },
+    ]);
+  });
+
+  it('never hands a suite a rerun failure that has a verdict of its own', () => {
+    const hook = inA('merged', 'failed', { message: 'Hook timed out in 10000ms' });
+    const twice = inA('other > runs', 'failed', { message: 'again' });
+    const first = [inA('merged > judges', 'skipped'), inA('other > runs', 'failed'), hook];
+    const verdicts = judgeTests(first, [inA('merged > judges', 'passed'), twice]);
+    expect(verdicts.map((verdict) => [verdict.kind, verdict.test.id])).toEqual([
+      ['failed', 'a.test.ts::merged'],
+      ['failed', 'a.test.ts::other > runs'],
+    ]);
+  });
+
+  it('never hands one rerun failure to two suites of a file', () => {
+    const first = [
+      inA('merged > judges', 'skipped'),
+      inA('compared > compares', 'skipped'),
+      inA('merged', 'failed', { message: 'Hook timed out in 10000ms' }),
+      inA('compared', 'failed', { message: 'Hook timed out in 10000ms' }),
+    ];
+    const broken = inA('merged > judges', 'failed', { message: 'broken' });
+    const verdicts = judgeTests(first, [broken, inA('compared > compares', 'passed')]);
+    expect(verdicts.map((verdict) => [verdict.kind, verdict.test.id])).toEqual([
+      ['failed', 'a.test.ts::compared'],
+      ['failed', 'a.test.ts::merged > judges'],
     ]);
   });
 

@@ -54,6 +54,9 @@ function planOf(h: History, overrides: Partial<GatePlan> = {}): GatePlan {
   };
 }
 
+/** Building a scratch repository spawns a dozen git processes, slow when the machine is busy. */
+const SCRATCH_TIMEOUT_MS = 30_000;
+
 const CONFIG = parseConfig('name: A\nprefix: A\n');
 const DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com';
 
@@ -61,7 +64,7 @@ describe('comparisonsFor', () => {
   let h: History;
   beforeAll(async () => {
     h = await history();
-  });
+  }, SCRATCH_TIMEOUT_MS);
 
   it('compares head with base, and each commit with its parent', async () => {
     const comparisons = await comparisonsFor(h.repo, planOf(h));
@@ -122,7 +125,7 @@ describe('a PR whose branch merged main', () => {
   let m: Merged;
   beforeAll(async () => {
     m = await mergedMain();
-  });
+  }, SCRATCH_TIMEOUT_MS);
 
   it("judges no commit against main's changes, and none against the merge's parents", async () => {
     expect(m.plan.commits).toEqual([m.own, m.merge, m.after]);
@@ -148,7 +151,7 @@ describe('commitFindings', () => {
   let h: History;
   beforeAll(async () => {
     h = await history();
-  });
+  }, SCRATCH_TIMEOUT_MS);
 
   it("reports each commit's subject against the format and the branch's ticket", async () => {
     const findings = await commitFindings(h.repo, planOf(h, { branch: 'A-2' }), CONFIG);
