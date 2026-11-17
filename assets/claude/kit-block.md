@@ -30,7 +30,7 @@ this repository enforces, and fails only on findings new at head or on lines the
 into one commit per acceptance criterion, check every commit, push once, then arm auto-merge.
 After that, answer review with new commits only.
 
-**Review.** At most two rounds of requested changes, then `needs-human`. Answer every finding
+**Review.** At most five rounds of requested changes, then `needs-human`. Answer every finding
 with a commit or a reasoned reply, and never resolve a thread you didn't address.
 
 **The ladder**, one label at a time, each cleared by whoever it names:

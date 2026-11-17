@@ -14,21 +14,21 @@ import type { Issue } from '../ticket/schemas.js';
 import { isTrusted } from '../ticket/trust.js';
 
 /**
- * The reviewer's AI review, where agents are on: once per head commit, at most two rounds of
- * REQUEST_CHANGES on a PR; a third would-be request labels the work `needs-human` instead.
+ * The reviewer's AI review, where agents are on: once per head commit, at most five rounds of
+ * REQUEST_CHANGES on a PR; a sixth would-be request labels the work `needs-human` instead.
  */
 
 const NEEDS_HUMAN = 'needs-human';
 
 /** How many rounds of changes the reviewer may request before a person takes over. */
-const MAX_ROUNDS = 2;
+const MAX_ROUNDS = 5;
 
 const COMMENT_MAX = 4000;
 const FETCHED_FILES = 30;
 
 export type ReviewerRun =
   | { readonly kind: 'reviewed'; readonly review: Review }
-  /** A third request, not submitted: the would-be review's body, when there was one. */
+  /** A sixth request, not submitted: the would-be review's body, when there was one. */
   | { readonly kind: 'needs-human'; readonly body?: string }
   | { readonly kind: 'no-verdict'; readonly reason: string }
   | { readonly kind: 'skipped'; readonly reason: string };

@@ -108,7 +108,7 @@ describe('decide', () => {
     ],
     [
       { kind: 'needs-human' },
-      'Fails: the reviewer requested changes twice already: needs a person',
+      'Fails: the reviewer requested changes five times already: needs a person',
     ],
     [
       { kind: 'no-verdict', reason: 'the answer holds no JSON object' },

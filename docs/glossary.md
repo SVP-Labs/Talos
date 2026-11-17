@@ -260,7 +260,7 @@ the ticket rules, the reviewer approved where agents are on, and the owner appro
 debt-and-chore exception holds (C16).
 
 **Review round**
-One REQUEST_CHANGES from the reviewer and the answer to it. A PR gets at most two; a third
+One REQUEST_CHANGES from the reviewer and the answer to it. A PR gets at most five; a sixth
 would-be request labels its issue `needs-human` (C20).
 
 **Debt-and-chore exception**
