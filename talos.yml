@@ -17,6 +17,11 @@ licences:
   LGPL-3.0-only: eslint-plugin-sonarjs and its analyzer-commons-configurations, a lint plugin that runs here and in CI, never shipped
   CC-BY-SA-4.0: '@cspell/dict-en-common-misspellings, a spelling dictionary cspell reads, never shipped'
   MPL-2.0: lightningcss, a build dependency of vite (vitest), never shipped
+supply_chain:
+  exceptions:
+    GHSA-fc5q-39xc-vjpf:
+      reason: no fixed release; picomatch only matches globs from repo config, not user input
+      expires: 2027-02-28
 exceptions:
   workflows:
     - rule: zizmor/github-app
