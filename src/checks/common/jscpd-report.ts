@@ -1,4 +1,4 @@
-import { isAbsolute, relative } from 'node:path';
+import { posix, win32 } from 'node:path';
 import { z } from 'zod';
 import { EngineError } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
@@ -25,6 +25,11 @@ type Fragment = { readonly file: string; readonly start: number; readonly end: n
 // `node:path` does not parse as the drive-rooted path it names, so `relative` cannot strip it.
 const EXTENDED_LENGTH_PREFIX = /^(?:\\\\\?\\|\/\/\?\/)/;
 
+// A drive-rooted path (`C:\...` or `C:/...`) names a Windows path regardless of the host OS
+// running this check, so it must be relativized with `path.win32` rather than the host's
+// default `node:path`, which is `path.posix` on Linux/macOS.
+const DRIVE_ROOTED = /^[A-Za-z]:[/\\]/;
+
 function withoutExtendedLengthPrefix(raw: string): string {
   return raw.replace(EXTENDED_LENGTH_PREFIX, '');
 }
@@ -36,6 +41,8 @@ function withoutExtendedLengthPrefix(raw: string): string {
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
   const name = withoutExtendedLengthPrefix(raw.name);
   const base = withoutExtendedLengthPrefix(root);
+  const { isAbsolute, relative } =
+    DRIVE_ROOTED.test(name) || DRIVE_ROOTED.test(base) ? win32 : posix;
   const local = isAbsolute(name) ? relative(base, name) : name;
   const file = local.replaceAll('\\', '/').replace(/^\.\//, '');
   const start = Math.max(1, raw.start);

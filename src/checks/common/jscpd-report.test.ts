@@ -83,11 +83,13 @@ describe('cloneFindings', () => {
         },
       ],
     });
-    expect(cloneFindings(extended, String.raw`\\?\C:\repo`)[0]?.location).toEqual({
-      file: 'src/y.ts',
-      line: 2,
-      endLine: 8,
-    });
+    expect(cloneFindings(extended, String.raw`\\?\C:\repo`)).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 2-8 repeat src/x.ts lines 1-6 (60 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 2, endLine: 8 },
+      },
+    ]);
   });
 
   it('is an engine error for a report it cannot read', () => {
