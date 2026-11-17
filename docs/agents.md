@@ -18,7 +18,7 @@ check      talos check --json before every push           three tries, then ask 
 draft      a draft PR on the first push                   the gate checks the latest commit
 ready      squash, check every commit, push once,         the gate checks every commit;
            mark ready, arm auto-merge                     the reviewer reviews the head
-review     at most two rounds of REQUEST_CHANGES          answered with new commits
+review     at most five rounds of REQUEST_CHANGES         answered with new commits
 approve    the owner, by card or on GitHub,               or the debt-and-chore exception
            unless the PR is debt or chore work
 land       the merge queue                                no one merges by hand
@@ -138,7 +138,7 @@ group and merges in order.
   or waits for the owner (section 7).
 - **REQUEST_CHANGES:** the next round. Answer every finding with a commit or a reasoned reply;
   never resolve a thread you didn't address. Check, then push.
-- **At most two rounds** on one PR. A third would-be request isn't submitted: the reviewer
+- **At most five rounds** on one PR. A sixth would-be request isn't submitted: the reviewer
   labels the PR's issue `needs-human`, and `talos/review` shows the request it held back. Stop
   and tell the owner.
 
@@ -205,7 +205,7 @@ the gate red on her PR       talos.verdict/1 from the run's            hand it t
                              talos-verdict artifact (talos findings)   fixes and pushes; the self-fix
                                                                        limit counts
 REQUEST_CHANGES              the talos-review/1 line, the round and    the next round, through the task;
-                             the findings listed                       past round two, ask the owner
+                             the findings listed                       past round five, ask the owner
 APPROVE, waiting on owner    the talos-review/1 line; talos/review     offer the owner a card for the
                              in progress on the owner                  head commit
 talos/review failure         its summary's unmet lines                 fix the PR's text or branch rules

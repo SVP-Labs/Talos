@@ -40,7 +40,7 @@ export function checkFields(
 ): CheckRunFields {
   const text =
     run?.kind === 'needs-human' && run.body !== undefined
-      ? `The reviewer's third request, not submitted:\n\n${run.body}`
+      ? `The reviewer's sixth request, not submitted:\n\n${run.body}`
       : undefined;
   const output = {
     title: clip(decision.title, TITLE_MAX),
@@ -76,7 +76,7 @@ export function reviewerOutcome(run: ReviewerRun): JobOutcome {
       return {
         job: 'reviewer',
         result: 'done',
-        detail: 'two rounds already: labelled needs-human',
+        detail: 'five rounds already: labelled needs-human',
       };
     }
     case 'no-verdict': {

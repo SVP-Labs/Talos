@@ -72,7 +72,10 @@ export function reviewerCondition(state: ReviewerState): Condition {
       return { met: false, line };
     }
     case 'needs-human': {
-      return { met: false, line: 'the reviewer requested changes twice already: needs a person' };
+      return {
+        met: false,
+        line: 'the reviewer requested changes five times already: needs a person',
+      };
     }
     case 'no-verdict': {
       return { met: false, line: `the reviewer gave no verdict: ${state.reason}` };

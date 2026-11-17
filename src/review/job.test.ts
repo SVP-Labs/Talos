@@ -163,7 +163,7 @@ describe('reviewJob on a pull request', () => {
     );
   });
 
-  it('labels the issue needs-human instead of a third request, and submits nothing', async () => {
+  it('labels the issue needs-human instead of a sixth request, and submits nothing', async () => {
     const fake = debtScenario();
     const earlier = (round: number, sha: string) => ({
       user: app(REVIEWER),
@@ -172,7 +172,13 @@ describe('reviewJob on a pull request', () => {
       submitted_at: `2026-10-2${round}T10:00:00Z`,
       body: `talos-review/1 verdict=REQUEST_CHANGES round=${round} findings=1\n\nx`,
     });
-    fake.reviews.set(PR, [earlier(1, 'c'.repeat(40)), earlier(2, 'e'.repeat(40))]);
+    fake.reviews.set(PR, [
+      earlier(1, 'c'.repeat(40)),
+      earlier(2, 'd'.repeat(40)),
+      earlier(3, 'e'.repeat(40)),
+      earlier(4, 'f'.repeat(40)),
+      earlier(5, 'g'.repeat(40)),
+    ]);
     const model = fakeModel({
       ok: true,
       answer: {
@@ -185,7 +191,7 @@ describe('reviewJob on a pull request', () => {
     expect(outcomes[0]).toEqual({
       job: 'reviewer',
       result: 'done',
-      detail: 'two rounds already: labelled needs-human',
+      detail: 'five rounds already: labelled needs-human',
     });
     expect(submitted(fake)).toEqual([]);
     expect(fake.bodies('POST', `repos/o/r/issues/${ISSUE}/labels`)).toEqual([
@@ -194,10 +200,10 @@ describe('reviewJob on a pull request', () => {
     const check = lastCheck(fake);
     expect(check.conclusion).toBe('failure');
     expect(output(check).title).toBe(
-      'Fails: the reviewer requested changes twice already: needs a person',
+      'Fails: the reviewer requested changes five times already: needs a person',
     );
     expect(output(check).text).toContain(
-      'talos-review/1 verdict=REQUEST_CHANGES round=3 findings=1',
+      'talos-review/1 verdict=REQUEST_CHANGES round=6 findings=1',
     );
     expect(output(check).text).toContain('- `src/a/util.ts:2` Again.');
   });
@@ -209,7 +215,7 @@ describe('reviewJob on a pull request', () => {
     await reviewJobWith(jobContext(fake), deps(model));
     expect(model.prompts).toEqual([]);
     expect(output(lastCheck(fake)).title).toBe(
-      'Fails: the reviewer requested changes twice already: needs a person',
+      'Fails: the reviewer requested changes five times already: needs a person',
     );
   });
 
@@ -888,7 +894,7 @@ describe('reviewJob without a single debt issue', () => {
     expect(lastCheck(fake).conclusion).toBe('failure');
   });
 
-  it('labels the PR when a third request has no issue to label', async () => {
+  it('labels the PR when a sixth request has no issue to label', async () => {
     const fake = debtScenario();
     fake.closing.set(PR, []);
     const earlier = (round: number) => ({
@@ -898,7 +904,7 @@ describe('reviewJob without a single debt issue', () => {
       submitted_at: `2026-10-2${round}T10:00:00Z`,
       body: `talos-review/1 verdict=REQUEST_CHANGES round=${round} findings=1`,
     });
-    fake.reviews.set(PR, [earlier(1), earlier(2)]);
+    fake.reviews.set(PR, [earlier(1), earlier(2), earlier(3), earlier(4), earlier(5)]);
     fake.issues.set(PR, { number: PR, title: 'the PR', body: '', labels: [], events: [] });
     const model = fakeModel({
       ok: true,

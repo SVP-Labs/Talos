@@ -388,7 +388,7 @@ publishes `talos/review` (C16) as a check run, which the ruleset requires from t
 It also runs on `merge_group` and posts its verdict on the queue's merge commit, since a
 required check must report there too or the merge queue stalls. Events from an App start
 workflows, so Thea's push
-starts the gate and the reviewer's review reaches Thea as an event; the two-round limit still
+starts the gate and the reviewer's review reaches Thea as an event; the five-round limit still
 stops loops. This reverses ENGINEERING §2.4's "no GitHub App, no PAT".
 
 **Rejected:**
@@ -672,7 +672,7 @@ way any agent would:
   needs no API call of its own: reading rulesets on a private repository needs credentials the
   task doesn't have;
 - she reads findings from the check run and its SARIF, not from logs;
-- the three-try self-fix limit and the two review rounds bind her too;
+- the three-try self-fix limit and the five review rounds bind her too;
 - her tasks commit as they go, on a draft PR; before she marks it ready, her daemon squashes
   the task's commits, into one per acceptance criterion where the task kept them apart and
   into one otherwise. A squash can make a middle commit red even when the original series was

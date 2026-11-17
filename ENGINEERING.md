@@ -327,8 +327,8 @@ the extension files and architecture rules in the tools' own syntax, never here.
   card, which her hub submits as a `talos-approve` COMMENT review on the head commit. A card
   never counts on a PR that touches a `protected` path, nor anywhere in the Talos repository,
   nor while a repository is at `evaluate`. Any push after an approval voids it.
-- **Review rounds:** the reviewer reviews a ready PR once per head commit, for at most two
-  rounds of REQUEST_CHANGES; a third would-be request labels the work `needs-human`. Answer
+- **Review rounds:** the reviewer reviews a ready PR once per head commit, for at most five
+  rounds of REQUEST_CHANGES; a sixth would-be request labels the work `needs-human`. Answer
   every finding with a commit or a reasoned reply, and never resolve a thread you didn't
   address.
 - **Landing:** auto-merge is armed when the PR is marked ready; nothing merges until the gate
