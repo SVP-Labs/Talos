@@ -363,6 +363,8 @@ rerun the whole gate).
 
 ### C15 · Two identities: Thea implements, a Talos App reviews
 
+Reversed by: C35
+
 **Decision:**
 
 ```text
@@ -388,7 +390,7 @@ publishes `talos/review` (C16) as a check run, which the ruleset requires from t
 It also runs on `merge_group` and posts its verdict on the queue's merge commit, since a
 required check must report there too or the merge queue stalls. Events from an App start
 workflows, so Thea's push
-starts the gate and the reviewer's review reaches Thea as an event; the five-round limit still
+starts the gate and the reviewer's review reaches Thea as an event; the two-round limit still
 stops loops. This reverses ENGINEERING §2.4's "no GitHub App, no PAT".
 
 **Rejected:**
@@ -672,7 +674,7 @@ way any agent would:
   needs no API call of its own: reading rulesets on a private repository needs credentials the
   task doesn't have;
 - she reads findings from the check run and its SARIF, not from logs;
-- the three-try self-fix limit and the five review rounds bind her too;
+- the three-try self-fix limit and the review round limit (C35) bind her too;
 - her tasks commit as they go, on a draft PR; before she marks it ready, her daemon squashes
   the task's commits, into one per acceptance criterion where the task kept them apart and
   into one otherwise. A squash can make a middle commit red even when the original series was
@@ -1109,6 +1111,22 @@ new tool once (her repository's rule for tools).
 **Rejected:** a Talos manual in her prompt; snapshots of in-flight work in memory; pointing
 the whole handoff at `talos_status` (it sees only governed repositories, so work anywhere else
 would be lost between sessions).
+
+### C35 · Five review rounds and five claims, not two
+
+Reverses: C15
+
+_Decided 2026-11-17, by the owner._
+
+**Decision:** two rounds and two claims let a ticket stall at `needs-human` over a couple of
+minor findings, and capped how much work ran at once. The reviewer now answers `REQUEST_CHANGES`
+for up to five rounds (`MAX_ROUNDS` in `src/review/reviewer.ts`) before labelling the work
+`needs-human`; this is a kit-wide constant, so it applies to every governed repository once this
+release ships. Agents may hold up to five open claims at once (`agents.max_claims` in
+`talos.yml`); C13's schema default stays 2, so a repository that wants more still sets it itself.
+
+**Rejected:** leaving either limit at 2, which is what stalled tickets and capped parallel work
+in the first place.
 
 ## Open
 
