@@ -1,4 +1,4 @@
-import { posix, win32 } from 'node:path';
+import { isAbsolute, relative, win32 } from 'node:path';
 import { z } from 'zod';
 import { EngineError } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
@@ -27,7 +27,8 @@ const EXTENDED_LENGTH_PREFIX = /^(?:\\\\\?\\|\/\/\?\/)/;
 
 // A drive-rooted path (`C:\...` or `C:/...`) names a Windows path regardless of the host OS
 // running this check, so it must be relativized with `path.win32` rather than the host's
-// default `node:path`, which is `path.posix` on Linux/macOS.
+// default `node:path`. Anything else — a UNC path, a plain POSIX path — keeps using the host's
+// default, since only a drive letter is foreign to it.
 const DRIVE_ROOTED = /^[A-Za-z]:[/\\]/;
 
 function withoutExtendedLengthPrefix(raw: string): string {
@@ -41,9 +42,9 @@ function withoutExtendedLengthPrefix(raw: string): string {
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
   const name = withoutExtendedLengthPrefix(raw.name);
   const base = withoutExtendedLengthPrefix(root);
-  const { isAbsolute, relative } =
-    DRIVE_ROOTED.test(name) || DRIVE_ROOTED.test(base) ? win32 : posix;
-  const local = isAbsolute(name) ? relative(base, name) : name;
+  const { isAbsolute: absolute, relative: toRelative } =
+    DRIVE_ROOTED.test(name) || DRIVE_ROOTED.test(base) ? win32 : { isAbsolute, relative };
+  const local = absolute(name) ? toRelative(base, name) : name;
   const file = local.replaceAll('\\', '/').replace(/^\.\//, '');
   const start = Math.max(1, raw.start);
   return { file, start, end: Math.max(start, raw.end) };
