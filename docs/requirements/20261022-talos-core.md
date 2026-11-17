@@ -363,8 +363,6 @@ rerun the whole gate).
 
 ### C15 · Two identities: Thea implements, a Talos App reviews
 
-Reversed by: C35
-
 **Decision:**
 
 ```text
@@ -662,6 +660,8 @@ pre-existing violation would fail every PR).
 
 ### C20 · Talos judges, Thea does the work
 
+Reversed by: C35
+
 **Decision:** Thea is the only implementer. Her tasks, on the VPS and the PC, take tickets the
 way any agent would:
 
@@ -674,7 +674,7 @@ way any agent would:
   needs no API call of its own: reading rulesets on a private repository needs credentials the
   task doesn't have;
 - she reads findings from the check run and its SARIF, not from logs;
-- the three-try self-fix limit and the review round limit (C35) bind her too;
+- the three-try self-fix limit and the two review rounds bind her too;
 - her tasks commit as they go, on a draft PR; before she marks it ready, her daemon squashes
   the task's commits, into one per acceptance criterion where the task kept them apart and
   into one otherwise. A squash can make a middle commit red even when the original series was
@@ -1114,7 +1114,7 @@ would be lost between sessions).
 
 ### C35 · Five review rounds and five claims, not two
 
-Reverses: C15
+Reverses: C20
 
 _Decided 2026-11-17, by the owner._
 
