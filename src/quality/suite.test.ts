@@ -216,6 +216,21 @@ describe('runSuite', () => {
       expect(`${alone.stderr}${alone.stdout}`).toContain('does not meet "src/**" threshold');
     },
   );
+
+  it(
+    'judges a test its rerun passes as flaky, with coverage from both runs',
+    { timeout: SLOW },
+    async () => {
+      const ctx = await flakyProject();
+      const run = await runSuite(ctx, vitestRunner, FULL_SUITE);
+      expect(run.verdicts.map((v) => [v.test.file, v.test.name, v.kind])).toEqual([
+        ['src/a.test.ts', 'settles', 'flaky'],
+      ]);
+      // Only the rerun calls a(), and only the first run executes src/b.test.ts.
+      expect(run.coverage.get('src/a.ts')?.covered.has(2)).toBe(true);
+      expect(run.coverage.get('src/b.ts')?.covered.has(2)).toBe(true);
+    },
+  );
 });
 
 describe('testsRequest', () => {
