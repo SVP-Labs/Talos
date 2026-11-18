@@ -73,6 +73,154 @@ describe('cloneFindings', () => {
     expect(cloneFindings('{"duplicates": [], "statistics": {}}', '/repo')).toEqual([]);
   });
 
+  it('makes a Windows extended-length path relative to the root', () => {
+    const extended = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 60,
+          firstFile: { name: '//?/C:/repo/src/x.ts', start: 0, end: 6 },
+          secondFile: { name: String.raw`\\?\C:\repo\src\y.ts`, start: 2, end: 8 },
+        },
+      ],
+    });
+    expect(cloneFindings(extended, String.raw`\\?\C:\repo`)).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 2-8 repeat src/x.ts lines 1-6 (60 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 2, endLine: 8 },
+      },
+    ]);
+  });
+
+  it('relativizes a UNC root the same way on every host', () => {
+    const unc = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 20,
+          firstFile: { name: String.raw`\\server\share\repo\src\x.ts`, start: 1, end: 2 },
+          secondFile: { name: String.raw`\\server\share\repo\src\y.ts`, start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(unc, String.raw`\\server\share\repo`)).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 3-4 repeat src/x.ts lines 1-2 (20 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('makes an extended-length UNC path relative to its plain UNC root', () => {
+    const extendedUnc = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 20,
+          firstFile: { name: '//?/UNC/server/share/repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: String.raw`\\?\UNC\server\share\repo\src\y.ts`, start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(extendedUnc, String.raw`\\server\share\repo`)).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 3-4 repeat src/x.ts lines 1-2 (20 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('leaves a name that is not under the root alone', () => {
+    const outside = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 15,
+          firstFile: { name: '/elsewhere/src/a.ts', start: 1, end: 2 },
+          secondFile: { name: '/repo/src/b.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(outside, '/repo')).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message:
+          'Lines 3-4 repeat /elsewhere/src/a.ts lines 1-2 (15 tokens): keep one copy and share it.',
+        location: { file: 'src/b.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('does not strip a sibling directory whose name merely starts with the root', () => {
+    const sibling = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 15,
+          firstFile: { name: 'C:/repository/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(sibling, 'C:/repo')).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message:
+          'Lines 3-4 repeat C:/repository/src/x.ts lines 1-2 (15 tokens): keep one copy and ' +
+          'share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('relativizes the same way whether or not the root has a trailing slash', () => {
+    const report = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'C:/repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(report, 'C:/repo/')).toEqual(cloneFindings(report, 'C:/repo'));
+    expect(cloneFindings(report, 'C:/repo')[0]?.location).toEqual({
+      file: 'src/y.ts',
+      line: 3,
+      endLine: 4,
+    });
+  });
+
+  it("compares a drive letter's case only, leaving the rest of the path as given", () => {
+    const lowerDrive = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'c:/repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(lowerDrive, 'C:/repo')).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 3-4 repeat src/x.ts lines 1-2 (10 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+
+    const differentCaseFolder = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'C:/Repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(differentCaseFolder, 'C:/repo')[0]?.message).toBe(
+      'Lines 3-4 repeat C:/Repo/src/x.ts lines 1-2 (10 tokens): keep one copy and share it.',
+    );
+  });
+
   it('is an engine error for a report it cannot read', () => {
     expect(() => cloneFindings('not json', '/repo')).toThrow(EngineError);
     expect(() => cloneFindings('{"clones": []}', '/repo')).toThrow(/unknown shape/);

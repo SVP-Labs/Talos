@@ -1,4 +1,3 @@
-import { isAbsolute, relative } from 'node:path';
 import { z } from 'zod';
 import { EngineError } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
@@ -21,13 +20,36 @@ const report = z.object({
 
 type Fragment = { readonly file: string; readonly start: number; readonly end: number };
 
+// Windows may give a long path in its extended-length form, `\\?\C:\...` or `\\?\UNC\server\...`
+// (jscpd reports it with forward slashes), which names the same file as `C:\...` or
+// `\\server\...`; `node:path` parses neither form as the path it names.
+const EXTENDED_LENGTH_UNC = /^(?:\\\\\?\\|\/\/\?\/)UNC[\\/]/i;
+const EXTENDED_LENGTH = /^(?:\\\\\?\\|\/\/\?\/)/;
+
+// Windows treats a drive letter case-insensitively, so `realpath` and jscpd may each give it in
+// a different case for the same directory; nothing past the colon is case-insensitive this way.
+const DRIVE_LETTER = /^[A-Za-z]:/;
+
+/** A path in plain form with forward slashes and an upper-case drive letter. */
+function comparable(path: string): string {
+  const plain = path
+    .replace(EXTENDED_LENGTH_UNC, '//')
+    .replace(EXTENDED_LENGTH, '')
+    .replaceAll('\\', '/');
+  return DRIVE_LETTER.test(plain) ? plain.slice(0, 1).toUpperCase() + plain.slice(1) : plain;
+}
+
 /**
- * jscpd names a file given on its command line by its base name alone, so the gate asks it for
- * absolute paths and makes them relative here.
+ * jscpd reports a file under the root it was given in the form the OS returned for that root, so
+ * stripping the root as a string prefix is enough. `node:path` would make the result depend on
+ * the host: it parses a drive-rooted path only on Windows, and resolves there against the current
+ * drive.
  */
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
-  const local = isAbsolute(raw.name) ? relative(root, raw.name) : raw.name;
-  const file = local.replaceAll('\\', '/').replace(/^\.\//, '');
+  const name = comparable(raw.name);
+  const prefix = `${comparable(root).replace(/\/$/, '')}/`;
+  const local = name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  const file = local.replace(/^\.\//, '');
   const start = Math.max(1, raw.start);
   return { file, start, end: Math.max(start, raw.end) };
 }
