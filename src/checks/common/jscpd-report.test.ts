@@ -128,6 +128,77 @@ describe('cloneFindings', () => {
     });
   });
 
+  it('does not strip a sibling directory whose name merely starts with the root', () => {
+    const sibling = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 15,
+          firstFile: { name: 'C:/repository/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(sibling, 'C:/repo')).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message:
+          'Lines 3-4 repeat C:/repository/src/x.ts lines 1-2 (15 tokens): keep one copy and ' +
+          'share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('relativizes the same way whether or not the root has a trailing slash', () => {
+    const report = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'C:/repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(report, 'C:/repo/')).toEqual(cloneFindings(report, 'C:/repo'));
+    expect(cloneFindings(report, 'C:/repo')[0]?.location).toEqual({
+      file: 'src/y.ts',
+      line: 3,
+      endLine: 4,
+    });
+  });
+
+  it("compares a drive letter's case only, leaving the rest of the path as given", () => {
+    const lowerDrive = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'c:/repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(lowerDrive, 'C:/repo')).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 3-4 repeat src/x.ts lines 1-2 (10 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+
+    const differentCaseFolder = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 10,
+          firstFile: { name: 'C:/Repo/src/x.ts', start: 1, end: 2 },
+          secondFile: { name: 'C:/repo/src/y.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(differentCaseFolder, 'C:/repo')[0]?.message).toBe(
+      'Lines 3-4 repeat C:/Repo/src/x.ts lines 1-2 (10 tokens): keep one copy and share it.',
+    );
+  });
+
   it('is an engine error for a report it cannot read', () => {
     expect(() => cloneFindings('not json', '/repo')).toThrow(EngineError);
     expect(() => cloneFindings('{"clones": []}', '/repo')).toThrow(/unknown shape/);

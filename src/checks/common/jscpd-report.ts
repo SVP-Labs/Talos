@@ -28,6 +28,14 @@ function withoutExtendedLengthPrefix(raw: string): string {
   return raw.replace(EXTENDED_LENGTH_PREFIX, '');
 }
 
+// Windows treats a drive letter case-insensitively, so `realpath` and jscpd may each give it in
+// a different case for the same directory; nothing past the colon is case-insensitive this way.
+const DRIVE_LETTER = /^[A-Za-z]:/;
+
+function withUppercaseDriveLetter(path: string): string {
+  return DRIVE_LETTER.test(path) ? path.slice(0, 1).toUpperCase() + path.slice(1) : path;
+}
+
 /**
  * jscpd always reports a file under the root it was given, in whatever separator and drive or
  * UNC form the OS returned for that root, so stripping that same string as a prefix is enough —
@@ -38,8 +46,9 @@ function withoutExtendedLengthPrefix(raw: string): string {
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
   const name = withoutExtendedLengthPrefix(raw.name).replaceAll('\\', '/');
   const base = withoutExtendedLengthPrefix(root).replaceAll('\\', '/').replace(/\/$/, '');
-  const prefix = `${base}/`;
-  const local = name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  const prefix = `${withUppercaseDriveLetter(base)}/`;
+  const matches = withUppercaseDriveLetter(name).startsWith(prefix);
+  const local = matches ? name.slice(prefix.length) : name;
   const file = local.replace(/^\.\//, '');
   const start = Math.max(1, raw.start);
   return { file, start, end: Math.max(start, raw.end) };
