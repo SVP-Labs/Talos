@@ -1,4 +1,3 @@
-import { isAbsolute, relative, win32 } from 'node:path';
 import { z } from 'zod';
 import { EngineError } from '../../core/check.js';
 import type { Finding } from '../../core/finding.js';
@@ -25,27 +24,23 @@ type Fragment = { readonly file: string; readonly start: number; readonly end: n
 // `node:path` does not parse as the drive-rooted path it names, so `relative` cannot strip it.
 const EXTENDED_LENGTH_PREFIX = /^(?:\\\\\?\\|\/\/\?\/)/;
 
-// A drive-rooted path (`C:\...` or `C:/...`) names a Windows path regardless of the host OS
-// running this check, so it must be relativized with `path.win32` rather than the host's
-// default `node:path`. Anything else — a UNC path, a plain POSIX path — keeps using the host's
-// default, since only a drive letter is foreign to it.
-const DRIVE_ROOTED = /^[A-Za-z]:[/\\]/;
-
 function withoutExtendedLengthPrefix(raw: string): string {
   return raw.replace(EXTENDED_LENGTH_PREFIX, '');
 }
 
 /**
- * jscpd names a file given on its command line by its base name alone, so the gate asks it for
- * absolute paths and makes them relative here.
+ * jscpd always reports a file under the root it was given, in whatever separator and drive or
+ * UNC form the OS returned for that root, so stripping that same string as a prefix is enough —
+ * no need for `node:path`, whose `isAbsolute`/`relative` resolve a path lacking a drive letter
+ * against the current drive, a guess that depends on the machine running this and not on the
+ * path itself.
  */
 function toFragment(raw: z.infer<typeof fragment>, root: string): Fragment {
-  const name = withoutExtendedLengthPrefix(raw.name);
-  const base = withoutExtendedLengthPrefix(root);
-  const { isAbsolute: absolute, relative: toRelative } =
-    DRIVE_ROOTED.test(name) || DRIVE_ROOTED.test(base) ? win32 : { isAbsolute, relative };
-  const local = absolute(name) ? toRelative(base, name) : name;
-  const file = local.replaceAll('\\', '/').replace(/^\.\//, '');
+  const name = withoutExtendedLengthPrefix(raw.name).replaceAll('\\', '/');
+  const base = withoutExtendedLengthPrefix(root).replaceAll('\\', '/').replace(/\/$/, '');
+  const prefix = `${base}/`;
+  const local = name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  const file = local.replace(/^\.\//, '');
   const start = Math.max(1, raw.start);
   return { file, start, end: Math.max(start, raw.end) };
 }

@@ -92,35 +92,7 @@ describe('cloneFindings', () => {
     ]);
   });
 
-  it('relativizes with path.win32 when only the root is drive-rooted', () => {
-    const mixed = JSON.stringify({
-      duplicates: [
-        {
-          tokens: 25,
-          firstFile: { name: '/repo/src/a.ts', start: 1, end: 2 },
-          secondFile: { name: 'C:/repo/src/b.ts', start: 3, end: 4 },
-        },
-      ],
-    });
-    const [finding] = cloneFindings(mixed, 'C:\\repo');
-    expect(finding?.location).toEqual({ file: 'src/b.ts', line: 3, endLine: 4 });
-    if (process.platform === 'win32') {
-      expect(finding?.message).toBe(
-        'Lines 3-4 repeat src/a.ts lines 1-2 (25 tokens): keep one copy and share it.',
-      );
-    } else {
-      // path.win32 only resolves a driveless absolute name (no "C:") against the real OS
-      // drive on an actual Windows host; elsewhere it finds no shared root with the
-      // drive-rooted base and leaves the name as given. That still proves path.win32 (not
-      // path.posix) ran: path.posix would recognize '/repo/src/a.ts' as absolute on its own
-      // and resolve it against the current working directory instead, a different result.
-      expect(finding?.message).toBe(
-        'Lines 3-4 repeat /repo/src/a.ts lines 1-2 (25 tokens): keep one copy and share it.',
-      );
-    }
-  });
-
-  it('relativizes a UNC root with the host OS, not always path.posix', () => {
+  it('relativizes a UNC root the same way on every host', () => {
     const unc = JSON.stringify({
       duplicates: [
         {
@@ -130,14 +102,30 @@ describe('cloneFindings', () => {
         },
       ],
     });
-    const file = cloneFindings(unc, String.raw`\\server\share\repo`)[0]?.location?.file;
-    if (process.platform === 'win32') {
-      expect(file).toBe('src/y.ts');
-    } else {
-      // No drive letter in a UNC path, so path.posix (this host's default away from Windows)
-      // cannot recognize it as absolute either, same as before path.win32 was ever chosen here.
-      expect(file).toBe('//server/share/repo/src/y.ts');
-    }
+    expect(cloneFindings(unc, String.raw`\\server\share\repo`)).toEqual([
+      {
+        rule: 'jscpd/clone',
+        message: 'Lines 3-4 repeat src/x.ts lines 1-2 (20 tokens): keep one copy and share it.',
+        location: { file: 'src/y.ts', line: 3, endLine: 4 },
+      },
+    ]);
+  });
+
+  it('leaves a name that is not under the root alone', () => {
+    const outside = JSON.stringify({
+      duplicates: [
+        {
+          tokens: 15,
+          firstFile: { name: '/elsewhere/src/a.ts', start: 1, end: 2 },
+          secondFile: { name: '/repo/src/b.ts', start: 3, end: 4 },
+        },
+      ],
+    });
+    expect(cloneFindings(outside, '/repo')[0]?.location).toEqual({
+      file: 'src/b.ts',
+      line: 3,
+      endLine: 4,
+    });
   });
 
   it('is an engine error for a report it cannot read', () => {
