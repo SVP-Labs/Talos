@@ -1,12 +1,63 @@
-import { writeFile } from 'node:fs/promises';
+import { symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RawTestRun } from './protocol.js';
 import { FULL_SUITE, runSuite, sharedSuite, testsRequest } from './suite.js';
-import { junitXml, scriptedRunner, testContext } from './test/context.js';
+import { junitXml, scriptedRunner, type TestContext, testContext } from './test/context.js';
 import { EngineError } from '../core/check.js';
+import { nodeTool, runTool } from '../langs/ts/node.js';
+import { vitestRunner } from '../langs/ts/runners/vitest.js';
 
 const COMMIT = { suite: 'commit', coverage: false } as const;
+
+const SLOW = 120_000;
+
+/**
+ * A Vitest project whose `src/a.test.ts` fails on its first run only, and whose own per-glob
+ * coverage thresholds a run of that file alone falls far below.
+ */
+async function flakyProject(): Promise<TestContext> {
+  const ctx = await testContext({
+    files: {
+      'package.json': '{ "name": "flaky", "private": true, "type": "module" }\n',
+      'vitest.config.ts': `import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['src/**/*.test.ts'],
+    coverage: {
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts'],
+      thresholds: { 'src/**': { lines: 90, statements: 90 } },
+    },
+  },
+});
+`,
+      'src/a.ts': 'export function a(): number {\n  return 1;\n}\n',
+      'src/b.ts': 'export function b(): number {\n  return 2;\n}\n',
+      'src/a.test.ts': `import { existsSync, writeFileSync } from 'node:fs';
+import { expect, it } from 'vitest';
+import { a } from './a.js';
+
+it('settles', () => {
+  const again = existsSync('ran-once');
+  writeFileSync('ran-once', '');
+  expect(again).toBe(true);
+  expect(a()).toBe(1);
+});
+`,
+      'src/b.test.ts': `import { expect, it } from 'vitest';
+import { b } from './b.js';
+
+it('holds', () => {
+  expect(b()).toBe(2);
+});
+`,
+    },
+  });
+  await symlink(join(process.cwd(), 'node_modules'), join(ctx.root, 'node_modules'), 'dir');
+  return ctx;
+}
 
 async function report(dir: string, name: string, text: string): Promise<string> {
   const path = join(dir, name);
@@ -150,6 +201,21 @@ describe('runSuite', () => {
     const empty = scriptedRunner(() => ({ exitCode: 0, output: '', junit: [] }));
     expect(await runSuite(ctx, empty, FULL_SUITE)).toEqual({ verdicts: [], coverage: new Map() });
   });
+
+  it(
+    'reruns a failing test’s file with coverage below the project’s own thresholds',
+    { timeout: SLOW },
+    async () => {
+      const ctx = await flakyProject();
+      const vitest = scriptedRunner((request) => vitestRunner.run(ctx, request));
+      await expect(runSuite(ctx, vitest, FULL_SUITE)).resolves.toBeDefined();
+      expect(vitest.requests).toEqual([FULL_SUITE, { ...FULL_SUITE, files: ['src/a.test.ts'] }]);
+      const tool = await nodeTool(ctx, 'vitest', 'vitest');
+      const alone = await runTool(ctx, tool, ['run', '--coverage.enabled', 'src/a.test.ts']);
+      expect(alone.code).toBe(1);
+      expect(`${alone.stderr}${alone.stdout}`).toContain('does not meet "src/**" threshold');
+    },
+  );
 });
 
 describe('testsRequest', () => {

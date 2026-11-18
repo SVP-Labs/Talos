@@ -15,7 +15,12 @@ export type VitestPlan = {
   readonly coverage: boolean;
 };
 
-/** The arguments for one Vitest run: JUnit and, when asked, LCOV coverage, both into scratch. */
+/**
+ * The arguments for one Vitest run: JUnit and, when asked, LCOV coverage, both into scratch.
+ * Coverage runs switch the project's own thresholds off, so only a failing test sets the exit
+ * code: a run over some of the files is far below them, and the gate judges the merged LCOV
+ * itself. Setting `lines`, `branches` and the rest to 0 would leave per-glob thresholds standing.
+ */
 export function vitestArgs(plan: VitestPlan): string[] {
   const coverage = plan.coverage
     ? [
@@ -24,6 +29,7 @@ export function vitestArgs(plan: VitestPlan): string[] {
         '--coverage.reporter=lcovonly',
         `--coverage.reportsDirectory=${plan.coverageDir}`,
         '--coverage.reportOnFailure',
+        '--coverage.thresholds=false',
       ]
     : ['--coverage.enabled=false'];
   return [

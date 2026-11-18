@@ -26,7 +26,19 @@ describe('vitestArgs', () => {
       '--coverage.reporter=lcovonly',
       '--coverage.reportsDirectory=/s/coverage',
       '--coverage.reportOnFailure',
+      '--coverage.thresholds=false',
     ]);
+  });
+
+  it('switches the project’s coverage thresholds off on a rerun with coverage too', () => {
+    const args = vitestArgs({
+      junit: '/s/j.xml',
+      coverageDir: '/s/c',
+      excluded: [],
+      coverage: true,
+      files: ['src/a.test.ts'],
+    });
+    expect(args.slice(-2)).toEqual(['--coverage.thresholds=false', 'src/a.test.ts']);
   });
 
   it('switches coverage off and names the files of a rerun', () => {
