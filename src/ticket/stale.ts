@@ -10,10 +10,10 @@ import {
   openPullsFrom,
 } from './github.js';
 import { LABEL } from './labels.js';
-import { type Issue, type Pull, refSchema, timelineSchema } from './schemas.js';
+import { type Issue, refSchema, timelineSchema } from './schemas.js';
 import { GitHubError, type GitHub } from '../github/api.js';
 
-/** A claim idle this long is released, unless a PR from it is ready for review. */
+/** A claim idle this long is released, unless a PR from its branch is open, draft or ready. */
 export const STALE_HOURS = 4;
 
 const HOUR = 3_600_000;
@@ -23,25 +23,26 @@ export type Activity = {
   readonly claimedAt?: string | undefined;
   /** The committer date of the branch's head. */
   readonly pushedAt?: string | undefined;
-  /** When the draft PR from the branch last changed. */
-  readonly draftUpdatedAt?: string | undefined;
-  /** A PR from the branch is open and ready for review: review time is never idle time. */
-  readonly readyPull: boolean;
+  /**
+   * A PR from the branch is open, draft or ready: a draft can wait on its owner for days, and
+   * deleting its branch would close it.
+   */
+  readonly openPull: boolean;
 };
 
 export type Staleness = {
   readonly stale: boolean;
   readonly idleHours: number | null;
-  readonly why: 'in-review' | 'no-activity-known' | 'active' | 'idle';
+  readonly why: 'pull-open' | 'no-activity-known' | 'active' | 'idle';
 };
 
 /**
- * Idle time runs from the newest of the claim, the last push and the draft PR's last change, so
- * a branch created at an old `main` isn't stale for that alone.
+ * Idle time runs from the newer of the claim and the last push, so a branch created at an old
+ * `main` isn't stale for that alone.
  */
 export function staleness(activity: Activity, now: Date): Staleness {
-  if (activity.readyPull) return { stale: false, idleHours: null, why: 'in-review' };
-  const times = [activity.claimedAt, activity.pushedAt, activity.draftUpdatedAt]
+  if (activity.openPull) return { stale: false, idleHours: null, why: 'pull-open' };
+  const times = [activity.claimedAt, activity.pushedAt]
     .map((t) => (t === undefined ? Number.NaN : Date.parse(t)))
     .filter((t) => !Number.isNaN(t));
   if (times.length === 0) return { stale: false, idleHours: null, why: 'no-activity-known' };
@@ -86,26 +87,19 @@ async function claimedAt(gh: GitHub, repo: string, issue: number): Promise<strin
     .at(-1);
 }
 
-async function activityOf(
-  gh: GitHub,
-  repo: string,
-  claim: TicketBranch,
-): Promise<{ activity: Activity; draft: Pull | undefined }> {
+async function activityOf(gh: GitHub, repo: string, claim: TicketBranch): Promise<Activity> {
   const pulls = await openPullsFrom(gh, repo, claim.branch);
-  const draft = pulls.find((p) => p.draft);
-  if (pulls.some((p) => !p.draft)) return { activity: { readyPull: true }, draft };
+  if (pulls.length > 0) return { openPull: true };
   const head = await branchHead(gh, repo, claim.branch);
-  const activity: Activity = {
-    readyPull: false,
+  return {
+    openPull: false,
     claimedAt: await claimedAt(gh, repo, claim.issue),
     pushedAt: head?.date,
-    draftUpdatedAt: draft?.updatedAt,
   };
-  return { activity, draft };
 }
 
 export type SweepClients = {
-  /** Issues: labels and comments, on the issue and on the draft. */
+  /** Issues: labels and comments. */
   readonly gh: GitHub;
   /** Deleting a branch needs `contents: write`, which the reviewer App doesn't hold. */
   readonly refs: GitHub;
@@ -114,15 +108,13 @@ export type SweepClients = {
 type Stale = {
   readonly issue: Issue;
   readonly branch: string;
-  readonly draft: Pull | undefined;
   readonly idleHours: number;
 };
 
 /**
  * Releases a claim labels first and branch last, so that a step refused part-way leaves the
  * branch, which the next sweep finds and finishes; a deleted branch with the claim's labels still
- * on its issue would be stranded, since every sweep starts from the branches. Deleting the branch
- * closes its draft, so no pull request needs writing.
+ * on its issue would be stranded, since every sweep starts from the branches.
  */
 async function releaseStale(c: SweepClients, repo: string, stale: Stale): Promise<void> {
   await changeLabels(c.gh, repo, stale.issue.number, releasedLabels(stale.issue));
@@ -136,15 +128,6 @@ async function releaseStale(c: SweepClients, repo: string, stale: Stale): Promis
       `🔓 released: the claim was idle for ${idle}; branch \`${stale.branch}\` is deleted ` +
         'and the ticket is open to claim again.',
     );
-  }
-  if (stale.draft !== undefined) {
-    await addComment(
-      c.gh,
-      repo,
-      stale.draft.number,
-      `Closed by Talos: the claim on #${stale.issue.number} was idle for ${idle}. ` +
-        'The commits stay on this pull request.',
-    ).catch(() => undefined);
   }
 }
 
@@ -177,13 +160,12 @@ export async function sweepStaleClaims(
         kept += 1;
         continue;
       }
-      const { activity, draft } = await activityOf(c.gh, at.repo, claim);
-      const verdict = staleness(activity, at.now);
+      const verdict = staleness(await activityOf(c.gh, at.repo, claim), at.now);
       if (!verdict.stale || verdict.idleHours === null) {
         kept += 1;
         continue;
       }
-      await releaseStale(c, at.repo, { ...claim, issue, draft, idleHours: verdict.idleHours });
+      await releaseStale(c, at.repo, { ...claim, issue, idleHours: verdict.idleHours });
       released.push(claim.issue);
     } catch (error) {
       failures.push({ branch: claim.branch, error: safeFailure(error) });
