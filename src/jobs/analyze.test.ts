@@ -5,6 +5,7 @@ import {
   type AnalyzeDeps,
   DEBT_FILE,
   debtRun,
+  maskSecrets,
   MUTATION_FILE,
   mutationMarkdown,
   mutationReport,
@@ -168,5 +169,68 @@ describe('mutationReport', () => {
       'ts/mutation@c4',
     ]);
     expect(summary.errors[0]?.reason).toBe(`${'0'.repeat(199)}…`);
+  });
+
+  it('masks a secret in the detail, the report and the summary', async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
+    const token = ['ghp', 'Q7x'.repeat(12)].join('_');
+    const reason = `npm ERR! 401 fetching with ${token}\nstryker exited 1`;
+    const d = deps(result([outcome('ts/mutation', [], { status: 'error', reason })]));
+    const said = 'ts/mutation: npm ERR! 401 fetching with *** stryker exited 1';
+    expect((await mutationReport(ctx, d)).detail).toBe(
+      `0 surviving mutant(s) in 0 file(s); 1 engine error(s): ${said}`,
+    );
+    const written = await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8');
+    expect(written).not.toContain(token);
+    expect(JSON.parse(written)).toMatchObject({
+      errors: [{ check: 'ts/mutation', reason: 'npm ERR! 401 fetching with *** stryker exited 1' }],
+    });
+    expect(d.summaries[0]).not.toContain(token);
+    expect(d.summaries[0]).toContain('`npm ERR! 401 fetching with *** stryker exited 1`');
+  });
+
+  it('masks a secret before clipping, so a cut leaves no part of it', () => {
+    const token = ['github', 'pat', 'Z9'.repeat(40)].join('_');
+    const reason = `${'x'.repeat(180)} ${token}`;
+    const [fault] = mutationSummary(
+      result([outcome('ts/mutation', [], { status: 'error', reason })]),
+    ).errors;
+    expect(fault?.reason).toBe(`${'x'.repeat(180)} ***`);
+  });
+});
+
+describe('maskSecrets', () => {
+  const join2 = (...parts: string[]): string => parts.join('');
+
+  it.each([
+    ['a GitHub token', `use ${join2('gh', 's_', 'k'.repeat(36))} now`, 'use *** now'],
+    ['an AWS key id', `id ${join2('AK', 'IA', 'ABCDEFGH12345678')}.`, 'id ***.'],
+    ['a Slack token', `hook ${join2('xox', 'b-', '1234567890-abc')}`, 'hook ***'],
+    ['an npm token', `auth ${join2('npm', '_', 'a'.repeat(36))}`, 'auth ***'],
+    [
+      'a JWT',
+      `jwt ${join2('eyJ', 'h'.repeat(10), '.', 'p'.repeat(10), '.', 's'.repeat(10))}`,
+      'jwt ***',
+    ],
+    [
+      'URL credentials',
+      'git clone https://me:hunter2pass@example.com/r',
+      'git clone https://***@example.com/r',
+    ],
+    ['a bearer header', `Authorization: Bearer ${'t'.repeat(30)}`, 'Authorization: Bearer ***'],
+    ['a named value', `DB_PASSWORD=${'p'.repeat(12)} next`, 'DB_PASSWORD=*** next'],
+    ['a quoted named value', `"api_key": "${'k'.repeat(20)}"`, '"api_key": "***"'],
+    [
+      'a private key',
+      join2('-----BEGIN RSA ', 'PRIVATE KEY-----\nbody\n-----END RSA ', 'PRIVATE KEY----- after'),
+      '*** after',
+    ],
+  ])('masks %s', (_, text, masked) => {
+    expect(maskSecrets(text)).toBe(masked);
+  });
+
+  it('leaves ordinary tool output alone', () => {
+    const text = 'Ran 2496 tests in 3 minutes; 41784 mutants, tokens: 55 (src/a.ts:12)';
+    expect(maskSecrets(text)).toBe(text);
   });
 });
