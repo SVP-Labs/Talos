@@ -10,7 +10,7 @@ const SECRETS: readonly (readonly [RegExp, string])[] = [
   [/\b(?:gh[opr-u]_[A-Za-z0-9]{20,}|github_pat_\w{20,})/g, MASK],
   [/\b(?:AKI|ASI)A[0-9A-Z]{16}\b/g, MASK],
   [/\b(?:xox)[a-bpr-s]-[\w-]{10,}/g, MASK],
-  [/\b(?:npm|gl(?:pat)|sk|pk|rk)_[A-Za-z0-9_-]{16,}/g, MASK],
+  [/\b(?:npm|gl(?:pat)|sk|pk|rk)[_-][A-Za-z0-9_-]{16,}/g, MASK],
   [/\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, MASK],
   [/(\/\/)[^/\s:@]+:[^/\s@]+@/g, `$1${MASK}@`],
   [/\b(Bearer|Basic|token)(\s+)[\w.~+/=-]{12,}/gi, `$1$2${MASK}`],

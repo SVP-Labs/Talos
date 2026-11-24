@@ -9,6 +9,7 @@ describe('maskSecrets', () => {
     ['an AWS key id', `id ${join2('AK', 'IA', 'ABCDEFGH12345678')}.`, 'id ***.'],
     ['a Slack token', `hook ${join2('xox', 'b-', '1234567890-abc')}`, 'hook ***'],
     ['an npm token', `auth ${join2('npm', '_', 'a'.repeat(36))}`, 'auth ***'],
+    ['a GitLab token', `push ${join2('gl', 'pat', '-', 'x1Y2'.repeat(5))} ok`, 'push *** ok'],
     [
       'a JWT',
       `jwt ${join2('eyJ', 'h'.repeat(10), '.', 'p'.repeat(10), '.', 's'.repeat(10))}`,
