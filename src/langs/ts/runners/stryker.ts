@@ -17,7 +17,9 @@ function anyOf(files: readonly string[]): string {
 export type WrapperOptions = {
   /**
    * A tsconfig file that doesn't exist, set when the component's tsconfig chain stays inside it:
-   * Stryker then has nothing to rewrite there, and leaves the files as they are.
+   * Stryker then has nothing to rewrite there, and leaves the files as they are. Stryker has no
+   * option that turns the rewrite off alone, and its TypeScript checker reads the same setting,
+   * so a base that names its own tsconfig or runs that checker keeps the rewrite.
    */
   readonly noTsconfig?: string;
 };
@@ -38,7 +40,11 @@ export function strykerWrapper(
   const tsconfig =
     options.noTsconfig === undefined
       ? []
-      : [`  tsconfigFile: base.tsconfigFile ?? ${JSON.stringify(options.noTsconfig)},`];
+      : [
+          "  ...(base.tsconfigFile === undefined && !(base.checkers ?? []).includes('typescript')",
+          `    ? { tsconfigFile: ${JSON.stringify(options.noTsconfig)} }`,
+          '    : {}),',
+        ];
   return [
     `import base from ${JSON.stringify(base)};`,
     '',

@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { strykerTargets, strykerWrapper, tsconfigLeaves } from './stryker.js';
 import { vitestArgs } from './vitest.js';
@@ -74,12 +75,33 @@ describe('strykerWrapper', () => {
     expect(two).toContain('false : "{src/a.ts,src/b.ts}",');
   });
 
-  it("points Stryker at no tsconfig only when asked, keeping the base's own", () => {
+  const wrapped = {
+    mutate: ['a.ts'],
+    disableTypeChecks: 'a.ts',
+    reporters: ['json'],
+    jsonReporter: { fileName: '/s/m.json' },
+    incremental: false,
+  };
+
+  it.each([
+    ['a plain base', {}, { tsconfigFile: '/s/none.json' }],
+    ['a base with its own tsconfig', { tsconfigFile: 'app.json' }, { tsconfigFile: 'app.json' }],
+    ['a base running the TypeScript checker', { checkers: ['typescript'] }, {}],
+  ])('points Stryker at no tsconfig for %s only if it may', async (_, base, tsconfig) => {
+    const dir = await mkdtemp(join(tmpdir(), 'stryker-wrapper-'));
+    await writeFile(join(dir, 'base.mjs'), `export default ${JSON.stringify(base)};\n`);
+    const wrapper = join(dir, 'wrapper.mjs');
+    const url = pathToFileURL(join(dir, 'base.mjs')).href;
+    await writeFile(
+      wrapper,
+      strykerWrapper(url, ['a.ts'], '/s/m.json', { noTsconfig: '/s/none.json' }),
+    );
+    const loaded: unknown = await import(pathToFileURL(wrapper).href);
+    expect(loaded).toHaveProperty('default', { ...base, ...tsconfig, ...wrapped });
+  });
+
+  it('leaves the tsconfig setting alone unless asked', () => {
     expect(strykerWrapper('file:///r/s.mjs', ['a.ts'], '/s/m.json')).not.toContain('tsconfigFile');
-    const text = strykerWrapper('file:///r/s.mjs', ['a.ts'], '/s/m.json', {
-      noTsconfig: '/s/no-tsconfig.json',
-    });
-    expect(text).toContain('tsconfigFile: base.tsconfigFile ?? "/s/no-tsconfig.json",');
   });
 });
 
