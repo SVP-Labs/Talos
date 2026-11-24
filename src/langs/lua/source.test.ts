@@ -128,6 +128,24 @@ describe('fetchSource', () => {
     const exec: Exec = () => Promise.reject(new Error('spawn curl ENOENT'));
     await expect(fetchSource(exec, SOURCE, dir)).rejects.toThrow(/curl ENOENT/);
   });
+
+  it('counts a curl that succeeds without writing the file as a failed download', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'lua-source-'));
+    const urls = ['https://a.example/l.tar.gz', 'https://b.example/l.tar.gz'];
+    const empty = curl(() => ({ result: OK }));
+    const fetching = fetchSource(empty.exec, { ...SOURCE, urls }, dir);
+    await expect(fetching).rejects.toThrow(EngineError);
+    await expect(fetching).rejects.toThrow(
+      'https://a.example/l.tar.gz: curl exited 0 but wrote no file\n' +
+        'https://b.example/l.tar.gz: curl exited 0 but wrote no file',
+    );
+    const second = curl((url) =>
+      url === urls[0] ? { result: OK } : { body: TARBALL, result: OK },
+    );
+    const file = await fetchSource(second.exec, { ...SOURCE, urls }, dir);
+    expect(await readFile(file, 'utf8')).toBe(TARBALL);
+    expect(second.urls).toEqual(urls);
+  });
 });
 
 describe('toolCache', () => {

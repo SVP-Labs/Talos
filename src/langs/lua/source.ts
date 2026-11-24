@@ -65,10 +65,15 @@ export function sourceCurlArgs(url: string, output: string): string[] {
   ];
 }
 
-async function sha256Of(file: string): Promise<string> {
-  return createHash('sha256')
-    .update(await readFile(file))
-    .digest('hex');
+/** The file's sha256, or undefined when there is no file to read. */
+async function sha256Of(file: string): Promise<string | undefined> {
+  let data: Buffer;
+  try {
+    data = await readFile(file);
+  } catch {
+    return undefined;
+  }
+  return createHash('sha256').update(data).digest('hex');
 }
 
 function last(result: ExecResult): string {
@@ -91,6 +96,7 @@ async function attempt(
   }
   if (result.code !== 0) return `curl exited ${result.code}: ${last(result)}`;
   const actual = await sha256Of(file);
+  if (actual === undefined) return 'curl exited 0 but wrote no file';
   if (actual !== source.sha256) return `sha256 ${actual}, not the pinned ${source.sha256}`;
   return undefined;
 }
