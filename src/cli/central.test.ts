@@ -80,7 +80,7 @@ describe('talos central', () => {
     ]);
   });
 
-  it('replaces any failure with one generic line that names no repository', async () => {
+  it('replaces a failure with its kind: class and status, never a repository', async () => {
     const fake = fakeGitHub({
       'GET installation/repositories': { status: 500, body: { message: 'SVP-Labs/Secret broke' } },
     });
@@ -91,8 +91,17 @@ describe('talos central', () => {
     );
     expect(code).toBe(1);
     expect(terminal.lines).toEqual([
-      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'sweep', ok: false, error: 'the runtime sweep could not finish' })}\n`,
+      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'sweep', ok: false, error: 'the runtime sweep could not finish', failure: { class: 'GitHubError', status: 500 } })}\n`,
     ]);
+  });
+
+  it('names no class that is not a bare word', async () => {
+    const renamed = Object.assign(new Error('SVP-Labs/Secret'), { name: 'SVP-Labs/Secret' });
+    const terminal = io({ TALOS_REVIEWER_TOKEN: 't' });
+    const broken: typeof fetch = () => Promise.reject(renamed);
+    await centralWith({ baseUrl: BASE, fetch: broken, assess: nothing })(['sweep'], terminal);
+    expect(terminal.lines.join('')).not.toContain('Secret');
+    expect(lastJson(terminal.lines)).toMatchObject({ ok: false, failure: { class: 'unknown' } });
   });
 
   it('refuses the urgent promotion for anyone but the owner, before any API call', async () => {
@@ -276,7 +285,7 @@ describe('talos central', () => {
       const terminal = io({ ...env, ...extra });
       expect(await central([...argv, '--json'], terminal)).toBe(1);
       expect(terminal.lines).toEqual([
-        `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'pick', ok: false, error: 'the repository lookup could not finish' })}\n`,
+        `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'pick', ok: false, error: 'the repository lookup could not finish', failure: { class: 'CentralError' } })}\n`,
       ]);
     }
     expect(fake.calls).toEqual([]);
@@ -295,6 +304,7 @@ describe('talos central', () => {
       job: 'drift',
       ok: false,
       error: 'the drift report could not finish',
+      failure: { step: 'talos-repository', class: 'GitHubError', status: 403 },
     });
     expect(fake.calls.map((c) => c.path)).toEqual(['repos/SVP-Labs/Talos']);
   });

@@ -2,12 +2,18 @@ import { appendFile } from 'node:fs/promises';
 import { type Command, type Io, parse, UsageError } from './io.js';
 import { runChannels } from '../central/channels-job.js';
 import { dispatchAllowed } from '../central/channels.js';
-import { expectedFromAssets, runChannelsFileDrift, runDrift } from '../central/drift-job.js';
+import {
+  DriftStepError,
+  driftStep,
+  expectedFromAssets,
+  runChannelsFileDrift,
+  runDrift,
+} from '../central/drift-job.js';
 import { pickRepositories } from '../central/pick.js';
 import { maskNames, type PrivacyNames, runPrivacy } from '../central/privacy.js';
 import { runtimeAssessor, type RuntimeAssessor } from '../central/runtime-port.js';
 import { runSweep } from '../central/sweep-job.js';
-import { github, type GitHub, type GitHubOptions } from '../github/api.js';
+import { github, type GitHub, GitHubError, type GitHubOptions } from '../github/api.js';
 import { appId } from '../github/apps.js';
 import { downloader } from '../github/artifacts.js';
 import { identities } from '../github/identities.js';
@@ -20,8 +26,8 @@ const JOBS = ['channels', 'sweep', 'drift', 'privacy', 'pick'] as const;
 type Job = (typeof JOBS)[number];
 
 /**
- * What a failed job prints instead of its error: messages from git and the API name
- * repositories, and these jobs run in a public repository.
+ * What a failed job prints instead of its error's message, beside the failure's kind: messages
+ * from git and the API name repositories, and these jobs run in a public repository.
  */
 const GENERIC: Readonly<Record<Job, string>> = {
   channels: 'the channel job could not finish',
@@ -30,6 +36,21 @@ const GENERIC: Readonly<Record<Job, string>> = {
   privacy: 'the privacy self-test could not finish',
   pick: 'the repository lookup could not finish',
 };
+
+/** An error class's name, which can't hold a repository's `owner/name`. */
+const CLASS_NAME = /^[A-Za-z]+$/;
+
+/**
+ * The kind of a failure, in words that name no repository: the step it stopped at, the error's
+ * class and the HTTP status GitHub answered. The message is left out, since it names repositories.
+ */
+function failureOf(error: unknown): Record<string, string | number> {
+  const step = error instanceof DriftStepError ? { step: error.step } : {};
+  const cause = error instanceof DriftStepError ? error.cause : error;
+  const name = cause instanceof Error && CLASS_NAME.test(cause.name) ? cause.name : 'unknown';
+  const status = cause instanceof GitHubError ? { status: cause.status } : {};
+  return { ...step, class: name, ...status };
+}
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -101,15 +122,14 @@ async function drift(env: Env, options: CentralOptions, flags: Flags): Promise<O
   const who = identities(env);
   const release = github(token(env, 'TALOS_RELEASE_TOKEN'), options);
   const reviewer = github(token(env, 'TALOS_REVIEWER_TOKEN'), options);
-  const report = flags.channelsFile
-    ? await runChannelsFileDrift({ release, reviewer, who })
-    : await runDrift({
-        release,
-        reviewer,
-        who,
-        expected: await expectedFromAssets(who.owner, await appId(reviewer, who.reviewer)),
-      });
-  return { ok: true, report };
+  if (flags.channelsFile) {
+    return { ok: true, report: await runChannelsFileDrift({ release, reviewer, who }) };
+  }
+  const reviewerApp = await driftStep('reviewer-app', () => appId(reviewer, who.reviewer));
+  const expected = await driftStep('expected-settings', () =>
+    expectedFromAssets(who.owner, reviewerApp),
+  );
+  return { ok: true, report: await runDrift({ release, reviewer, who, expected }) };
 }
 
 /** What both privacy steps read: the organisation's names, and the canary's digest. */
@@ -223,7 +243,7 @@ export function centralWith(options: CentralOptions): Command {
       return outcome.ok ? 0 : 1;
     } catch (error) {
       if (error instanceof UsageError) throw error;
-      print({ ok: false, error: GENERIC[job] });
+      print({ ok: false, error: GENERIC[job], failure: failureOf(error) });
       return 1;
     }
   };
