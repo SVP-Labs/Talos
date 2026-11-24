@@ -4,9 +4,9 @@ import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { type CheckContext, EngineError } from '../../../core/check.js';
 import type { MutationRunner, Report } from '../../../quality/index.js';
+import { GENERATED_PATHS } from '../configs/index.js';
 import { STRYKER_BASE } from '../configs/stryker.js';
 import { inComponent, rootOf } from '../files.js';
-import { withoutGenerated } from '../generated.js';
 import { componentDir, exists, nodeTool, runTool, tail } from '../node.js';
 
 /** One glob for the files, as `mutate` takes them: a brace list with a single entry is literal. */
@@ -170,26 +170,26 @@ const EMPTY_REPORT = '{"schemaVersion":"1.0","thresholds":{"high":80,"low":60},"
 
 /**
  * The component's files among those given (repository-relative), relative to its root. A file the
- * change deleted has nothing left to mutate, and a file Talos renders is left out: the project's
- * tests compare it with what Talos renders, so the copy Stryker instruments fails them all.
+ * change deleted has nothing left to mutate, and a file this pack renders is left out by its path:
+ * the project's tests may compare it with what Talos renders, which the copy Stryker instruments
+ * fails. No other pack renders a JavaScript or TypeScript file.
  */
 export async function strykerTargets(
   repoRoot: string,
   root: string,
-  dir: string,
   files: readonly string[],
 ): Promise<string[]> {
   const here = files.filter((file) => root === '.' || file.startsWith(`${root}/`));
   const present = await Promise.all(here.map((file) => exists(join(repoRoot, file))));
   const mine = here.filter((_, index) => present[index]).map((file) => inComponent(root, file));
-  return withoutGenerated(dir, mine);
+  return mine.filter((file) => !GENERATED_PATHS.includes(file));
 }
 
 /** Stryker through Vitest, on {@link strykerTargets}. */
 export const strykerRunner: MutationRunner = {
   async run(ctx: CheckContext, files: readonly string[]): Promise<Report & { format: 'stryker' }> {
     const dir = componentDir(ctx);
-    const mine = await strykerTargets(ctx.root, rootOf(ctx.component), dir, files);
+    const mine = await strykerTargets(ctx.root, rootOf(ctx.component), files);
     const report = join(ctx.scratch, 'mutation.json');
     if (mine.length === 0) {
       await writeFile(report, EMPTY_REPORT);
