@@ -27,22 +27,33 @@ const SOURCE: LuaSource = {
   urls: ['https://lua.example/lua-5.4.9.tar.gz'],
 };
 
-/** Plays curl: writes the tarball where `--output` says. */
+/** lua.example serves the tarball; any other host times out, as lua.org can. */
+const TIMED_OUT: ExecResult = { code: 28, stdout: '', stderr: 'curl: (28) Connection timed out' };
+
+/** Plays curl: writes the tarball where `--output` says, for a URL on lua.example. */
 async function download(args: readonly string[]): Promise<ExecResult> {
+  const url = new URL(args.at(-1) ?? '');
+  if (url.hostname !== 'lua.example') return TIMED_OUT;
   const output = args[args.indexOf('--output') + 1];
   if (output !== undefined) await writeFile(output, TARBALL);
   return OK;
 }
 
+type Setup = { ctx: InstallContext; calls: Call[]; fetched: string[]; lua: LuaFetch };
+
 async function setup(
   files: Readonly<Record<string, string>>,
   answer: (call: Call) => ExecResult = () => OK,
   os: Os = 'linux',
-): Promise<{ ctx: InstallContext; calls: Call[]; lua: LuaFetch }> {
+): Promise<Setup> {
   const calls: Call[] = [];
+  const fetched: string[] = [];
   const exec: Exec = (command, args, options) => {
     const call = { command, args, cwd: options.cwd };
-    if (command === 'curl') return download(args);
+    if (command === 'curl') {
+      fetched.push(args.at(-1) ?? '');
+      return download(args);
+    }
     calls.push(call);
     return Promise.resolve(answer(call));
   };
@@ -56,7 +67,18 @@ async function setup(
     os,
   };
   const lua = { source: SOURCE, cache: await mkdtemp(join(tmpdir(), 'lua-cache-')) };
-  return { ctx, calls, lua };
+  return { ctx, calls, fetched, lua };
+}
+
+/** Answers every command, and records the Lua tarball hererocks finds in its downloads. */
+function hererocksSees(handed: string[]): (call: Call) => ExecResult {
+  return (call) => {
+    if (call.command === '/tools/uv') {
+      const downloads = call.args[call.args.indexOf('--downloads') + 1] ?? '';
+      handed.push(readFileSync(join(downloads, SOURCE.file), 'utf8'));
+    }
+    return OK;
+  };
 }
 
 const PROJECT = {
@@ -94,18 +116,55 @@ describe('lua install', () => {
   });
 
   it('hands hererocks the verified tarball to build Lua from, and removes it afterwards', async () => {
-    let handed = '';
     let downloads = '';
+    const handed: string[] = [];
+    const sees = hererocksSees(handed);
     const { ctx, lua } = await setup(PROJECT, (call) => {
       if (call.command === '/tools/uv') {
         downloads = call.args[call.args.indexOf('--downloads') + 1] ?? '';
-        handed = readFileSync(join(downloads, SOURCE.file), 'utf8');
       }
-      return OK;
+      return sees(call);
     });
     await install(ctx, lua);
-    expect(handed).toBe(TARBALL);
+    expect(handed).toEqual([TARBALL]);
     expect(existsSync(downloads)).toBe(false);
+  });
+
+  it('builds Lua when the first download times out and the next source serves the tarball', async () => {
+    const handed: string[] = [];
+    const { ctx, fetched, lua } = await setup(PROJECT, hererocksSees(handed));
+    const urls = [
+      'https://www.lua.example/lua-5.4.9.tar.gz',
+      'https://lua.example/lua-5.4.9.tar.gz',
+    ];
+    await install(ctx, { ...lua, source: { ...SOURCE, urls } });
+    expect(fetched).toEqual(urls);
+    expect(handed).toEqual([TARBALL]);
+    const cached = join(lua.cache, 'lua-source', '5.4.9', SOURCE.file);
+    expect(await readFile(cached, 'utf8')).toBe(TARBALL);
+  });
+
+  it('builds Lua from a warm cache without downloading anything', async () => {
+    const first = await setup(PROJECT);
+    await install(first.ctx, first.lua);
+    expect(first.fetched).toEqual(SOURCE.urls);
+    const handed: string[] = [];
+    const again = await setup(PROJECT, hererocksSees(handed));
+    await install(again.ctx, first.lua);
+    expect(again.fetched).toEqual([]);
+    expect(handed).toEqual([TARBALL]);
+  });
+
+  it('stops with an engine error naming each source when none serves the tarball', async () => {
+    const { ctx, calls, lua } = await setup(PROJECT);
+    const source = { ...SOURCE, urls: ['https://www.lua.example/lua-5.4.9.tar.gz'] };
+    await expect(install(ctx, { ...lua, source })).rejects.toThrow(
+      new EngineError(
+        'cannot download lua-5.4.9.tar.gz:\nhttps://www.lua.example/lua-5.4.9.tar.gz: ' +
+          'curl exited 28: curl: (28) Connection timed out',
+      ),
+    );
+    expect(calls).toEqual([]);
   });
 
   it('refuses more than one rockspec, or a rockspec without its lockfile', async () => {
