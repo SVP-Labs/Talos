@@ -91,8 +91,8 @@ loop, step by step, is [docs/agents.md](docs/agents.md).
   the PR closes unmerged    the branch stays until the sweep finds it idle
   ```
 
-  Idle time runs from the newest of the claim, the last push and the draft PR's last change. A
-  ticket whose PR is ready for review is never idle.
+  Any open PR from the ticket's branch, draft or ready, keeps the claim and its branch from the
+  sweep. For a claim without a PR, idle time runs from the newer of the claim and the last push.
 
 - **Invariants:** a PR from `<P>-<N>` closes `#N` and no other issue; every commit on it starts
   `[P-N]:`; an issue carries `ai/claimed` exactly while its branch exists.
