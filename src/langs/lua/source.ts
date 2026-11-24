@@ -8,7 +8,10 @@ import type { Exec, ExecResult } from '../../exec/exec.js';
 import { ensureDir } from '../../tools/store.js';
 import { cacheRoot } from '../../version/cache.js';
 
-/** Where Lua's source tarball comes from, and the sha256 every copy of it must have. */
+/**
+ * Where Lua's source tarball comes from, tried in order, and the sha256 every copy of it must
+ * have. Each URL is one that serves the file.
+ */
 export type LuaSource = {
   readonly version: string;
   readonly file: string;
@@ -20,7 +23,14 @@ export const LUA_SOURCE: LuaSource = {
   version: LUA_VERSION,
   file: `lua-${LUA_VERSION}.tar.gz`,
   sha256: '2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6',
-  urls: [`https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz`],
+  urls: [
+    `https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz`,
+    // Fedora's lookaside cache is addressed by the file's sha512, so it can only serve this file.
+    `https://src.fedoraproject.org/repo/pkgs/lua/lua-${LUA_VERSION}.tar.gz/sha512/` +
+      'b112bd3f0d47043568ef52928853ef692554378a5e368d420b589babf606a82c' +
+      'e05fca781f5401c3565171800b39322141ee500e53e813d1a4ccc5d3a05879b1' +
+      `/lua-${LUA_VERSION}.tar.gz`,
+  ],
 };
 
 /** Covers curl's every attempt at one URL, with the waits between them. */

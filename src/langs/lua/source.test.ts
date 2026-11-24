@@ -50,6 +50,17 @@ describe('LUA_SOURCE', () => {
     expect(LUA_SOURCE.urls[0]).toBe(`https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz`);
     expect(LUA_SOURCE.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it("falls back to Fedora's lookaside cache, never to hererocks's PUC-Rio mirror", () => {
+    expect(LUA_SOURCE.urls).toHaveLength(2);
+    expect(LUA_SOURCE.urls[1]).toMatch(
+      new RegExp(
+        `^https://src\\.fedoraproject\\.org/repo/pkgs/lua/lua-${LUA_VERSION}\\.tar\\.gz/sha512/` +
+          `[0-9a-f]{128}/lua-${LUA_VERSION}\\.tar\\.gz$`,
+      ),
+    );
+    expect(LUA_SOURCE.urls.filter((url) => url.includes('puc-rio.br'))).toEqual([]);
+  });
 });
 
 describe('sourceCurlArgs', () => {
@@ -85,6 +96,20 @@ describe('fetchSource', () => {
     await expect(fetching).rejects.toThrow(EngineError);
     await expect(fetching).rejects.toThrow(`not the pinned ${SOURCE.sha256}`);
     expect(await readdir(dir)).toEqual([]);
+  });
+
+  it('tries the next URL when one fails or serves another file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'lua-source-'));
+    const urls = ['https://a.example/l.tar.gz', 'https://b.example/l.tar.gz'];
+    const three = { ...SOURCE, urls: [...urls, 'https://c.example/l.tar.gz'] };
+    const served = curl((url) => {
+      if (url === urls[0]) return { result: { code: 22, stdout: '', stderr: 'HTTP 404' } };
+      if (url === urls[1]) return { body: 'tampered\n', result: OK };
+      return { body: TARBALL, result: OK };
+    });
+    const file = await fetchSource(served.exec, three, dir);
+    expect(await readFile(file, 'utf8')).toBe(TARBALL);
+    expect(served.urls).toEqual(three.urls);
   });
 
   it('says what curl printed when the download fails', async () => {

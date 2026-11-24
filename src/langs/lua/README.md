@@ -24,10 +24,13 @@ repository's `.gitignore` as `.lua/`:
 1. hererocks builds Lua 5.4.9 and LuaRocks 3.13.0 into it, without readline. hererocks is a
    single Python script that `tools.lock` pins by checksum; `uv run --no-project --no-config`
    runs it, so a `pyproject.toml` or `uv.toml` in the repository plays no part. Talos fetches
-   Lua's source tarball itself, from `https://www.lua.org/ftp/` with `curl`: each attempt gets
-   30 seconds to connect and 5 minutes in all, and any failure is retried 4 times, 10 seconds
-   apart. It refuses the tarball unless its sha256 is the one `src/langs/lua/source.ts` pins,
-   and keeps it with the other tools, in `<cache>/tools/lua-source/5.4.9/` (the cache that
+   Lua's source tarball itself with `curl`, from `https://www.lua.org/ftp/`, and when that
+   fails, from Fedora's lookaside cache under `https://src.fedoraproject.org/repo/pkgs/lua/`,
+   which addresses the file by its sha512. hererocks's own fallback, a PUC-Rio mirror, plays no
+   part. Each attempt gets 30 seconds to connect and 5 minutes in all, and any failure is
+   retried 4 times, 10 seconds apart. It refuses the tarball unless its sha256 is the one
+   `src/langs/lua/source.ts` pins, and keeps it with the other tools, in
+   `<cache>/tools/lua-source/5.4.9/` (the cache that
    [the tools' README](../../tools/README.md#the-cache) describes), stamped with that sha256 in
    `.talos-tool`: a machine whose cache has it fetches nothing from lua.org. hererocks gets a
    copy in a temporary `--downloads` directory, so it builds from that and doesn't fetch Lua
