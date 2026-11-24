@@ -291,6 +291,51 @@ describe('talos central', () => {
     expect(fake.calls).toEqual([]);
   });
 
+  it("names a governed repository's failing drift step, its class and status, never the name", async () => {
+    const refusal = { message: 'SVP-Labs/Secret: Resource not accessible by integration' };
+    const fake = fakeGitHub({
+      'GET apps/talos-reviewer': { body: { id: 5465977 } },
+      'GET installation/repositories': installation([
+        { id: 7, name: 'SVP-Labs/Secret', talos: 'stable' },
+      ]),
+      'GET repos/SVP-Labs/Secret': { status: 403, body: refusal },
+    });
+    const terminal = io({ TALOS_RELEASE_TOKEN: 'r', TALOS_REVIEWER_TOKEN: 'v' });
+    const central = centralWith({ baseUrl: BASE, fetch: fake.fetch });
+    expect(await central(['drift', '--json'], terminal)).toBe(1);
+    expect(terminal.lines).toEqual([
+      `${JSON.stringify({ schema: CENTRAL_SCHEMA, job: 'drift', ok: false, error: 'the drift report could not finish', failure: { step: 'repository-state', class: 'GitHubError', status: 403 } })}\n`,
+    ]);
+    expect(terminal.lines.join('')).not.toMatch(/Secret|Resource not accessible/);
+  });
+
+  it("names the reviewer App's lookup when it fails before the report starts", async () => {
+    const fake = fakeGitHub({ 'GET apps/talos-reviewer': { status: 404 } });
+    const terminal = io({ TALOS_RELEASE_TOKEN: 'r', TALOS_REVIEWER_TOKEN: 'v' });
+    expect(await centralWith({ baseUrl: BASE, fetch: fake.fetch })(['drift'], terminal)).toBe(1);
+    expect(lastJson(terminal.lines)).toMatchObject({
+      failure: { step: 'reviewer-app', class: 'GitHubError', status: 404 },
+    });
+  });
+
+  it("names the channel rulesets' step when the organisation's listing is refused", async () => {
+    const fake = fakeGitHub({
+      'GET repos/SVP-Labs/Talos': { body: { id: 900, full_name: 'SVP-Labs/Talos' } },
+      'GET orgs/SVP-Labs/rulesets': { status: 403, body: { message: 'SVP-Labs/Secret' } },
+    });
+    const terminal = io({ TALOS_RELEASE_TOKEN: 'r', TALOS_REVIEWER_TOKEN: 'v' });
+    const central = centralWith({ baseUrl: BASE, fetch: fake.fetch });
+    expect(await central(['drift', '--channels-file', '--json'], terminal)).toBe(1);
+    expect(lastJson(terminal.lines)).toEqual({
+      schema: CENTRAL_SCHEMA,
+      job: 'drift',
+      ok: false,
+      error: 'the drift report could not finish',
+      failure: { step: 'channel-rulesets', class: 'GitHubError', status: 403 },
+    });
+    expect(terminal.lines.join('')).not.toContain('Secret');
+  });
+
   it('runs the channels-file drift check on request', async () => {
     const fake = fakeGitHub({ 'GET repos/SVP-Labs/Talos': { status: 403 } });
     const terminal = io({ TALOS_RELEASE_TOKEN: 'r', TALOS_REVIEWER_TOKEN: 'v' });
