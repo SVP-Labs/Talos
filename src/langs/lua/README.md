@@ -23,8 +23,13 @@ repository's `.gitignore` as `.lua/`:
 
 1. hererocks builds Lua 5.4.9 and LuaRocks 3.13.0 into it, without readline. hererocks is a
    single Python script that `tools.lock` pins by checksum; `uv run --no-project --no-config`
-   runs it, so a `pyproject.toml` or `uv.toml` in the repository plays no part. hererocks checks
-   the Lua and LuaRocks downloads against checksums of its own.
+   runs it, so a `pyproject.toml` or `uv.toml` in the repository plays no part. Talos fetches
+   Lua's source tarball itself, from `https://www.lua.org/ftp/` with `curl`: each attempt gets
+   30 seconds to connect and 5 minutes in all, and any failure is retried 4 times, 10 seconds
+   apart. It refuses the tarball unless its sha256 is the one `src/langs/lua/source.ts` pins,
+   and hands it to hererocks in a temporary `--downloads` directory, so hererocks builds from it
+   and doesn't fetch Lua itself. hererocks downloads LuaRocks, and checks both archives against
+   checksums of its own.
 2. The dev tools come from Talos's lockfile: `install()` writes a rockspec depending on them
    and LuaRocks's `luarocks.lock` beside it, listing every rock they bring, and runs
    `luarocks --tree .lua make --deps-only` there. LuaRocks installs a locked rock without

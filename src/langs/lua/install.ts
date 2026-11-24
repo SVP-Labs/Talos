@@ -1,4 +1,5 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   DEVTOOLS_ROCKSPEC,
@@ -8,6 +9,7 @@ import {
   LUAROCKS_VERSION,
 } from './devtools.js';
 import { componentDir, fileExists, inRepo, TREE, treeDir, treeProgram } from './paths.js';
+import { fetchSource, LUA_SOURCE, type LuaSource } from './source.js';
 import { EngineError } from '../../core/check.js';
 import type { InstallContext } from '../../core/pack.js';
 import type { ExecResult } from '../../exec/exec.js';
@@ -19,8 +21,11 @@ export function rockspecs(names: readonly string[]): string[] {
   return names.filter((name) => name.endsWith('.rockspec')).sort((a, b) => a.localeCompare(b));
 }
 
-/** The arguments for hererocks: Lua and LuaRocks at Talos's versions, without readline. */
-export function hererocksArgs(script: string, tree: string): string[] {
+/**
+ * The arguments for hererocks: Lua and LuaRocks at Talos's versions, without readline. hererocks
+ * takes an archive it finds in `downloads` instead of fetching it, after checking its checksum.
+ */
+export function hererocksArgs(script: string, tree: string, downloads: string): string[] {
   return [
     'run',
     '--no-project',
@@ -32,6 +37,8 @@ export function hererocksArgs(script: string, tree: string): string[] {
     '--luarocks',
     LUAROCKS_VERSION,
     '--no-readline',
+    '--downloads',
+    downloads,
   ];
 }
 
@@ -52,10 +59,19 @@ async function run(
   }
 }
 
-/** Builds Lua and LuaRocks into the tree with hererocks, which `tools.lock` pins. */
-async function buildTree(ctx: InstallContext): Promise<void> {
+/**
+ * Builds Lua and LuaRocks into the tree with hererocks, which `tools.lock` pins, from Lua's
+ * source tarball fetched and verified beforehand.
+ */
+async function buildTree(ctx: InstallContext, source: LuaSource): Promise<void> {
   const [uv, hererocks] = await Promise.all([ctx.tools.path('uv'), ctx.tools.path('hererocks')]);
-  await run(ctx, uv, hererocksArgs(hererocks, treeDir(ctx)), componentDir(ctx));
+  const downloads = await mkdtemp(join(tmpdir(), 'talos-lua-'));
+  try {
+    await fetchSource(ctx.exec, source, downloads);
+    await run(ctx, uv, hererocksArgs(hererocks, treeDir(ctx), downloads), componentDir(ctx));
+  } finally {
+    await rm(downloads, { recursive: true, force: true });
+  }
 }
 
 /** The dev tools and everything they need, from Talos's lockfile, into the tree. */
@@ -95,9 +111,9 @@ async function installProject(ctx: InstallContext, luarocks: string): Promise<vo
  * Talos's lockfile, then the project's rockspec dependencies from its own. The project's come
  * last, so where they want another version of a tool, they win and `lua/toolchain` says so.
  */
-export async function install(ctx: InstallContext): Promise<void> {
+export async function install(ctx: InstallContext, source: LuaSource = LUA_SOURCE): Promise<void> {
   ctx.log.debug(`${inRepo(ctx.component.root, TREE)}: Lua ${LUA_VERSION}`);
-  await buildTree(ctx);
+  await buildTree(ctx, source);
   const luarocks = treeProgram(ctx, 'luarocks');
   await installDevTools(ctx, luarocks);
   await installProject(ctx, luarocks);

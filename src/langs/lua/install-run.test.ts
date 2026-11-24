@@ -1,8 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEVTOOLS_ROCKSPEC } from './devtools.js';
 import { install } from './install.js';
+import type { LuaSource } from './source.js';
 import { parseConfig } from '../../config/load.js';
 import { EngineError, type Os } from '../../core/check.js';
 import { silentLogger } from '../../core/log.js';
@@ -14,6 +17,21 @@ type Call = { readonly command: string; readonly args: readonly string[]; readon
 
 const OK: ExecResult = { code: 0, stdout: '', stderr: '' };
 
+const TARBALL = 'lua source\n';
+
+const SOURCE: LuaSource = {
+  file: 'lua-5.4.9.tar.gz',
+  sha256: createHash('sha256').update(TARBALL).digest('hex'),
+  urls: ['https://lua.example/lua-5.4.9.tar.gz'],
+};
+
+/** Plays curl: writes the tarball where `--output` says. */
+async function download(args: readonly string[]): Promise<ExecResult> {
+  const output = args[args.indexOf('--output') + 1];
+  if (output !== undefined) await writeFile(output, TARBALL);
+  return OK;
+}
+
 async function setup(
   files: Readonly<Record<string, string>>,
   answer: (call: Call) => ExecResult = () => OK,
@@ -22,6 +40,7 @@ async function setup(
   const calls: Call[] = [];
   const exec: Exec = (command, args, options) => {
     const call = { command, args, cwd: options.cwd };
+    if (command === 'curl') return download(args);
     calls.push(call);
     return Promise.resolve(answer(call));
   };
@@ -45,7 +64,7 @@ const PROJECT = {
 describe('lua install', () => {
   it("builds the tree, installs Talos's dev tools, then the project's locked dependencies", async () => {
     const { ctx, calls } = await setup(PROJECT);
-    await install(ctx);
+    await install(ctx, SOURCE);
     const dir = join(ctx.root, 'game');
     const tree = join(dir, '.lua');
     const luarocks = join(tree, 'bin', 'luarocks');
@@ -64,23 +83,38 @@ describe('lua install', () => {
 
   it("installs only the dev tools for a component without a rockspec, through LuaRocks' .bat on Windows", async () => {
     const { ctx, calls } = await setup({ 'game/main.lua': 'print(1)\n' }, () => OK, 'windows');
-    await install(ctx);
+    await install(ctx, SOURCE);
     expect(calls.map((c) => c.command)).toEqual([
       '/tools/uv',
       join(ctx.root, 'game', '.lua', 'bin', 'luarocks.bat'),
     ]);
   });
 
+  it('hands hererocks the verified tarball to build Lua from, and removes it afterwards', async () => {
+    let handed = '';
+    let downloads = '';
+    const { ctx } = await setup(PROJECT, (call) => {
+      if (call.command === '/tools/uv') {
+        downloads = call.args[call.args.indexOf('--downloads') + 1] ?? '';
+        handed = readFileSync(join(downloads, SOURCE.file), 'utf8');
+      }
+      return OK;
+    });
+    await install(ctx, SOURCE);
+    expect(handed).toBe(TARBALL);
+    expect(existsSync(downloads)).toBe(false);
+  });
+
   it('refuses more than one rockspec, or a rockspec without its lockfile', async () => {
     const two = await setup({ ...PROJECT, 'game/game-0.9-1.rockspec': '' });
-    await expect(install(two.ctx)).rejects.toThrow(
+    await expect(install(two.ctx, SOURCE)).rejects.toThrow(
       new EngineError(
         'game has game-0.9-1.rockspec, game-1.0-1.rockspec: keep one rockspec in the ' +
           "component's root, and older versions elsewhere",
       ),
     );
     const unlocked = await setup({ 'game/game-1.0-1.rockspec': '' });
-    await expect(install(unlocked.ctx)).rejects.toThrow(
+    await expect(install(unlocked.ctx, SOURCE)).rejects.toThrow(
       'game has game-1.0-1.rockspec but no luarocks.lock',
     );
   });
@@ -91,7 +125,7 @@ describe('lua install', () => {
         ? { code: 1, stdout: 'building Lua', stderr: 'make: cc: not found' }
         : OK;
     const { ctx } = await setup(PROJECT, failing);
-    await expect(install(ctx)).rejects.toThrow(
+    await expect(install(ctx, SOURCE)).rejects.toThrow(
       /failed in game:\nmake: cc: not found\nbuilding Lua$/,
     );
   });

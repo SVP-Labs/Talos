@@ -10,8 +10,8 @@ describe('install', () => {
     ]);
   });
 
-  it('runs hererocks through uv, outside any project and its settings', () => {
-    expect(hererocksArgs('/cache/hererocks.py', '/work/.lua')).toEqual([
+  it('runs hererocks through uv, outside any project and its settings, on downloads Talos made', () => {
+    expect(hererocksArgs('/cache/hererocks.py', '/work/.lua', '/work/downloads')).toEqual([
       'run',
       '--no-project',
       '--no-config',
@@ -22,6 +22,8 @@ describe('install', () => {
       '--luarocks',
       LUAROCKS_VERSION,
       '--no-readline',
+      '--downloads',
+      '/work/downloads',
     ]);
   });
 });
