@@ -121,4 +121,52 @@ describe('mutationReport', () => {
     const broken = deps(result([outcome('ts/mutation', [], { status: 'error' })]));
     expect((await mutationReport(ctx, broken)).result).toBe('failed');
   });
+
+  it("names a faulted mutation run's message in the detail, the report and the summary", async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
+    const reason = 'stryker exited 1 without a report:\n  Initial test run failed `x`  ';
+    const d = deps(
+      result([outcome('ts/mutation', [], { status: 'error', reason, component: 'web' })]),
+    );
+    expect(await mutationReport(ctx, d)).toEqual({
+      job: 'mutation-report',
+      result: 'failed',
+      detail:
+        '0 surviving mutant(s) in 0 file(s); 1 engine error(s): ts/mutation@web: ' +
+        'stryker exited 1 without a report: Initial test run failed `x`',
+    });
+    expect(JSON.parse(await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8'))).toMatchObject({
+      faults: 1,
+      errors: [
+        {
+          check: 'ts/mutation@web',
+          reason: 'stryker exited 1 without a report: Initial test run failed `x`',
+        },
+      ],
+    });
+    expect(d.summaries[0]).toContain('### Engine errors (1)');
+    expect(d.summaries[0]).toContain(
+      "- **ts/mutation@web**: `stryker exited 1 without a report: Initial test run failed 'x'`",
+    );
+  });
+
+  it('clips a long message and lists at most five faults, counting them all', () => {
+    const outcomes = Array.from({ length: 7 }, (_, i) =>
+      outcome('ts/mutation', [], {
+        status: 'error',
+        reason: `${i}`.repeat(300),
+        component: `c${i}`,
+      }),
+    );
+    const summary = mutationSummary(result(outcomes));
+    expect(summary.faults).toBe(7);
+    expect(summary.errors.map((f) => f.check)).toEqual([
+      'ts/mutation@c0',
+      'ts/mutation@c1',
+      'ts/mutation@c2',
+      'ts/mutation@c3',
+      'ts/mutation@c4',
+    ]);
+    expect(summary.errors[0]?.reason).toBe(`${'0'.repeat(199)}…`);
+  });
 });
