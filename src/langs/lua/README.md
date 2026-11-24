@@ -27,9 +27,11 @@ repository's `.gitignore` as `.lua/`:
    Lua's source tarball itself, from `https://www.lua.org/ftp/` with `curl`: each attempt gets
    30 seconds to connect and 5 minutes in all, and any failure is retried 4 times, 10 seconds
    apart. It refuses the tarball unless its sha256 is the one `src/langs/lua/source.ts` pins,
-   and hands it to hererocks in a temporary `--downloads` directory, so hererocks builds from it
-   and doesn't fetch Lua itself. hererocks downloads LuaRocks, and checks both archives against
-   checksums of its own.
+   and keeps it with the other tools, in `<cache>/tools/lua-source/5.4.9/` (the cache that
+   [the tools' README](../../tools/README.md#the-cache) describes), stamped with that sha256 in
+   `.talos-tool`: a machine whose cache has it fetches nothing from lua.org. hererocks gets a
+   copy in a temporary `--downloads` directory, so it builds from that and doesn't fetch Lua
+   itself. hererocks downloads LuaRocks, and checks both archives against checksums of its own.
 2. The dev tools come from Talos's lockfile: `install()` writes a rockspec depending on them
    and LuaRocks's `luarocks.lock` beside it, listing every rock they bring, and runs
    `luarocks --tree .lua make --deps-only` there. LuaRocks installs a locked rock without

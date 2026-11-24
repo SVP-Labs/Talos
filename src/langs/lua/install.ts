@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,7 +9,7 @@ import {
   LUAROCKS_VERSION,
 } from './devtools.js';
 import { componentDir, fileExists, inRepo, TREE, treeDir, treeProgram } from './paths.js';
-import { fetchSource, LUA_SOURCE, type LuaSource } from './source.js';
+import { cachedSource, LUA_SOURCE, type LuaSource, toolCache } from './source.js';
 import { EngineError } from '../../core/check.js';
 import type { InstallContext } from '../../core/pack.js';
 import type { ExecResult } from '../../exec/exec.js';
@@ -59,15 +59,20 @@ async function run(
   }
 }
 
+/** Lua's source tarball and the tool cache it is kept in. */
+export type LuaFetch = { readonly source: LuaSource; readonly cache: string };
+
 /**
- * Builds Lua and LuaRocks into the tree with hererocks, which `tools.lock` pins, from Lua's
- * source tarball fetched and verified beforehand.
+ * Builds Lua and LuaRocks into the tree with hererocks, which `tools.lock` pins, from the cached
+ * copy of Lua's source tarball. hererocks gets a copy in a directory of its own: it writes the
+ * LuaRocks archive there too, and a half-written one must never land in the shared cache.
  */
-async function buildTree(ctx: InstallContext, source: LuaSource): Promise<void> {
+async function buildTree(ctx: InstallContext, lua: LuaFetch): Promise<void> {
   const [uv, hererocks] = await Promise.all([ctx.tools.path('uv'), ctx.tools.path('hererocks')]);
+  const tarball = await cachedSource(ctx, lua.source, lua.cache);
   const downloads = await mkdtemp(join(tmpdir(), 'talos-lua-'));
   try {
-    await fetchSource(ctx.exec, source, downloads);
+    await copyFile(tarball, join(downloads, lua.source.file));
     await run(ctx, uv, hererocksArgs(hererocks, treeDir(ctx), downloads), componentDir(ctx));
   } finally {
     await rm(downloads, { recursive: true, force: true });
@@ -111,9 +116,12 @@ async function installProject(ctx: InstallContext, luarocks: string): Promise<vo
  * Talos's lockfile, then the project's rockspec dependencies from its own. The project's come
  * last, so where they want another version of a tool, they win and `lua/toolchain` says so.
  */
-export async function install(ctx: InstallContext, source: LuaSource = LUA_SOURCE): Promise<void> {
+export async function install(
+  ctx: InstallContext,
+  lua: LuaFetch = { source: LUA_SOURCE, cache: toolCache() },
+): Promise<void> {
   ctx.log.debug(`${inRepo(ctx.component.root, TREE)}: Lua ${LUA_VERSION}`);
-  await buildTree(ctx, source);
+  await buildTree(ctx, lua);
   const luarocks = treeProgram(ctx, 'luarocks');
   await installDevTools(ctx, luarocks);
   await installProject(ctx, luarocks);

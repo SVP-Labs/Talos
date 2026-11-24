@@ -3,16 +3,21 @@ import { readFile, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { LUA_VERSION } from './devtools.js';
 import { EngineError } from '../../core/check.js';
+import type { InstallContext } from '../../core/pack.js';
 import type { Exec, ExecResult } from '../../exec/exec.js';
+import { ensureDir } from '../../tools/store.js';
+import { cacheRoot } from '../../version/cache.js';
 
 /** Where Lua's source tarball comes from, and the sha256 every copy of it must have. */
 export type LuaSource = {
+  readonly version: string;
   readonly file: string;
   readonly sha256: string;
   readonly urls: readonly string[];
 };
 
 export const LUA_SOURCE: LuaSource = {
+  version: LUA_VERSION,
   file: `lua-${LUA_VERSION}.tar.gz`,
   sha256: '2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6',
   urls: [`https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz`],
@@ -98,4 +103,26 @@ export async function fetchSource(exec: Exec, source: LuaSource, dir: string): P
     failures.push(`${url}: ${failure}`);
   }
   throw new EngineError(`cannot download ${source.file}:\n${failures.join('\n')}`);
+}
+
+/** Talos's tool cache: `tools` in `TALOS_CACHE`, else in the user's cache directory. */
+export function toolCache(): string {
+  return join(cacheRoot(process.env), 'tools');
+}
+
+/**
+ * The verified tarball in the tool cache, under `lua-source/<version>`, fetched only when the
+ * cache has no complete copy with the pinned sha256.
+ */
+export async function cachedSource(
+  ctx: Pick<InstallContext, 'exec' | 'log'>,
+  source: LuaSource,
+  cache: string,
+): Promise<string> {
+  const dir = join(cache, 'lua-source', source.version);
+  await ensureDir(dir, source.sha256, async (work) => {
+    ctx.log.info(`downloading Lua ${source.version}'s source`);
+    await fetchSource(ctx.exec, source, work);
+  });
+  return join(dir, source.file);
 }

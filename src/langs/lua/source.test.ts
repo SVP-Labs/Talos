@@ -2,15 +2,24 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LUA_VERSION } from './devtools.js';
-import { fetchSource, LUA_SOURCE, type LuaSource, sourceCurlArgs } from './source.js';
+import {
+  cachedSource,
+  fetchSource,
+  LUA_SOURCE,
+  type LuaSource,
+  sourceCurlArgs,
+  toolCache,
+} from './source.js';
 import { EngineError } from '../../core/check.js';
+import { silentLogger } from '../../core/log.js';
 import type { Exec, ExecResult } from '../../exec/exec.js';
 
 const TARBALL = 'lua source\n';
 
 const SOURCE: LuaSource = {
+  version: '5.4.9',
   file: 'lua-5.4.9.tar.gz',
   sha256: createHash('sha256').update(TARBALL).digest('hex'),
   urls: ['https://lua.example/lua-5.4.9.tar.gz'],
@@ -93,5 +102,50 @@ describe('fetchSource', () => {
     const dir = await mkdtemp(join(tmpdir(), 'lua-source-'));
     const exec: Exec = () => Promise.reject(new Error('spawn curl ENOENT'));
     await expect(fetchSource(exec, SOURCE, dir)).rejects.toThrow(/curl ENOENT/);
+  });
+});
+
+describe('toolCache', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is tools in Talos's cache directory", () => {
+    vi.stubEnv('TALOS_CACHE', '/work/cache');
+    expect(toolCache()).toBe(join('/work/cache', 'tools'));
+  });
+});
+
+describe('cachedSource', () => {
+  it('keeps the verified tarball under lua-source/<version> and reuses it', async () => {
+    const cache = await mkdtemp(join(tmpdir(), 'lua-cache-'));
+    const { exec, urls } = curl(() => ({ body: TARBALL, result: OK }));
+    const ctx = { exec, log: silentLogger };
+    const first = await cachedSource(ctx, SOURCE, cache);
+    const again = await cachedSource(ctx, SOURCE, cache);
+    expect(first).toBe(join(cache, 'lua-source', '5.4.9', SOURCE.file));
+    expect(again).toBe(first);
+    expect(await readFile(first, 'utf8')).toBe(TARBALL);
+    expect(urls).toEqual(SOURCE.urls);
+  });
+
+  it('fetches again over an entry stamped with another sha256', async () => {
+    const cache = await mkdtemp(join(tmpdir(), 'lua-cache-'));
+    const old = { ...SOURCE, sha256: createHash('sha256').update('old\n').digest('hex') };
+    const served = { body: 'old\n', result: OK };
+    await cachedSource({ exec: curl(() => served).exec, log: silentLogger }, old, cache);
+    const { exec, urls } = curl(() => ({ body: TARBALL, result: OK }));
+    const file = await cachedSource({ exec, log: silentLogger }, SOURCE, cache);
+    expect(await readFile(file, 'utf8')).toBe(TARBALL);
+    expect(urls).toHaveLength(1);
+  });
+
+  it('leaves no entry behind when the download fails', async () => {
+    const cache = await mkdtemp(join(tmpdir(), 'lua-cache-'));
+    const { exec } = curl(() => ({ result: { code: 22, stdout: '', stderr: 'HTTP 404' } }));
+    await expect(cachedSource({ exec, log: silentLogger }, SOURCE, cache)).rejects.toThrow(
+      EngineError,
+    );
+    expect(await readdir(join(cache, 'lua-source'))).toEqual([]);
   });
 });
