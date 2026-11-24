@@ -252,7 +252,11 @@ describe('bootstrap: the checkout it runs from', () => {
   });
 });
 
-type AuditRun = { readonly status: number | null; readonly stdout: string | null };
+type AuditRun = {
+  readonly status: number | null;
+  readonly stdout: string | null;
+  readonly stderr?: string | null;
+};
 
 const CLEAN: AuditRun = { status: 0, stdout: '{"invalid":[],"missing":[]}' };
 
@@ -388,6 +392,7 @@ describe('bootstrap: npm audit signatures', () => {
     const unreadable = { status: 1, stdout: 'npm ERR!' };
     expect(audits(report([RACED]), unreadable, unreadable).problems()).toEqual([
       'npm audit signatures exited 1 without a readable report',
+      'npm printed nothing on stderr',
     ]);
     expect(audits(report([RACED]), { ...CLEAN, status: 1 }).problems()).toEqual([
       'npm audit signatures exited 1',
@@ -424,6 +429,30 @@ describe('bootstrap: npm audit signatures', () => {
         'npm audit signatures left no readable report: auditing once more',
       );
     }
+  });
+
+  it("ends a refusal over an unreadable report with npm's code and the tail of its stderr", () => {
+    const failed = (stderr: string | null): AuditRun => ({ status: 243, stdout: '', stderr });
+    const refusal = (stderr: string | null): string[] =>
+      audits(failed('first'), failed('second'), failed(stderr)).problems();
+    expect(refusal('npm error code E503\nnpm error 503 Service Unavailable\n')).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      "npm's stderr ends: npm error code E503 | npm error 503 Service Unavailable",
+    ]);
+    expect(refusal('npm error\u0007\r\n\tfetch\u202efailed\n\n')).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      "npm's stderr ends: npm error | fetch failed",
+    ]);
+    const long = `${'a'.repeat(150)}\n${'b'.repeat(100)}`;
+    const [, tail] = refusal(long);
+    expect(tail).toBe(`npm's stderr ends: …${'a'.repeat(97)} | ${'b'.repeat(100)}`);
+    expect(refusal(null)).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      'npm printed nothing on stderr',
+    ]);
+    expect(audits({ ...CLEAN, status: 1, stderr: 'npm error' }).problems()).toEqual([
+      'npm audit signatures exited 1',
+    ]);
   });
 
   it('names each package it objects to, and nothing that lacks the shape npm gives it', () => {

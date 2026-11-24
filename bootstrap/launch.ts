@@ -10,9 +10,12 @@
  * Dependency-free on purpose: nothing is installed before it runs, and Node runs this file as it
  * is, stripping its types, so it holds only syntax that erases (no enums, namespaces or parameter
  * properties). What it reads from npm and the registry is narrowed by hand, field by field. It
- * never prints npm's messages, since they can name things a public log must not show: when it
- * refuses it prints one line of its own, and when signatures fail, the name, version and error
- * code of each package npm objects to, once each has matched the shape npm gives it. Neither npm
+ * prints npm's messages only where nothing else says why it refused, since they can name things a
+ * public log must not show: when it refuses it prints one line of its own, and when signatures
+ * fail, the name, version and error code of each package npm objects to, once each has matched
+ * the shape npm gives it. Only when no audit left a report it could read does the line end with
+ * the last `STDERR_TAIL` characters of npm's stderr, on one line, with no control characters. The
+ * install's directory holds Talos and nothing of the repository it runs for. Neither npm
  * nor git is looked up on PATH: npm is the one beside the running Node, and HEAD is read from the
  * checkout's files.
  *
@@ -46,6 +49,8 @@ const ERROR_CODE = /^E[A-Z0-9_]+$/;
 const NAMED = 20;
 /** How many audits one install gets at most. */
 const AUDITS = 3;
+/** How many characters of npm's stderr a refusal ends with at most. */
+const STDERR_TAIL = 200;
 const NPM_CACHE = 'npm-cache';
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -81,7 +86,11 @@ type Expected = {
 type Release = { readonly version: string; readonly sha: string };
 
 /** How an npm run ended; its status and output are null when it never started. */
-type NpmRun = { readonly status: number | null; readonly stdout: string | null };
+type NpmRun = {
+  readonly status: number | null;
+  readonly stdout: string | null;
+  readonly stderr?: string | null;
+};
 
 export class Refusal extends Error {
   override name = 'Refusal';
@@ -288,16 +297,34 @@ function auditOutcome(run: NpmRun): AuditOutcome {
   };
 }
 
+/** The end of npm's stderr as one line without control characters, `STDERR_TAIL` long at most. */
+function stderrTail(stderr: string): string {
+  const line = stderr
+    .split('\n')
+    .map((text) => text.replaceAll(/[\p{Cc}\p{Cf}]+/gu, ' ').trim())
+    .filter((text) => text !== '')
+    .join(' | ');
+  return line.length > STDERR_TAIL ? `…${line.slice(-STDERR_TAIL)}` : line;
+}
+
+/** What a refusal says of a run that left no readable report: what npm printed on stderr last. */
+function stderrProblem(run: NpmRun): string {
+  const tail = stderrTail(run.stderr ?? '');
+  return tail === '' ? 'npm printed nothing on stderr' : `npm's stderr ends: ${tail}`;
+}
+
 /**
  * What `npm audit signatures` objects to, after it audits again: once when an audit found invalid
  * signatures and nothing else, and whenever one left no readable report, up to `AUDITS` audits in
- * all; empty when every signature verified. Logs each package a failed audit objects to, and each
- * audit it runs again.
+ * all; empty when every signature verified. When the last audit left no readable report, the
+ * problems end with the tail of npm's stderr. Logs each package a failed audit objects to, and
+ * each audit it runs again.
  */
 export function auditSignatures(audit: () => NpmRun, log: (line: string) => void): string[] {
   let racedOnce = false;
   for (let audits = 1; ; audits += 1) {
-    const outcome = auditOutcome(audit());
+    const run = audit();
+    const outcome = auditOutcome(run);
     if (outcome.problems.length === 0) return [];
     for (const line of outcome.failures) log(line);
     const last = audits >= AUDITS;
@@ -307,7 +334,7 @@ export function auditSignatures(audit: () => NpmRun, log: (line: string) => void
       racedOnce = true;
       log('npm audit signatures found invalid signatures only: auditing once more');
     } else {
-      return [...outcome.problems];
+      return outcome.unreadable ? [...outcome.problems, stderrProblem(run)] : [...outcome.problems];
     }
   }
 }
