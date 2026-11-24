@@ -188,7 +188,21 @@ function containers(engine: Engine, root: string): Containers {
   };
 }
 
-/** Starts the services `talos.yml` declares, pinned by digest; Linux only. */
+/** The host port a container's port is published on. */
+async function hostPort(engine: Engine, root: string, id: string, port: number): Promise<number> {
+  const out = await execOk(engine.exec, 'docker', ['port', id, `${port}/tcp`], { cwd: root });
+  const published = /:(\d+)$/.exec(out.trim().split('\n')[0]?.trim() ?? '');
+  if (published?.[1] === undefined) {
+    throw new Error(`docker did not say which host port publishes a declared service's ${port}`);
+  }
+  return Number(published[1]);
+}
+
+/**
+ * Starts the services `talos.yml` declares, pinned by digest; Linux only. Docker publishes each
+ * port on a host port it finds free, so a port something else holds on the machine doesn't stop
+ * the run; the checks learn it from the environment.
+ */
 async function startServices(
   engine: Engine,
   plan: RunPlan,
@@ -205,16 +219,18 @@ async function startServices(
       service.ports.length > 0
         ? service.ports
         : await exposedPorts(engine, service.image, plan.root);
-    const args = ['run', '-d', '--rm', ...ports.flatMap((p) => ['-p', `127.0.0.1:${p}:${p}`])];
+    const args = ['run', '-d', '--rm', ...ports.flatMap((p) => ['-p', `127.0.0.1::${p}`])];
     for (const [key, value] of Object.entries(service.env)) args.push('-e', `${key}=${value}`);
     const id = (
       await execOk(engine.exec, 'docker', [...args, service.image], { cwd: plan.root })
     ).trim();
     started.add(id);
+    const published: number[] = [];
+    for (const port of ports) published.push(await hostPort(engine, plan.root, id, port));
     const upper = name.toUpperCase().replaceAll('-', '_');
     env[`TALOS_SERVICE_${upper}_HOST`] = '127.0.0.1';
-    if (ports[0] !== undefined) env[`TALOS_SERVICE_${upper}_PORT`] = String(ports[0]);
-    for (const port of ports) await waitForPort(port, 120_000);
+    if (published[0] !== undefined) env[`TALOS_SERVICE_${upper}_PORT`] = String(published[0]);
+    for (const port of published) await waitForPort(port, 120_000);
   }
   return env;
 }

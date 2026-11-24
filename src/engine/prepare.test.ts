@@ -60,17 +60,22 @@ afterEach(async () => {
   else process.env[RENDERED_VERSION] = rendered;
 });
 
+/** Docker as a started service's: `id` for the container, published on `host`. */
+function docker(id: string, host: number): (call: Call) => string {
+  return (call) => (call.args[0] === 'port' ? `127.0.0.1:${host}\n` : `${id}\n`);
+}
+
 function configWith(yml: string): ReturnType<typeof parseConfig> {
   return parseConfig(`name: Test\nprefix: T\n${yml}`);
 }
 
 describe('prepare: services', () => {
-  it('starts each declared service on its ports, waits for them and stops them on release', async () => {
+  it('starts each declared service on a free host port, waits for it and stops it on release', async () => {
     const port = await listening();
     const root = await tempRepo({});
-    const { engine, calls } = engineWith(() => 'container-1\n');
+    const { engine, calls } = engineWith(docker('container-1', port));
     const config = configWith(
-      `services:\n  cache-db:\n    image: ${DIGEST}\n    ports: [${port}]\n    env: { MODE: test }\n`,
+      `services:\n  cache-db:\n    image: ${DIGEST}\n    ports: [5432]\n    env: { MODE: test }\n`,
     );
     const prepared = await prepare(engine, testPlan(root, [], config));
     touched.add('TALOS_SERVICE_CACHE_DB_HOST').add('TALOS_SERVICE_CACHE_DB_PORT');
@@ -81,7 +86,8 @@ describe('prepare: services', () => {
     });
     expect(process.env.TALOS_SERVICE_CACHE_DB_PORT).toBe(String(port));
     expect(calls.map((c) => [c.command, ...c.args])).toEqual([
-      ['docker', 'run', '-d', '--rm', '-p', `127.0.0.1:${port}:${port}`, '-e', 'MODE=test', DIGEST],
+      ['docker', 'run', '-d', '--rm', '-p', '127.0.0.1::5432', '-e', 'MODE=test', DIGEST],
+      ['docker', 'port', 'container-1', '5432/tcp'],
     ]);
     await prepared.release();
     expect(calls.at(-1)).toMatchObject({ command: 'docker', args: ['rm', '-f', 'container-1'] });
@@ -91,7 +97,7 @@ describe('prepare: services', () => {
     const port = await listening();
     const root = await tempRepo({});
     const { engine, calls } = engineWith((call) =>
-      call.args[0] === 'image' ? `{"${port}/tcp":{},"bogus":{}}\n` : 'container-2\n',
+      call.args[0] === 'image' ? '{"6379/tcp":{},"bogus":{}}\n' : docker('container-2', port)(call),
     );
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n`);
     const prepared = await prepare(engine, testPlan(root, [], config));
@@ -101,7 +107,35 @@ describe('prepare: services', () => {
       ['pull', '--quiet'],
       ['image', 'inspect'],
       ['run', '-d'],
+      ['port', 'container-2'],
     ]);
+    expect(calls[2]?.args).toContain('127.0.0.1::6379');
+  });
+
+  it('publishes a service whose port something on the host already holds', async () => {
+    const held = await listening();
+    const free = await listening();
+    const root = await tempRepo({});
+    const { engine, calls } = engineWith(docker('container-4', free));
+    const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${held}]\n`);
+    const prepared = await prepare(engine, testPlan(root, [], config));
+    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
+    expect(calls[0]?.args).toEqual(['run', '-d', '--rm', '-p', `127.0.0.1::${held}`, DIGEST]);
+    expect(calls[1]?.args).toEqual(['port', 'container-4', `${held}/tcp`]);
+    expect(prepared.env.TALOS_SERVICE_DB_PORT).toBe(String(free));
+    expect(process.env.TALOS_SERVICE_DB_PORT).toBe(String(free));
+  });
+
+  it("removes a service whose host port Docker doesn't say", async () => {
+    const root = await tempRepo({});
+    const { engine, calls } = engineWith((call) =>
+      call.args[0] === 'port' ? '\n' : 'container-5\n',
+    );
+    const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [5432]\n`);
+    await expect(prepare(engine, testPlan(root, [], config))).rejects.toThrow(
+      "docker did not say which host port publishes a declared service's 5432",
+    );
+    expect(calls.at(-1)?.args).toEqual(['rm', '-f', 'container-5']);
   });
 
   it('starts a service that exposes nothing without a port to wait for', async () => {
@@ -139,7 +173,9 @@ describe('prepare: removing services', () => {
   it('removes the services it started when a later step throws, and stops listening for signals', async () => {
     const port = await listening();
     const root = await tempRepo({});
-    const { engine, calls } = engineWith((call) => (call.command === 'bash' ? failed : 'svc-1\n'));
+    const { engine, calls } = engineWith((call) =>
+      call.command === 'bash' ? failed : docker('svc-1', port)(call),
+    );
     const config = configWith(
       `services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\nsetup: scripts/setup.sh\n`,
     );
@@ -156,7 +192,7 @@ describe('prepare: removing services', () => {
     const port = await listening();
     const root = await tempRepo({});
     const { engine, calls } = engineWith((call) =>
-      call.args.includes(OTHER) ? failed : 'svc-1\n',
+      call.args.includes(OTHER) ? failed : docker('svc-1', port)(call),
     );
     const config = configWith(
       [
@@ -176,7 +212,7 @@ describe('prepare: removing services', () => {
     async (signal) => {
       const port = await listening();
       const root = await tempRepo({});
-      const { engine, calls } = engineWith(() => 'svc-1\n');
+      const { engine, calls } = engineWith(docker('svc-1', port));
       const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
       touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
       const prepared = await prepare(engine, testPlan(root, [], config));
@@ -198,7 +234,9 @@ describe('prepare: removing services', () => {
   it('warns about a container it could not remove', async () => {
     const port = await listening();
     const root = await tempRepo({});
-    const { engine, warnings } = engineWith((call) => (call.args[0] === 'rm' ? failed : 'svc-1\n'));
+    const { engine, warnings } = engineWith((call) =>
+      call.args[0] === 'rm' ? failed : docker('svc-1', port)(call),
+    );
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
     touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
     await (await prepare(engine, testPlan(root, [], config))).release();
