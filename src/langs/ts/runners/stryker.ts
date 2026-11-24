@@ -109,6 +109,9 @@ const tsconfigLinks = z.looseObject({
 
 type TsconfigLinks = z.infer<typeof tsconfigLinks>;
 
+/** A tsconfig to read, and whether it is only a probe for a path that may name another. */
+type Linked = { readonly file: string; readonly probe: boolean };
+
 /** A tsconfig's links, or undefined when it isn't JSONC of a shape Talos can read. */
 function parseTsconfig(text: string): TsconfigLinks | undefined {
   let value: unknown;
@@ -124,10 +127,11 @@ function parseTsconfig(text: string): TsconfigLinks | undefined {
 /**
  * The tsconfigs a tsconfig at `file` extends or references, by their path from the component's
  * root. An `extends` that starts with `.` is a path, a bare one a package, as TypeScript reads
- * them, and `./base` may name `./base.json`; a reference's path is always relative, and one that
- * doesn't end in `.json` names the `tsconfig.json` in that directory.
+ * them, and `./base` may name `./base.json`, so `./base` itself is only a probe; a reference's path
+ * is always relative, and one that doesn't end in `.json` names the `tsconfig.json` in that
+ * directory.
  */
-function linked(file: string, config: TsconfigLinks): string[] {
+function linked(file: string, config: TsconfigLinks): Linked[] {
   const from = posix.dirname(file);
   const extended = config.extends ?? [];
   const bases = (typeof extended === 'string' ? [extended] : extended).filter((base) =>
@@ -136,11 +140,17 @@ function linked(file: string, config: TsconfigLinks): string[] {
   return [
     ...bases.flatMap((base) => {
       const path = posix.join(from, base);
-      return path.endsWith('.json') ? [path] : [path, `${path}.json`];
+      return path.endsWith('.json')
+        ? [{ file: path, probe: false }]
+        : [
+            { file: path, probe: true },
+            { file: `${path}.json`, probe: false },
+          ];
     }),
     ...(config.references ?? []).map(({ path: reference }) => {
       const path = posix.join(from, reference);
-      return path.endsWith('.json') ? path : posix.join(path, 'tsconfig.json');
+      const file = path.endsWith('.json') ? path : posix.join(path, 'tsconfig.json');
+      return { file, probe: false };
     }),
   ];
 }
@@ -152,14 +162,16 @@ function linked(file: string, config: TsconfigLinks): string[] {
  * a tsconfig Talos can't read leaves Stryker's rewrite on.
  */
 export async function tsconfigLeaves(dir: string): Promise<boolean> {
-  const pending = ['tsconfig.json'];
+  const pending: Linked[] = [{ file: 'tsconfig.json', probe: false }];
   const seen = new Set<string>();
-  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const { file } = next;
     if (seen.has(file)) continue;
     seen.add(file);
     if (leavesFrom('.')(file)) return true;
-    const text = await readFile(join(dir, file), 'utf8').catch(noFile);
-    if (text === undefined) continue;
+    const text = await tsconfigText(join(dir, file), next.probe);
+    if (text === ABSENT) continue;
+    if (text === UNREADABLE) return true;
     const config = parseTsconfig(text);
     if (config === undefined || strings(text).some(leavesFrom(posix.dirname(file)))) return true;
     pending.push(...linked(file, config));
@@ -167,8 +179,23 @@ export async function tsconfigLeaves(dir: string): Promise<boolean> {
   return false;
 }
 
-function noFile(): undefined {
-  return undefined;
+const ABSENT = Symbol('absent');
+const UNREADABLE = Symbol('unreadable');
+
+/**
+ * A tsconfig's text. Only a missing file is absent, or a directory where a probe looked; any
+ * other error makes it unreadable, which leaves Stryker's rewrite on.
+ */
+async function tsconfigText(
+  path: string,
+  probe: boolean,
+): Promise<string | typeof ABSENT | typeof UNREADABLE> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : '';
+    return code === 'ENOENT' || (probe && code === 'EISDIR') ? ABSENT : UNREADABLE;
+  }
 }
 
 /** Stryker's report format with no file in it, for a run with nothing to mutate. */

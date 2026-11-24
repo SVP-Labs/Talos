@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -176,6 +176,28 @@ describe('tsconfigLeaves', () => {
     const shape = await component({ 'tsconfig.json': '{ "references": "packages/a" }' });
     expect(await tsconfigLeaves(dir)).toBe(true);
     expect(await tsconfigLeaves(shape)).toBe(true);
+  });
+
+  it('keeps the rewrite when a tsconfig fails to read for any reason but its absence', async () => {
+    const directory = await component({ 'tsconfig.json/keep': '' });
+    const looped = await component({});
+    await symlink(join(looped, 'tsconfig.json'), join(looped, 'tsconfig.json'));
+    const referenced = await component({
+      'tsconfig.json': '{ "references": [{ "path": "packages/a" }] }',
+      'packages/a/tsconfig.json/keep': '',
+    });
+    expect(await tsconfigLeaves(directory)).toBe(true);
+    expect(await tsconfigLeaves(looped)).toBe(true);
+    expect(await tsconfigLeaves(referenced)).toBe(true);
+  });
+
+  it('reads past a missing reference and a probe that finds a directory', async () => {
+    const dir = await component({
+      'tsconfig.json': '{ "extends": "./configs/base", "references": [{ "path": "gone" }] }',
+      'configs/base/keep': '',
+      'configs/base.json': '{ "compilerOptions": {} }',
+    });
+    expect(await tsconfigLeaves(dir)).toBe(false);
   });
 });
 
