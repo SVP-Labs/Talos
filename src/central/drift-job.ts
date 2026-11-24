@@ -209,9 +209,15 @@ export async function runDrift(deps: DriftDeps): Promise<DriftReport> {
 }
 
 export type ChannelsFileDeps = {
-  /** `talos-release`, organisation-wide: organisation administration read. */
+  /**
+   * `talos-release`, organisation-wide: organisation administration read. It holds no repository
+   * permission, so it reads the organisation's rulesets and no repository.
+   */
   readonly release: GitHub;
-  /** `talos-reviewer`, limited to the Talos repository: contents read, issues write. */
+  /**
+   * `talos-reviewer`, limited to the Talos repository: contents read, issues write; the one
+   * token here that reads the Talos repository itself.
+   */
   readonly reviewer: GitHub;
   readonly who: Identities;
 };
@@ -228,7 +234,7 @@ function fileDifferences(mismatched: readonly Channel[], pins: Pins): Difference
 /** In the `channels.json` lookup, whether the file still says what the rulesets pin. */
 export async function runChannelsFileDrift(deps: ChannelsFileDeps): Promise<DriftReport> {
   const talos = await driftStep('talos-repository', () =>
-    getRepository(deps.release, deps.who.talosRepo),
+    getRepository(deps.reviewer, deps.who.talosRepo),
   );
   const rulesets = await driftStep('channel-rulesets', () =>
     readChannelRulesets(deps.release, deps.who.org),
