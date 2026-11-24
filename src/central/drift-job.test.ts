@@ -206,7 +206,6 @@ describe('runChannelsFileDrift', () => {
 
   function setUp(text: string | undefined): { release: Fake; reviewer: Fake } {
     const release = fakeGitHub({
-      'GET repos/SVP-Labs/Talos': { body: { id: 900, full_name: 'SVP-Labs/Talos' } },
       'GET orgs/SVP-Labs/rulesets': {
         body: [
           { id: 1, name: 'talos-evaluate' },
@@ -225,6 +224,7 @@ describe('runChannelsFileDrift', () => {
       },
     });
     const reviewer = fakeGitHub({
+      'GET repos/SVP-Labs/Talos': { body: { id: 900, full_name: 'SVP-Labs/Talos' } },
       'GET repos/SVP-Labs/Talos/issues?state=open&labels=drift': {
         body: [
           {
