@@ -19,8 +19,10 @@
  * npm verifies signatures many packages at a time, and on a cold cache each of those checks may
  * fetch sigstore's trusted root and write it into the cache while another reads it, which fails
  * as an invalid signature. So an audit that finds invalid signatures and nothing else runs once
- * more, with the cache warm: a signature that is really bad fails both times. Each run gets a
- * cache of its own, in its temporary directory.
+ * more, with the cache warm: a signature that is really bad fails both times. An audit that
+ * exits without a report it can read, as a failed fetch from the registry or sigstore leaves it,
+ * runs again, up to `AUDITS` audits in all. Each run gets a cache of its own, in its temporary
+ * directory.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -42,6 +44,8 @@ const PACKAGE_NAME = /^(?:@[a-z0-9][\w.~-]*\/)?[a-z0-9][\w.~-]*$/;
 const ERROR_CODE = /^E[A-Z0-9_]+$/;
 /** How many packages of one kind a failed audit names. */
 const NAMED = 20;
+/** How many audits one install gets at most. */
+const AUDITS = 3;
 const NPM_CACHE = 'npm-cache';
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -268,32 +272,44 @@ type AuditOutcome = {
   readonly failures: readonly string[];
   /** It found invalid signatures and nothing else, in a readable report. */
   readonly onlyInvalid: boolean;
+  /** It left no report with both lists to read. */
+  readonly unreadable: boolean;
 };
 
 function auditOutcome(run: NpmRun): AuditOutcome {
   const stdout = run.stdout ?? '';
-  const invalid = reported(stdout, 'invalid') ?? [];
+  const invalid = reported(stdout, 'invalid');
+  const missing = reported(stdout, 'missing');
   return {
     problems: auditProblems(run.status ?? 1, stdout),
     failures: auditFailures(stdout),
-    onlyInvalid: invalid.length > 0 && reported(stdout, 'missing')?.length === 0,
+    onlyInvalid: invalid !== undefined && invalid.length > 0 && missing?.length === 0,
+    unreadable: invalid === undefined || missing === undefined,
   };
 }
 
 /**
- * What `npm audit signatures` objects to, after a second audit when the first found invalid
- * signatures and nothing else; empty when every signature verified. Logs each package a failed
- * audit objects to, and the second audit.
+ * What `npm audit signatures` objects to, after it audits again: once when an audit found invalid
+ * signatures and nothing else, and whenever one left no readable report, up to `AUDITS` audits in
+ * all; empty when every signature verified. Logs each package a failed audit objects to, and each
+ * audit it runs again.
  */
 export function auditSignatures(audit: () => NpmRun, log: (line: string) => void): string[] {
-  let outcome = auditOutcome(audit());
-  if (outcome.problems.length > 0 && outcome.onlyInvalid) {
+  let racedOnce = false;
+  for (let audits = 1; ; audits += 1) {
+    const outcome = auditOutcome(audit());
+    if (outcome.problems.length === 0) return [];
     for (const line of outcome.failures) log(line);
-    log('npm audit signatures found invalid signatures only: auditing once more');
-    outcome = auditOutcome(audit());
+    const last = audits >= AUDITS;
+    if (!last && outcome.unreadable) {
+      log('npm audit signatures left no readable report: auditing once more');
+    } else if (!last && !racedOnce && outcome.onlyInvalid) {
+      racedOnce = true;
+      log('npm audit signatures found invalid signatures only: auditing once more');
+    } else {
+      return [...outcome.problems];
+    }
   }
-  if (outcome.problems.length > 0) for (const line of outcome.failures) log(line);
-  return [...outcome.problems];
 }
 
 /** The integrity npm recorded for the installed package, when it is the expected version. */

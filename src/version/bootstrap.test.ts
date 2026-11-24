@@ -315,8 +315,6 @@ describe('bootstrap/launch.ts audits signatures as the engine does', () => {
     ['missing signatures on the second audit', [report([RACED]), report([], [RACED]), CLEAN]],
     ['missing signatures', [report([], [RACED]), CLEAN]],
     ['invalid and missing signatures', [report([RACED], [RACED]), CLEAN]],
-    ['an audit that never started', [{ status: null, stdout: null }, CLEAN]],
-    ['a report without its missing list', [{ status: 1, stdout: '{"invalid":[1]}' }, CLEAN]],
     ['a clean report and exit 1', [{ ...CLEAN, status: 1 }, CLEAN]],
     [
       'packages without the shape npm gives them',
@@ -331,6 +329,20 @@ describe('bootstrap/launch.ts audits signatures as the engine does', () => {
       expect(theirs).toEqual(await engineAudits(...runs));
     });
   }
+
+  it('differs only in auditing an unreadable report again, which the engine refuses at once', async () => {
+    for (const run of [
+      { status: null, stdout: null },
+      { status: 1, stdout: '{"invalid":[1]}' },
+    ]) {
+      const engine = await engineAudits(run, CLEAN);
+      expect(engine.problems).toEqual(['npm audit signatures exited 1 without a readable report']);
+      expect(engine.calls).toBe(1);
+      const ours = audits(run, CLEAN);
+      expect(ours.problems()).toEqual([]);
+      expect(ours.calls()).toBe(2);
+    }
+  });
 
   it("gives npm the same cache of the run's own", () => {
     const directory = join(tmpdir(), 'talos-x');
@@ -373,7 +385,8 @@ describe('bootstrap: npm audit signatures', () => {
     expect(audits(report([RACED]), report([], [RACED])).problems()).toEqual([
       '1 missing signatures',
     ]);
-    expect(audits(report([RACED]), { status: 1, stdout: 'npm ERR!' }).problems()).toEqual([
+    const unreadable = { status: 1, stdout: 'npm ERR!' };
+    expect(audits(report([RACED]), unreadable, unreadable).problems()).toEqual([
       'npm audit signatures exited 1 without a readable report',
     ]);
     expect(audits(report([RACED]), { ...CLEAN, status: 1 }).problems()).toEqual([
@@ -387,15 +400,6 @@ describe('bootstrap: npm audit signatures', () => {
       [report([], [missing]), ['1 missing signatures']],
       [report([RACED], [missing]), ['1 invalid signatures', '1 missing signatures']],
       [{ ...CLEAN, status: 1 }, ['npm audit signatures exited 1']],
-      [{ status: null, stdout: null }, ['npm audit signatures exited 1 without a readable report']],
-      [
-        { status: 1, stdout: '{"invalid":"x","missing":[]}' },
-        ['npm audit signatures exited 1 without a readable report'],
-      ],
-      [
-        { status: 1, stdout: JSON.stringify({ invalid: [RACED] }) },
-        ['npm audit signatures exited 1 without a readable report'],
-      ],
     ];
     for (const [run, problems] of cases) {
       const npm = audits(run, CLEAN);
@@ -403,6 +407,21 @@ describe('bootstrap: npm audit signatures', () => {
       expect(npm.calls()).toBe(1);
       expect(npm.logged).not.toContain(
         'npm audit signatures found invalid signatures only: auditing once more',
+      );
+    }
+  });
+
+  it('audits again when it cannot read the report', () => {
+    for (const run of [
+      { status: null, stdout: null },
+      { status: 1, stdout: '{"invalid":"x","missing":[]}' },
+      { status: 1, stdout: JSON.stringify({ invalid: [RACED] }) },
+    ]) {
+      const npm = audits(run, CLEAN);
+      expect(npm.problems()).toEqual([]);
+      expect(npm.calls()).toBe(2);
+      expect(npm.logged.at(-1)).toBe(
+        'npm audit signatures left no readable report: auditing once more',
       );
     }
   });
