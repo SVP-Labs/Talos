@@ -9,50 +9,43 @@ function hoursAgo(hours: number): string {
 }
 
 describe('staleness', () => {
-  it('never calls a claim with a ready PR stale', () => {
-    expect(staleness({ readyPull: true, claimedAt: hoursAgo(100) }, NOW)).toEqual({
+  it('never calls a claim with an open PR stale', () => {
+    expect(staleness({ openPull: true, claimedAt: hoursAgo(100) }, NOW)).toEqual({
       stale: false,
       idleHours: null,
-      why: 'in-review',
+      why: 'pull-open',
     });
   });
 
   it('keeps a claim it knows no time for', () => {
-    expect(staleness({ readyPull: false }, NOW).why).toBe('no-activity-known');
-    expect(staleness({ readyPull: false, pushedAt: 'not a date' }, NOW).why).toBe(
+    expect(staleness({ openPull: false }, NOW).why).toBe('no-activity-known');
+    expect(staleness({ openPull: false, pushedAt: 'not a date' }, NOW).why).toBe(
       'no-activity-known',
     );
   });
 
-  it('measures idle time from the newest of claim, push and draft update', () => {
+  it('measures idle time from the newer of claim and push', () => {
     const active = staleness(
-      {
-        readyPull: false,
-        claimedAt: hoursAgo(30),
-        pushedAt: hoursAgo(50),
-        draftUpdatedAt: hoursAgo(1),
-      },
+      { openPull: false, claimedAt: hoursAgo(30), pushedAt: hoursAgo(1) },
       NOW,
     );
     expect(active).toEqual({ stale: false, idleHours: 1, why: 'active' });
     const idle = staleness(
-      { readyPull: false, claimedAt: hoursAgo(5), pushedAt: hoursAgo(400) },
+      { openPull: false, claimedAt: hoursAgo(5), pushedAt: hoursAgo(400) },
       NOW,
     );
     expect(idle).toEqual({ stale: true, idleHours: 5, why: 'idle' });
   });
 
   it(`releases only past ${STALE_HOURS} hours`, () => {
-    expect(staleness({ readyPull: false, claimedAt: hoursAgo(STALE_HOURS) }, NOW).stale).toBe(
-      false,
+    expect(staleness({ openPull: false, claimedAt: hoursAgo(STALE_HOURS) }, NOW).stale).toBe(false);
+    expect(staleness({ openPull: false, claimedAt: hoursAgo(STALE_HOURS + 0.01) }, NOW).stale).toBe(
+      true,
     );
-    expect(
-      staleness({ readyPull: false, claimedAt: hoursAgo(STALE_HOURS + 0.01) }, NOW).stale,
-    ).toBe(true);
   });
 
   it('reads a time in the future as no idle time', () => {
-    expect(staleness({ readyPull: false, pushedAt: hoursAgo(-2) }, NOW)).toEqual({
+    expect(staleness({ openPull: false, pushedAt: hoursAgo(-2) }, NOW)).toEqual({
       stale: false,
       idleHours: 0,
       why: 'active',
@@ -102,23 +95,30 @@ describe('sweepStaleClaims', () => {
     expect(await ticketBranches(fake.client(), 'o/r', 'T')).toEqual([{ branch: 'T-3', issue: 3 }]);
   });
 
-  it('releases an idle claim and closes its draft PR', async () => {
-    claimed(1, 6);
+  it(`keeps a claim and its branch while a draft PR idles past ${STALE_HOURS} hours`, async () => {
+    claimed(1, STALE_HOURS + 20);
     fake.pulls.push({
       number: 20,
       draft: true,
       state: 'open',
-      updated_at: hoursAgo(7),
+      updated_at: hoursAgo(STALE_HOURS + 20),
       head: 'T-1',
     });
+    expect(await sweep()).toEqual({ released: [], kept: 1, failures: [] });
+    expect(fake.refs.has('T-1')).toBe(true);
+    expect(fake.pulls[0]?.state).toBe('open');
+    expect(fake.issues.get(1)?.labels).toContain('ai/claimed');
+    expect(fake.writes()).toEqual([]);
+  });
+
+  it('releases an idle claim without a PR and deletes its branch', async () => {
+    claimed(1, 6);
     expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
-    expect(fake.pulls[0]?.state).toBe('closed');
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
     expect(fake.issues.get(1)?.comments.at(-1)?.body).toMatch(
       /^🔓 released: the claim was idle for 6 h/,
     );
-    expect(fake.issues.get(20)?.comments.at(-1)?.body).toMatch(/^Closed by Talos: the claim on #1/);
     const deletion = fake.calls.find((c) => c.method === 'DELETE' && c.path.includes('git/refs'));
     expect(deletion?.login).toBe('github-actions[bot]');
   });
@@ -149,22 +149,18 @@ describe('sweepStaleClaims', () => {
     expect(fake.issues.get(1)?.comments).toEqual([]);
   });
 
-  it("releases with a token that can't write pull requests: deleting the branch closes the draft", async () => {
+  it('releases a claim whose PR was closed, as one without a PR', async () => {
     claimed(1, 6);
     fake.pulls.push({
       number: 20,
       draft: true,
-      state: 'open',
-      updated_at: hoursAgo(7),
+      state: 'closed',
+      updated_at: hoursAgo(1),
       head: 'T-1',
     });
-    fake.failures.set('PATCH repos/o/r/pulls/20', 403);
-    fake.failures.set('POST repos/o/r/issues/20/comments', 403);
     expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
-    expect(fake.pulls[0]?.state).toBe('closed');
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
-    expect(fake.issues.get(1)?.comments.at(-1)?.body).toMatch(/^🔓 released/);
   });
 
   it('counts a claim it could not release, goes on, and finishes it on the next sweep', async () => {
