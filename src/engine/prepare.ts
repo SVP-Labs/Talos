@@ -143,17 +143,62 @@ async function exposedPorts(engine: Engine, image: string, root: string): Promis
     .filter((p) => p > 0);
 }
 
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
+
+type Containers = {
+  readonly add: (id: string) => void;
+  /** Removes every container added so far, once however often it is called; never throws. */
+  readonly remove: () => Promise<void>;
+};
+
+/**
+ * The service containers a run started. `--rm` removes a container only once it exits, which a
+ * service never does by itself, so each one lives until the run removes it: a container left
+ * behind holds its host port on the machine. While any is up, SIGINT and SIGTERM remove them
+ * before the process ends as the signal would have ended it.
+ */
+function containers(engine: Engine, root: string): Containers {
+  const ids: string[] = [];
+  let removed: Promise<void> | undefined;
+  const onSignal = (signal: NodeJS.Signals): void => {
+    void remove().then(() => process.kill(process.pid, signal));
+  };
+  const removeAll = async (): Promise<void> => {
+    for (const id of ids) {
+      try {
+        const result = await engine.exec('docker', ['rm', '-f', id], { cwd: root });
+        if (result.code !== 0) engine.log.warn(`could not remove service container ${id}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        engine.log.warn(`could not remove service container ${id}: ${reason}`);
+      }
+    }
+    for (const signal of STOP_SIGNALS) process.off(signal, onSignal);
+  };
+  const remove = (): Promise<void> => {
+    removed ??= removeAll();
+    return removed;
+  };
+  return {
+    add: (id) => {
+      if (ids.length === 0) for (const signal of STOP_SIGNALS) process.on(signal, onSignal);
+      ids.push(id);
+    },
+    remove,
+  };
+}
+
 /** Starts the services `talos.yml` declares, pinned by digest; Linux only. */
 async function startServices(
   engine: Engine,
   plan: RunPlan,
-): Promise<{ env: Record<string, string>; ids: string[] }> {
+  started: Containers,
+): Promise<Record<string, string>> {
   const env: Record<string, string> = {};
-  const ids: string[] = [];
   const services = Object.entries(plan.config.services);
   if (services.length > 0 && plan.os !== 'linux') {
     engine.log.warn(`services run on Linux only; ${plan.os} runs without them`);
-    return { env, ids };
+    return env;
   }
   for (const [name, service] of services) {
     const ports =
@@ -165,13 +210,13 @@ async function startServices(
     const id = (
       await execOk(engine.exec, 'docker', [...args, service.image], { cwd: plan.root })
     ).trim();
-    ids.push(id);
+    started.add(id);
     const upper = name.toUpperCase().replaceAll('-', '_');
     env[`TALOS_SERVICE_${upper}_HOST`] = '127.0.0.1';
     if (ports[0] !== undefined) env[`TALOS_SERVICE_${upper}_PORT`] = String(ports[0]);
     for (const port of ports) await waitForPort(port, 120_000);
   }
-  return { env, ids };
+  return env;
 }
 
 /** Runs the setup script; at a base commit that lacks it, says so and answers its path. */
@@ -195,20 +240,27 @@ async function runSetupScript(
   return undefined;
 }
 
-/** Everything before the checks: generated configs, services, dependencies, the setup script. */
+/**
+ * Everything before the checks: generated configs, services, dependencies, the setup script. When
+ * a step after the services start throws, it removes them before passing the error on.
+ */
 export async function prepare(engine: Engine, plan: RunPlan): Promise<Prepared> {
   await writeGenerated(engine, plan);
-  const { env: serviceEnv, ids } = await startServices(engine, plan);
-  const env = { ...serviceEnv, [RENDERED_VERSION]: engine.version };
-  Object.assign(process.env, env);
-  const failedInstalls = await installComponents(engine, plan);
-  const withoutSetup = await runSetupScript(engine, plan, serviceEnv);
-  return {
-    env,
-    failedInstalls,
-    ...(withoutSetup === undefined ? {} : { withoutSetup }),
-    release: async () => {
-      for (const id of ids) await engine.exec('docker', ['rm', '-f', id], { cwd: plan.root });
-    },
-  };
+  const started = containers(engine, plan.root);
+  try {
+    const serviceEnv = await startServices(engine, plan, started);
+    const env = { ...serviceEnv, [RENDERED_VERSION]: engine.version };
+    Object.assign(process.env, env);
+    const failedInstalls = await installComponents(engine, plan);
+    const withoutSetup = await runSetupScript(engine, plan, serviceEnv);
+    return {
+      env,
+      failedInstalls,
+      ...(withoutSetup === undefined ? {} : { withoutSetup }),
+      release: started.remove,
+    };
+  } catch (error) {
+    await started.remove();
+    throw error;
+  }
 }

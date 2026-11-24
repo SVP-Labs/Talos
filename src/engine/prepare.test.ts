@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generatedTargets, prepare, RENDERED_VERSION, targetPath } from './prepare.js';
 import type { Engine } from './run.js';
 import { parseConfig } from '../config/load.js';
@@ -13,10 +13,11 @@ import { noTools, tempRepo, testPlan } from '../testing/engine.js';
 type Call = { readonly command: string; readonly args: readonly string[]; readonly env?: unknown };
 
 const DIGEST = `redis@sha256:${'a'.repeat(64)}`;
+const OTHER = `postgres@sha256:${'b'.repeat(64)}`;
 
-/** An engine whose exec records each call and answers it with `answer`. */
+/** An engine whose exec records each call and answers it with `answer`: its output, or a result. */
 function engineWith(
-  answer: (call: Call) => string,
+  answer: (call: Call) => string | ExecResult,
   packs: readonly Pack[] = [],
 ): { engine: Engine; calls: Call[]; warnings: string[] } {
   const calls: Call[] = [];
@@ -24,7 +25,9 @@ function engineWith(
   const exec: Exec = (command, args, options) => {
     const call = { command, args, env: options.env };
     calls.push(call);
-    const result: ExecResult = { code: 0, stdout: answer(call), stderr: '' };
+    const answered = answer(call);
+    const result: ExecResult =
+      typeof answered === 'string' ? { code: 0, stdout: answered, stderr: '' } : answered;
     return Promise.resolve(result);
   };
   const log: Logger = {
@@ -125,6 +128,81 @@ describe('prepare: services', () => {
     expect(warnings).toEqual(['services run on Linux only; macos runs without them']);
     await prepared.release();
     expect(calls).toEqual([]);
+  });
+});
+
+describe('prepare: removing services', () => {
+  const failed: ExecResult = { code: 1, stdout: '', stderr: 'boom' };
+  const removals = (calls: readonly Call[]): string[] =>
+    calls.filter((c) => c.args[0] === 'rm').map((c) => c.args.join(' '));
+
+  it('removes the services it started when a later step throws, and stops listening for signals', async () => {
+    const port = await listening();
+    const root = await tempRepo({});
+    const { engine, calls } = engineWith((call) => (call.command === 'bash' ? failed : 'svc-1\n'));
+    const config = configWith(
+      `services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\nsetup: scripts/setup.sh\n`,
+    );
+    const signalListeners = (): number[] =>
+      ['SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s));
+    const before = signalListeners();
+    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
+    await expect(prepare(engine, testPlan(root, [], config))).rejects.toThrow(/exited 1:\nboom/);
+    expect(removals(calls)).toEqual(['rm -f svc-1']);
+    expect(signalListeners()).toEqual(before);
+  });
+
+  it('removes the services already up when a later one fails to start', async () => {
+    const port = await listening();
+    const root = await tempRepo({});
+    const { engine, calls } = engineWith((call) =>
+      call.args.includes(OTHER) ? failed : 'svc-1\n',
+    );
+    const config = configWith(
+      [
+        'services:',
+        `  first:\n    image: ${DIGEST}\n    ports: [${port}]`,
+        `  second:\n    image: ${OTHER}\n    ports: [${port}]`,
+        '',
+      ].join('\n'),
+    );
+    touched.add('TALOS_SERVICE_FIRST_HOST').add('TALOS_SERVICE_FIRST_PORT');
+    await expect(prepare(engine, testPlan(root, [], config))).rejects.toThrow(/exited 1/);
+    expect(removals(calls)).toEqual(['rm -f svc-1']);
+  });
+
+  it.each(['SIGINT', 'SIGTERM'] as const)(
+    'removes the services on %s, then ends as the signal would have',
+    async (signal) => {
+      const port = await listening();
+      const root = await tempRepo({});
+      const { engine, calls } = engineWith(() => 'svc-1\n');
+      const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
+      touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
+      const prepared = await prepare(engine, testPlan(root, [], config));
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      try {
+        process.emit(signal, signal);
+        await vi.waitFor(() => {
+          expect(kill).toHaveBeenCalledWith(process.pid, signal);
+        });
+        expect(removals(calls)).toEqual(['rm -f svc-1']);
+        await prepared.release();
+        expect(removals(calls)).toEqual(['rm -f svc-1']);
+      } finally {
+        kill.mockRestore();
+      }
+    },
+  );
+
+  it('warns about a container it could not remove', async () => {
+    const port = await listening();
+    const root = await tempRepo({});
+    const { engine, warnings } = engineWith((call) => (call.args[0] === 'rm' ? failed : 'svc-1\n'));
+    const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
+    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
+    await (await prepare(engine, testPlan(root, [], config))).release();
+    expect(warnings).toEqual(['could not remove service container svc-1']);
   });
 });
 
