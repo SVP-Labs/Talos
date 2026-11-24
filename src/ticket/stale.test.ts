@@ -161,6 +161,7 @@ describe('sweepStaleClaims', () => {
     expect(await sweep()).toEqual({ released: [1], kept: 0, failures: [] });
     expect(fake.refs.has('T-1')).toBe(false);
     expect(fake.issues.get(1)?.labels).toEqual(['bug', 'status/ready']);
+    expect(fake.issues.get(1)?.comments.at(-1)?.body).toMatch(/^🔓 released/);
   });
 
   it('counts a claim it could not release, goes on, and finishes it on the next sweep', async () => {
