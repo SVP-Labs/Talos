@@ -43,6 +43,41 @@ export type DriftReport = {
   readonly closed: number;
 };
 
+/**
+ * Where a drift report stopped. A failure carries one of these fixed names instead of its own
+ * message, which names repositories: the report runs in a public repository.
+ */
+export type DriftStep =
+  | 'reviewer-app'
+  | 'expected-settings'
+  | 'scoped-repositories'
+  | 'repository-state'
+  | 'talos-repository'
+  | 'channel-rulesets'
+  | 'channels-file'
+  | 'open-issues'
+  | 'file-issue'
+  | 'close-issue';
+
+export class DriftStepError extends Error {
+  override readonly name = 'DriftStepError';
+  constructor(
+    readonly step: DriftStep,
+    cause: unknown,
+  ) {
+    super(`the drift step ${step} failed`, { cause });
+  }
+}
+
+/** Runs one step of a drift report, a failure named after the step. */
+export async function driftStep<T>(name: DriftStep, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new DriftStepError(name, error);
+  }
+}
+
 function parsedJson(text: string): unknown {
   return JSON.parse(text);
 }
@@ -134,10 +169,16 @@ type Scope = {
 
 /** Files what is new and closes what is gone; returns how many of each. */
 async function settle(scope: Scope, diffs: readonly Difference[]) {
-  const open = await openTalosIssues(scope.gh, { repo: scope.repo, who: scope.who }, DRIFT_LABEL);
+  const open = await driftStep('open-issues', () =>
+    openTalosIssues(scope.gh, { repo: scope.repo, who: scope.who }, DRIFT_LABEL),
+  );
   const plan = reconcile(diffs, open, scope.owns);
-  for (const diff of plan.file) await fileIssue(scope.gh, scope.repo, driftIssue(diff));
-  for (const number of plan.close) await closeIssue(scope.gh, scope.repo, number);
+  for (const diff of plan.file) {
+    await driftStep('file-issue', () => fileIssue(scope.gh, scope.repo, driftIssue(diff)));
+  }
+  for (const number of plan.close) {
+    await driftStep('close-issue', () => closeIssue(scope.gh, scope.repo, number));
+  }
   return { filed: plan.file.length, closed: plan.close.length };
 }
 
@@ -145,13 +186,16 @@ const CHANNELS_KEY = 'channels-json:';
 
 /** One governed repository's drift report, filed in that repository. */
 export async function runDrift(deps: DriftDeps): Promise<DriftReport> {
-  const repository = await soleRepository(deps.release);
-  const scoped = await soleRepository(deps.reviewer);
+  const [repository, scoped] = await driftStep(
+    'scoped-repositories',
+    async () => [await soleRepository(deps.release), await soleRepository(deps.reviewer)] as const,
+  );
   if (scoped.id !== repository.id) {
     throw new CentralError('the two tokens reach different repositories');
   }
   if (!isGoverned(repository)) return { governed: 0, differences: 0, filed: 0, closed: 0 };
-  const diffs = differences(await readDriftState(deps, repository), deps.expected);
+  const state = await driftStep('repository-state', () => readDriftState(deps, repository));
+  const diffs = differences(state, deps.expected);
   const settled = await settle(
     {
       gh: deps.reviewer,
@@ -183,9 +227,16 @@ function fileDifferences(mismatched: readonly Channel[], pins: Pins): Difference
 
 /** In the `channels.json` lookup, whether the file still says what the rulesets pin. */
 export async function runChannelsFileDrift(deps: ChannelsFileDeps): Promise<DriftReport> {
-  const talos = await getRepository(deps.release, deps.who.talosRepo);
-  const pins = pinsOf(await readChannelRulesets(deps.release, deps.who.org), talos.id);
-  const file = await readChannelsFile(deps.reviewer, deps.who.talosRepo);
+  const talos = await driftStep('talos-repository', () =>
+    getRepository(deps.release, deps.who.talosRepo),
+  );
+  const rulesets = await driftStep('channel-rulesets', () =>
+    readChannelRulesets(deps.release, deps.who.org),
+  );
+  const pins = pinsOf(rulesets, talos.id);
+  const file = await driftStep('channels-file', () =>
+    readChannelsFile(deps.reviewer, deps.who.talosRepo),
+  );
   const diffs = fileDifferences(channelsMismatch(file?.text, pins), pins);
   const settled = await settle(
     {
