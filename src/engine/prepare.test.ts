@@ -17,7 +17,7 @@ const OTHER = `postgres@sha256:${'b'.repeat(64)}`;
 
 /** An engine whose exec records each call and answers it with `answer`: its output, or a result. */
 function engineWith(
-  answer: (call: Call) => string | ExecResult,
+  answer: (call: Call) => string | ExecResult | Promise<string>,
   packs: readonly Pack[] = [],
 ): { engine: Engine; calls: Call[]; warnings: string[] } {
   const calls: Call[] = [];
@@ -25,10 +25,9 @@ function engineWith(
   const exec: Exec = (command, args, options) => {
     const call = { command, args, env: options.env };
     calls.push(call);
-    const answered = answer(call);
-    const result: ExecResult =
-      typeof answered === 'string' ? { code: 0, stdout: answered, stderr: '' } : answered;
-    return Promise.resolve(result);
+    return Promise.resolve(answer(call)).then((answered): ExecResult =>
+      typeof answered === 'string' ? { code: 0, stdout: answered, stderr: '' } : answered,
+    );
   };
   const log: Logger = {
     info: () => undefined,
@@ -39,7 +38,6 @@ function engineWith(
 }
 
 const servers: Server[] = [];
-const touched = new Set<string>();
 const rendered = process.env[RENDERED_VERSION];
 
 /** A port something listens on, as a started service's would. */
@@ -54,8 +52,9 @@ async function listening(): Promise<number> {
 
 afterEach(async () => {
   for (const server of servers.splice(0)) await new Promise((resolve) => server.close(resolve));
-  for (const key of touched) Reflect.deleteProperty(process.env, key);
-  touched.clear();
+  for (const key of Object.keys(process.env).filter((k) => k.startsWith('TALOS_SERVICE_'))) {
+    Reflect.deleteProperty(process.env, key);
+  }
   if (rendered === undefined) Reflect.deleteProperty(process.env, RENDERED_VERSION);
   else process.env[RENDERED_VERSION] = rendered;
 });
@@ -78,19 +77,34 @@ describe('prepare: services', () => {
       `services:\n  cache-db:\n    image: ${DIGEST}\n    ports: [5432]\n    env: { MODE: test }\n`,
     );
     const prepared = await prepare(engine, testPlan(root, [], config));
-    touched.add('TALOS_SERVICE_CACHE_DB_HOST').add('TALOS_SERVICE_CACHE_DB_PORT');
     expect(prepared.env).toEqual({
       TALOS_SERVICE_CACHE_DB_HOST: '127.0.0.1',
       TALOS_SERVICE_CACHE_DB_PORT: String(port),
+      TALOS_SERVICE_CACHE_DB_PORT_5432: String(port),
       TALOS_RENDERED_VERSION: '9.9.9',
     });
     expect(process.env.TALOS_SERVICE_CACHE_DB_PORT).toBe(String(port));
+    const label = expect.stringMatching(/^talos\.run=[\w-]+$/) as string;
     expect(calls.map((c) => [c.command, ...c.args])).toEqual([
-      ['docker', 'run', '-d', '--rm', '-p', '127.0.0.1::5432', '-e', 'MODE=test', DIGEST],
+      [
+        'docker',
+        'run',
+        '--label',
+        label,
+        '-d',
+        '--rm',
+        '-p',
+        '127.0.0.1::5432',
+        '-e',
+        'MODE=test',
+      ].concat([DIGEST]),
       ['docker', 'port', 'container-1', '5432/tcp'],
     ]);
     await prepared.release();
-    expect(calls.at(-1)).toMatchObject({ command: 'docker', args: ['rm', '-f', 'container-1'] });
+    expect(calls.slice(2).map((c) => c.args)).toEqual([
+      ['ps', '-aq', '--filter', `label=${String(calls[0]?.args[2])}`],
+      ['rm', '-f', 'container-1'],
+    ]);
   });
 
   it('publishes the ports the image exposes when the service names none', async () => {
@@ -101,12 +115,11 @@ describe('prepare: services', () => {
     );
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n`);
     const prepared = await prepare(engine, testPlan(root, [], config));
-    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
     expect(prepared.env.TALOS_SERVICE_DB_PORT).toBe(String(port));
     expect(calls.map((c) => c.args.slice(0, 2))).toEqual([
       ['pull', '--quiet'],
       ['image', 'inspect'],
-      ['run', '-d'],
+      ['run', '--label'],
       ['port', 'container-2'],
     ]);
     expect(calls[2]?.args).toContain('127.0.0.1::6379');
@@ -119,11 +132,30 @@ describe('prepare: services', () => {
     const { engine, calls } = engineWith(docker('container-4', free));
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${held}]\n`);
     const prepared = await prepare(engine, testPlan(root, [], config));
-    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
-    expect(calls[0]?.args).toEqual(['run', '-d', '--rm', '-p', `127.0.0.1::${held}`, DIGEST]);
+    expect(calls[0]?.args.slice(3)).toEqual(['-d', '--rm', '-p', `127.0.0.1::${held}`, DIGEST]);
     expect(calls[1]?.args).toEqual(['port', 'container-4', `${held}/tcp`]);
     expect(prepared.env.TALOS_SERVICE_DB_PORT).toBe(String(free));
     expect(process.env.TALOS_SERVICE_DB_PORT).toBe(String(free));
+  });
+
+  it('gives the checks the host port of each port a service publishes', async () => {
+    const first = await listening();
+    const second = await listening();
+    const root = await tempRepo({});
+    const hosts: Record<string, number> = { '5432/tcp': first, '8080/tcp': second };
+    const { engine } = engineWith((call) =>
+      call.args[0] === 'port' ? `127.0.0.1:${hosts[call.args[2] ?? ''] ?? 0}\n` : 'container-6\n',
+    );
+    const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [5432, 8080]\n`);
+    const prepared = await prepare(engine, testPlan(root, [], config));
+    expect(prepared.env).toEqual({
+      TALOS_SERVICE_DB_HOST: '127.0.0.1',
+      TALOS_SERVICE_DB_PORT: String(first),
+      TALOS_SERVICE_DB_PORT_5432: String(first),
+      TALOS_SERVICE_DB_PORT_8080: String(second),
+      TALOS_RENDERED_VERSION: '9.9.9',
+    });
+    expect(process.env.TALOS_SERVICE_DB_PORT_8080).toBe(String(second));
   });
 
   it("removes a service whose host port Docker doesn't say", async () => {
@@ -136,6 +168,7 @@ describe('prepare: services', () => {
       "docker did not say which host port publishes a declared service's 5432",
     );
     expect(calls.at(-1)?.args).toEqual(['rm', '-f', 'container-5']);
+    expect(calls.at(-2)?.args[0]).toBe('ps');
   });
 
   it('starts a service that exposes nothing without a port to wait for', async () => {
@@ -145,7 +178,6 @@ describe('prepare: services', () => {
     );
     const config = configWith(`services:\n  worker:\n    image: ${DIGEST}\n`);
     const prepared = await prepare(engine, testPlan(root, [], config));
-    touched.add('TALOS_SERVICE_WORKER_HOST');
     expect(prepared.env).toEqual({
       TALOS_SERVICE_WORKER_HOST: '127.0.0.1',
       TALOS_RENDERED_VERSION: '9.9.9',
@@ -182,7 +214,6 @@ describe('prepare: removing services', () => {
     const signalListeners = (): number[] =>
       ['SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s));
     const before = signalListeners();
-    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
     await expect(prepare(engine, testPlan(root, [], config))).rejects.toThrow(/exited 1:\nboom/);
     expect(removals(calls)).toEqual(['rm -f svc-1']);
     expect(signalListeners()).toEqual(before);
@@ -202,7 +233,6 @@ describe('prepare: removing services', () => {
         '',
       ].join('\n'),
     );
-    touched.add('TALOS_SERVICE_FIRST_HOST').add('TALOS_SERVICE_FIRST_PORT');
     await expect(prepare(engine, testPlan(root, [], config))).rejects.toThrow(/exited 1/);
     expect(removals(calls)).toEqual(['rm -f svc-1']);
   });
@@ -214,7 +244,6 @@ describe('prepare: removing services', () => {
       const root = await tempRepo({});
       const { engine, calls } = engineWith(docker('svc-1', port));
       const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
-      touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
       const prepared = await prepare(engine, testPlan(root, [], config));
       const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
       try {
@@ -231,6 +260,46 @@ describe('prepare: removing services', () => {
     },
   );
 
+  it('removes a service whose docker run had not answered when the signal came, starting no more', async () => {
+    const port = await listening();
+    const root = await tempRepo({});
+    const answerRun: ((id: string) => void)[] = [];
+    const running = new Promise<string>((resolve) => {
+      answerRun.push(resolve);
+    });
+    const { engine, calls } = engineWith((call) =>
+      call.args[0] === 'run' && call.args.includes(DIGEST) ? running : docker('svc-1', port)(call),
+    );
+    const config = configWith(
+      [
+        'services:',
+        `  first:\n    image: ${DIGEST}\n    ports: [${port}]`,
+        `  second:\n    image: ${OTHER}\n    ports: [${port}]`,
+        '',
+      ].join('\n'),
+    );
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      const preparing = prepare(engine, testPlan(root, [], config));
+      await vi.waitFor(() => {
+        expect(calls).toHaveLength(1);
+      });
+      process.emit('SIGTERM', 'SIGTERM');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(calls).toHaveLength(1);
+      expect(kill).not.toHaveBeenCalled();
+      answerRun[0]?.('svc-1\n');
+      await expect(preparing).rejects.toThrow('the run is stopping: no further service starts');
+      await vi.waitFor(() => {
+        expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM');
+      });
+      expect(calls.map((c) => c.args[0])).toEqual(['run', 'port', 'ps', 'rm']);
+      expect(removals(calls)).toEqual(['rm -f svc-1']);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
   it('warns about a container it could not remove', async () => {
     const port = await listening();
     const root = await tempRepo({});
@@ -238,9 +307,8 @@ describe('prepare: removing services', () => {
       call.args[0] === 'rm' ? failed : docker('svc-1', port)(call),
     );
     const config = configWith(`services:\n  db:\n    image: ${DIGEST}\n    ports: [${port}]\n`);
-    touched.add('TALOS_SERVICE_DB_HOST').add('TALOS_SERVICE_DB_PORT');
     await (await prepare(engine, testPlan(root, [], config))).release();
-    expect(warnings).toEqual(['could not remove service container svc-1']);
+    expect(warnings).toEqual(['could not remove service containers svc-1: boom']);
   });
 });
 

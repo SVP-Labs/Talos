@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -146,32 +147,48 @@ async function exposedPorts(engine: Engine, image: string, root: string): Promis
 const STOP_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
 type Containers = {
-  readonly add: (id: string) => void;
-  /** Removes every container added so far, once however often it is called; never throws. */
+  /** `docker run` with these arguments, labelled as this run's: the container's ID. */
+  readonly run: (args: readonly string[]) => Promise<string>;
+  /** Removes every container this run started, once however often it is called; never throws. */
   readonly remove: () => Promise<void>;
 };
 
 /**
- * The service containers a run started. `--rm` removes a container only once it exits, which a
+ * The service containers a run starts. `--rm` removes a container only once it exits, which a
  * service never does by itself, so each one lives until the run removes it: a container left
- * behind holds its host port on the machine. While any is up, SIGINT and SIGTERM remove them
- * before the process ends as the signal would have ended it.
+ * behind holds its host port on the machine. Each carries a label naming the run, so removal
+ * finds one whose `docker run` hadn't answered yet; it waits for a `docker run` under way first.
+ * From the first `docker run` on, SIGINT and SIGTERM remove them before the process ends as the
+ * signal would have ended it.
  */
 function containers(engine: Engine, root: string): Containers {
-  const ids: string[] = [];
+  const label = `talos.run=${randomUUID()}`;
+  let started = false;
+  let starting: Promise<unknown> = Promise.resolve();
   let removed: Promise<void> | undefined;
   const onSignal = (signal: NodeJS.Signals): void => {
     void remove().then(() => process.kill(process.pid, signal));
   };
+  const docker = async (args: readonly string[], failure: string): Promise<string> => {
+    try {
+      const result = await engine.exec('docker', args, { cwd: root });
+      if (result.code === 0) return result.stdout;
+      engine.log.warn(`${failure}: ${(result.stderr || result.stdout).trim()}`);
+    } catch (error) {
+      engine.log.warn(`${failure}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return '';
+  };
   const removeAll = async (): Promise<void> => {
-    for (const id of ids) {
-      try {
-        const result = await engine.exec('docker', ['rm', '-f', id], { cwd: root });
-        if (result.code !== 0) engine.log.warn(`could not remove service container ${id}`);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        engine.log.warn(`could not remove service container ${id}: ${reason}`);
-      }
+    if (!started) return;
+    await starting;
+    const listed = await docker(
+      ['ps', '-aq', '--filter', `label=${label}`],
+      'could not list the service containers',
+    );
+    const ids = listed.split('\n').flatMap((line) => line.trim() || []);
+    if (ids.length > 0) {
+      await docker(['rm', '-f', ...ids], `could not remove service containers ${ids.join(' ')}`);
     }
     for (const signal of STOP_SIGNALS) process.off(signal, onSignal);
   };
@@ -179,13 +196,19 @@ function containers(engine: Engine, root: string): Containers {
     removed ??= removeAll();
     return removed;
   };
-  return {
-    add: (id) => {
-      if (ids.length === 0) for (const signal of STOP_SIGNALS) process.on(signal, onSignal);
-      ids.push(id);
-    },
-    remove,
+  const run = (args: readonly string[]): Promise<string> => {
+    if (removed !== undefined) {
+      return Promise.reject(new Error('the run is stopping: no further service starts'));
+    }
+    if (!started) for (const signal of STOP_SIGNALS) process.on(signal, onSignal);
+    started = true;
+    const answer = execOk(engine.exec, 'docker', ['run', '--label', label, ...args], {
+      cwd: root,
+    }).then((out) => out.trim());
+    starting = answer.catch(() => undefined);
+    return answer;
   };
+  return { run, remove };
 }
 
 /** The host port a container's port is published on. */
@@ -201,7 +224,8 @@ async function hostPort(engine: Engine, root: string, id: string, port: number):
 /**
  * Starts the services `talos.yml` declares, pinned by digest; Linux only. Docker publishes each
  * port on a host port it finds free, so a port something else holds on the machine doesn't stop
- * the run; the checks learn it from the environment.
+ * the run. The checks find a service at `TALOS_SERVICE_<NAME>_HOST`, each port it publishes at
+ * `TALOS_SERVICE_<NAME>_PORT_<port>`, and its first at `TALOS_SERVICE_<NAME>_PORT`.
  */
 async function startServices(
   engine: Engine,
@@ -219,16 +243,17 @@ async function startServices(
       service.ports.length > 0
         ? service.ports
         : await exposedPorts(engine, service.image, plan.root);
-    const args = ['run', '-d', '--rm', ...ports.flatMap((p) => ['-p', `127.0.0.1::${p}`])];
+    const args = ['-d', '--rm', ...ports.flatMap((p) => ['-p', `127.0.0.1::${p}`])];
     for (const [key, value] of Object.entries(service.env)) args.push('-e', `${key}=${value}`);
-    const id = (
-      await execOk(engine.exec, 'docker', [...args, service.image], { cwd: plan.root })
-    ).trim();
-    started.add(id);
-    const published: number[] = [];
-    for (const port of ports) published.push(await hostPort(engine, plan.root, id, port));
+    const id = await started.run([...args, service.image]);
     const upper = name.toUpperCase().replaceAll('-', '_');
     env[`TALOS_SERVICE_${upper}_HOST`] = '127.0.0.1';
+    const published: number[] = [];
+    for (const port of ports) {
+      const host = await hostPort(engine, plan.root, id, port);
+      published.push(host);
+      env[`TALOS_SERVICE_${upper}_PORT_${port}`] = String(host);
+    }
     if (published[0] !== undefined) env[`TALOS_SERVICE_${upper}_PORT`] = String(published[0]);
     for (const port of published) await waitForPort(port, 120_000);
   }
