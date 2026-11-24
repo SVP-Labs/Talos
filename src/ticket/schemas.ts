@@ -106,17 +106,11 @@ export const branchSchema = z.object({
 
 const rawPull = z.object({
   number: z.number().int().positive(),
-  draft: z.boolean().optional(),
-  state: z.enum(['open', 'closed']),
-  updated_at: z.string(),
   head: z.object({ ref: z.string() }),
 });
 
 export type Pull = {
   readonly number: number;
-  readonly draft: boolean;
-  readonly state: 'open' | 'closed';
-  readonly updatedAt: string;
   readonly headRef: string;
 };
 
@@ -126,9 +120,6 @@ export function parsePulls(data: unknown): Pull[] {
     .parse(data)
     .map((p) => ({
       number: p.number,
-      draft: p.draft ?? false,
-      state: p.state,
-      updatedAt: p.updated_at,
       headRef: p.head.ref,
     }));
 }
