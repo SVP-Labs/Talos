@@ -118,6 +118,43 @@ describe('tsconfigLeaves', () => {
     expect(await tsconfigLeaves(referenced)).toBe(true);
     expect(await tsconfigLeaves(absolute)).toBe(true);
   });
+
+  it.each([
+    ['a bare directory', 'packages/a', 'packages/a/tsconfig.json'],
+    ['a dotted directory', './packages/a', 'packages/a/tsconfig.json'],
+    ['a bare file', 'packages/a/tsconfig.app.json', 'packages/a/tsconfig.app.json'],
+  ])('follows a reference to %s into what it extends', async (_, path, target) => {
+    const outside = await component({
+      'tsconfig.json': `{ "references": [{ "path": "${path}" }], }`,
+      [target]: '{ "extends": "../../../tsconfig.base.json" }',
+    });
+    const inside = await component({
+      'tsconfig.json': `{ "references": [{ "path": "${path}" }] }`,
+      [target]: '{ "extends": "../../tsconfig.base.json" }',
+      'tsconfig.base.json': '{ /* shared */ "compilerOptions": {} }',
+    });
+    expect(await tsconfigLeaves(outside)).toBe(true);
+    expect(await tsconfigLeaves(inside)).toBe(false);
+  });
+
+  it('follows each relative base of an extends list, and no package', async () => {
+    const dir = await component({
+      'tsconfig.json': '{ "extends": ["@tsconfig/node22/tsconfig.json", "./configs/strict"] }',
+      'configs/strict.json': '{ "extends": "../../outer.json" }',
+    });
+    const packaged = await component({
+      'tsconfig.json': '{ "extends": "@tsconfig/node22/tsconfig.json" }',
+    });
+    expect(await tsconfigLeaves(dir)).toBe(true);
+    expect(await tsconfigLeaves(packaged)).toBe(false);
+  });
+
+  it("keeps Stryker's rewrite for a tsconfig it can't read", async () => {
+    const dir = await component({ 'tsconfig.json': '{ "extends": ' });
+    const shape = await component({ 'tsconfig.json': '{ "references": "packages/a" }' });
+    expect(await tsconfigLeaves(dir)).toBe(true);
+    expect(await tsconfigLeaves(shape)).toBe(true);
+  });
 });
 
 describe('strykerTargets', () => {

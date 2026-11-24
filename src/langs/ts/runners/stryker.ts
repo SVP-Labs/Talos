@@ -1,6 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { z } from 'zod';
 import { type CheckContext, EngineError } from '../../../core/check.js';
 import type { MutationRunner, Report } from '../../../quality/index.js';
 import { STRYKER_BASE } from '../configs/stryker.js';
@@ -68,42 +69,100 @@ function strings(text: string): string[] {
   });
 }
 
-/** A path up and out, or an absolute one; `//`, the key generated JSON files carry, is neither. */
-function leaves(path: string): boolean {
-  return /^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(path) || path.split(/[\\/]/).includes('..');
+/**
+ * Whether a path, read from the directory `from` (relative to the component's root), points
+ * outside the component: up and out of it, or absolute. `//`, the key generated JSON files
+ * carry, is neither.
+ */
+function leavesFrom(from: string): (path: string) => boolean {
+  return (path) => {
+    if (/^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(path)) return true;
+    const resolved = posix.join(from, path.replaceAll('\\', '/'));
+    return resolved === '..' || resolved.startsWith('../');
+  };
+}
+
+/** JSONC without its comments; strings are kept whole, whatever they hold. */
+function withoutComments(text: string): string {
+  return text.replaceAll(
+    /("(?:[^"\\\n]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+    (_, kept?: string) => kept ?? ' ',
+  );
+}
+
+/** JSON without the trailing commas JSONC allows; strings are kept whole. */
+function withoutTrailingCommas(text: string): string {
+  return text.replaceAll(/("(?:[^"\\\n]|\\.)*")|,(?=\s*[}\]])/g, (_, kept?: string) => kept ?? '');
+}
+
+/** What of a tsconfig names further tsconfigs; anything else in it is free. */
+const tsconfigLinks = z.looseObject({
+  extends: z.union([z.string(), z.array(z.string())]).optional(),
+  references: z.array(z.looseObject({ path: z.string() })).optional(),
+});
+
+type TsconfigLinks = z.infer<typeof tsconfigLinks>;
+
+/** A tsconfig's links, or undefined when it isn't JSONC of a shape Talos can read. */
+function parseTsconfig(text: string): TsconfigLinks | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(withoutTrailingCommas(withoutComments(text)));
+  } catch {
+    return undefined;
+  }
+  const parsed = tsconfigLinks.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * The tsconfigs a tsconfig at `file` extends or references, by their path from the component's
+ * root. An `extends` that starts with `.` is a path, a bare one a package, as TypeScript reads
+ * them, and `./base` may name `./base.json`; a reference's path is always relative, and one that
+ * doesn't end in `.json` names the `tsconfig.json` in that directory.
+ */
+function linked(file: string, config: TsconfigLinks): string[] {
+  const from = posix.dirname(file);
+  const extended = config.extends ?? [];
+  const bases = (typeof extended === 'string' ? [extended] : extended).filter((base) =>
+    base.startsWith('.'),
+  );
+  return [
+    ...bases.flatMap((base) => {
+      const path = posix.join(from, base);
+      return path.endsWith('.json') ? [path] : [path, `${path}.json`];
+    }),
+    ...(config.references ?? []).map(({ path: reference }) => {
+      const path = posix.join(from, reference);
+      return path.endsWith('.json') ? path : posix.join(path, 'tsconfig.json');
+    }),
+  ];
 }
 
 /**
  * Whether Stryker must rewrite the component's tsconfig chain because some path in it points
- * outside the component, which its sandbox doesn't hold. Read as text, every string counts and
- * every relative one is followed as a further tsconfig, so a doubt leaves Stryker's rewrite on.
+ * outside the component, which its sandbox doesn't hold. Every string in each file counts as a
+ * path from that file's directory, and every tsconfig it extends or references is read in turn;
+ * a tsconfig Talos can't read leaves Stryker's rewrite on.
  */
 export async function tsconfigLeaves(dir: string): Promise<boolean> {
   const pending = ['tsconfig.json'];
   const seen = new Set<string>();
-  let file = pending.pop();
-  while (file !== undefined) {
-    const text = seen.has(file) ? undefined : await readFile(join(dir, file), 'utf8').catch(noFile);
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (seen.has(file)) continue;
     seen.add(file);
-    const values = strings(text ?? '');
-    if (values.some(leaves)) return true;
-    pending.push(...values.flatMap(tsconfigsAt(file)));
-    file = pending.pop();
+    if (leavesFrom('.')(file)) return true;
+    const text = await readFile(join(dir, file), 'utf8').catch(noFile);
+    if (text === undefined) continue;
+    const config = parseTsconfig(text);
+    if (config === undefined || strings(text).some(leavesFrom(posix.dirname(file)))) return true;
+    pending.push(...linked(file, config));
   }
   return false;
 }
 
 function noFile(): undefined {
   return undefined;
-}
-
-/** The files a relative path in `file` may name: a tsconfig, or a directory holding one. */
-function tsconfigsAt(file: string): (value: string) => string[] {
-  return (value) => {
-    if (!value.startsWith('./')) return [];
-    const next = posix.join(posix.dirname(file), value);
-    return [next.endsWith('.json') ? next : `${next}.json`, posix.join(next, 'tsconfig.json')];
-  };
 }
 
 /** Stryker's report format with no file in it, for a run with nothing to mutate. */
