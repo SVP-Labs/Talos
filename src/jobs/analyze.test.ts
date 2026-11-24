@@ -92,6 +92,7 @@ describe('mutationSummary', () => {
         { file: 'src/a.ts', survived: 2 },
         { file: 'src/b.ts', survived: 1 },
       ],
+      errors: [{ check: 'py/mutation', reason: 'x' }],
     });
     expect(mutationMarkdown(summary)).toContain('| 2 | `src/a.ts` |');
   });
