@@ -431,6 +431,48 @@ describe('bootstrap: npm audit signatures', () => {
     }
   });
 
+  it('passes when an unreadable audit is followed by a readable, clean one', () => {
+    const unreadable: AuditRun = { status: 1, stdout: '', stderr: 'npm error code ECONNRESET' };
+    const once = audits(unreadable, CLEAN);
+    expect(once.problems()).toEqual([]);
+    expect(once.calls()).toBe(2);
+    expect(once.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+    ]);
+    const twice = audits(unreadable, unreadable, CLEAN);
+    expect(twice.problems()).toEqual([]);
+    expect(twice.calls()).toBe(3);
+  });
+
+  it('judges the readable audit that follows an unreadable one', () => {
+    const missing = { name: 'left-pad', version: '1.3.0' };
+    const npm = audits({ status: 1, stdout: 'npm ERR!' }, report([], [missing]), CLEAN);
+    expect(npm.problems()).toEqual(['1 missing signatures']);
+    expect(npm.calls()).toBe(2);
+    expect(npm.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+      'npm audit signatures: missing: left-pad@1.3.0',
+    ]);
+  });
+
+  it('refuses an audit that stays unreadable after three audits, with what npm said', () => {
+    const unreadable: AuditRun = {
+      status: 1,
+      stdout: '',
+      stderr: 'npm error code EAI_AGAIN\nnpm error request to registry failed\n',
+    };
+    const npm = audits(unreadable, unreadable, unreadable, CLEAN);
+    expect(npm.problems()).toEqual([
+      'npm audit signatures exited 1 without a readable report',
+      "npm's stderr ends: npm error code EAI_AGAIN | npm error request to registry failed",
+    ]);
+    expect(npm.calls()).toBe(3);
+    expect(npm.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+      'npm audit signatures left no readable report: auditing once more',
+    ]);
+  });
+
   it("ends a refusal over an unreadable report with npm's code and the tail of its stderr", () => {
     const failed = (stderr: string | null): AuditRun => ({ status: 243, stdout: '', stderr });
     const refusal = (stderr: string | null): string[] =>
