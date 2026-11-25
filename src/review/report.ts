@@ -64,9 +64,23 @@ export function errorFields(detail: string): CheckRunFields {
 
 /**
  * The check run where the base branch has no `talos.yml`: neutral, since there are no rules to
- * judge the PR by until the repository's adoption lands.
+ * judge the PR by until the repository's adoption lands. The PR that adds it is not judged by
+ * its own `talos.yml`, which its author wrote: the owner reviews and merges it.
  */
-export function unadoptedFields(base: string): CheckRunFields {
+export function unadoptedFields(base: string, adoption: boolean): CheckRunFields {
+  if (adoption) {
+    return {
+      conclusion: 'neutral',
+      output: {
+        title: "Adoption PR: it needs the owner's merge",
+        summary: [
+          `${base} has no talos.yml yet, and this PR adds it. talos/review judges a PR by the`,
+          "base's talos.yml, never by one the PR itself writes, so it decides nothing here: the",
+          'owner reviews the adoption PR and merges it. Every PR after it is reviewed as usual.',
+        ].join(' '),
+      },
+    };
+  }
   return {
     conclusion: 'neutral',
     output: {

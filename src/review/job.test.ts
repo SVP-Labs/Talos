@@ -837,6 +837,26 @@ describe('reviewJob where the base branch has no talos.yml', () => {
     expect(submitted(fake)).toEqual([]);
   });
 
+  it("explains that the PR adding talos.yml is the adoption PR, which needs the owner's merge", async () => {
+    const { fake, ctx } = unadopted();
+    fake.contents.set(`${HEAD}:talos.yml`, 'name: Loose\nprefix: L\n');
+    const model = fakeModel(APPROVE);
+    expect(await reviewJobWith(ctx, deps(model))).toEqual([
+      {
+        job: 'review',
+        result: 'skipped',
+        detail: "talos.yml is not on the base branch: this adoption PR needs the owner's merge",
+      },
+    ]);
+    const check = lastCheck(fake);
+    expect(check).toMatchObject({ name: 'talos/review', head_sha: HEAD, conclusion: 'neutral' });
+    expect(output(check).title).toBe("Adoption PR: it needs the owner's merge");
+    expect(output(check).summary).toContain('main has no talos.yml yet, and this PR adds it.');
+    expect(output(check).summary).toContain('the owner reviews the adoption PR and merges it');
+    expect(model.prompts).toEqual([]);
+    expect(submitted(fake)).toEqual([]);
+  });
+
   it('ends neutral in the merge queue too, on the group head', async () => {
     const payload = {
       action: 'checks_requested',

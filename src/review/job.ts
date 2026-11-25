@@ -56,6 +56,7 @@ type Target = {
 export type Routed = { readonly target: Target } | { readonly skip: string };
 
 const NOT_ADOPTED = `${CONFIG_FILE} is not on the base branch: the repository is not adopted`;
+const ADOPTION = `${CONFIG_FILE} is not on the base branch: this adoption PR needs the owner's merge`;
 
 const REVIEWED_ACTIONS: ReadonlySet<string> = new Set([
   'opened',
@@ -137,14 +138,19 @@ export function routeEvent(event: string, payload: unknown, who: Identities): Ro
   return { skip: `no review on ${event}` };
 }
 
-/** The base branch has no `talos.yml`: Talos's adoption has not landed in the repository. */
+/**
+ * The base branch has no `talos.yml`: Talos's adoption has not landed in the repository.
+ * `adoption` says the PR's head adds one, so the PR is the one that adopts Talos.
+ */
 class NotAdopted extends Error {
   override readonly name = 'NotAdopted';
   readonly base: string;
+  readonly adoption: boolean;
 
-  constructor(base: string) {
+  constructor(base: string, adoption: boolean) {
     super(`${CONFIG_FILE} is not on ${base}: the repository is not adopted`);
     this.base = base;
+    this.adoption = adoption;
   }
 }
 
@@ -163,7 +169,10 @@ async function configFor(
   } catch (error) {
     const base = target.group?.baseSha ?? pull.baseRef;
     if ((await fileAt(gh, ctx.repo, CONFIG_FILE, base)) !== undefined) throw error;
-    throw new NotAdopted(pull.baseRef);
+    const adds =
+      target.group === undefined &&
+      (await fileAt(gh, ctx.repo, CONFIG_FILE, pull.headSha)) !== undefined;
+    throw new NotAdopted(pull.baseRef, adds);
   }
 }
 
@@ -278,8 +287,9 @@ export async function reviewJobWith(ctx: JobContext, deps: ReviewDeps): Promise<
     return await decideAndPublish(gh, ctx, target, deps);
   } catch (error) {
     if (error instanceof NotAdopted) {
-      await publish(gh, ctx, target.sha, unadoptedFields(error.base));
-      return [{ job: 'review', result: 'skipped', detail: NOT_ADOPTED }];
+      await publish(gh, ctx, target.sha, unadoptedFields(error.base, error.adoption));
+      const detail = error.adoption ? ADOPTION : NOT_ADOPTED;
+      return [{ job: 'review', result: 'skipped', detail }];
     }
     const detail = safeDetail(error);
     await publish(gh, ctx, target.sha, errorFields(detail)).catch(() => undefined);
