@@ -248,6 +248,25 @@ describe('the gate', () => {
     expect(upload?.if).toContain('!cancelled()');
   });
 
+  it('runs nothing where the repository is not adopted, and judges by the plan', () => {
+    const plan = stepIn(jobs.plan, named('plan'), 'plan').run ?? '';
+    expect(plan).toContain('--json "$plan_dir/verdict.json" --sarif "$plan_dir/talos.sarif"');
+    const kept = stepIn(jobs.plan, named('Keep the plan for the verdict'), 'keeping the plan');
+    expect(kept.with?.path).toBe('${{ runner.temp }}/talos-plan');
+    expect(jobs.run?.if).toBe("${{ needs.plan.outputs.adopted == 'true' }}");
+    expect(jobs.verdict?.if).toContain("needs.plan.outputs.adopted == 'false'");
+    expect(jobs.verdict?.if).toContain("needs.run.result == 'success'");
+    expect(jobs.verdict?.if).toContain('!cancelled()');
+    const results = stepIn(jobs.verdict, named('Collect the results'), 'collecting results');
+    expect(results.if).toBe("${{ needs.plan.outputs.adopted == 'true' }}");
+    const judge = stepIn(jobs.verdict, named('judge'), 'judge');
+    expect(judge.env?.ADOPTED).toBe('${{ needs.plan.outputs.adopted }}');
+    expect(judge.run).toMatch(
+      /if \[\[ "\$ADOPTED" == false \]\]; then\n\s*cp "\$RUNNER_TEMP\/talos-plan\/verdict\.json"/,
+    );
+    expect(judge.run).toContain(`code="$(jq -r '{"green": 0, "red": 1}[.status] // 2'`);
+  });
+
   it("judges a commit without talos.yml by the head's, as the PR that adopts Talos needs", () => {
     const run = jobs.run?.steps.find(named('Run the checks'))?.run ?? '';
     expect(run).toContain('--config-from "$HEAD"');
