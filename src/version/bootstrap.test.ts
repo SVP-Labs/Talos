@@ -252,7 +252,11 @@ describe('bootstrap: the checkout it runs from', () => {
   });
 });
 
-type AuditRun = { readonly status: number | null; readonly stdout: string | null };
+type AuditRun = {
+  readonly status: number | null;
+  readonly stdout: string | null;
+  readonly stderr?: string | null;
+};
 
 const CLEAN: AuditRun = { status: 0, stdout: '{"invalid":[],"missing":[]}' };
 
@@ -315,8 +319,6 @@ describe('bootstrap/launch.ts audits signatures as the engine does', () => {
     ['missing signatures on the second audit', [report([RACED]), report([], [RACED]), CLEAN]],
     ['missing signatures', [report([], [RACED]), CLEAN]],
     ['invalid and missing signatures', [report([RACED], [RACED]), CLEAN]],
-    ['an audit that never started', [{ status: null, stdout: null }, CLEAN]],
-    ['a report without its missing list', [{ status: 1, stdout: '{"invalid":[1]}' }, CLEAN]],
     ['a clean report and exit 1', [{ ...CLEAN, status: 1 }, CLEAN]],
     [
       'packages without the shape npm gives them',
@@ -331,6 +333,20 @@ describe('bootstrap/launch.ts audits signatures as the engine does', () => {
       expect(theirs).toEqual(await engineAudits(...runs));
     });
   }
+
+  it('differs only in auditing an unreadable report again, which the engine refuses at once', async () => {
+    for (const run of [
+      { status: null, stdout: null },
+      { status: 1, stdout: '{"invalid":[1]}' },
+    ]) {
+      const engine = await engineAudits(run, CLEAN);
+      expect(engine.problems).toEqual(['npm audit signatures exited 1 without a readable report']);
+      expect(engine.calls).toBe(1);
+      const ours = audits(run, CLEAN);
+      expect(ours.problems()).toEqual([]);
+      expect(ours.calls()).toBe(2);
+    }
+  });
 
   it("gives npm the same cache of the run's own", () => {
     const directory = join(tmpdir(), 'talos-x');
@@ -373,8 +389,10 @@ describe('bootstrap: npm audit signatures', () => {
     expect(audits(report([RACED]), report([], [RACED])).problems()).toEqual([
       '1 missing signatures',
     ]);
-    expect(audits(report([RACED]), { status: 1, stdout: 'npm ERR!' }).problems()).toEqual([
+    const unreadable = { status: 1, stdout: 'npm ERR!' };
+    expect(audits(report([RACED]), unreadable, unreadable).problems()).toEqual([
       'npm audit signatures exited 1 without a readable report',
+      'npm printed nothing on stderr',
     ]);
     expect(audits(report([RACED]), { ...CLEAN, status: 1 }).problems()).toEqual([
       'npm audit signatures exited 1',
@@ -387,15 +405,6 @@ describe('bootstrap: npm audit signatures', () => {
       [report([], [missing]), ['1 missing signatures']],
       [report([RACED], [missing]), ['1 invalid signatures', '1 missing signatures']],
       [{ ...CLEAN, status: 1 }, ['npm audit signatures exited 1']],
-      [{ status: null, stdout: null }, ['npm audit signatures exited 1 without a readable report']],
-      [
-        { status: 1, stdout: '{"invalid":"x","missing":[]}' },
-        ['npm audit signatures exited 1 without a readable report'],
-      ],
-      [
-        { status: 1, stdout: JSON.stringify({ invalid: [RACED] }) },
-        ['npm audit signatures exited 1 without a readable report'],
-      ],
     ];
     for (const [run, problems] of cases) {
       const npm = audits(run, CLEAN);
@@ -405,6 +414,87 @@ describe('bootstrap: npm audit signatures', () => {
         'npm audit signatures found invalid signatures only: auditing once more',
       );
     }
+  });
+
+  it('audits again when it cannot read the report', () => {
+    for (const run of [
+      { status: null, stdout: null },
+      { status: 1, stdout: '{"invalid":"x","missing":[]}' },
+      { status: 1, stdout: JSON.stringify({ invalid: [RACED] }) },
+    ]) {
+      const npm = audits(run, CLEAN);
+      expect(npm.problems()).toEqual([]);
+      expect(npm.calls()).toBe(2);
+      expect(npm.logged.at(-1)).toBe(
+        'npm audit signatures left no readable report: auditing once more',
+      );
+    }
+  });
+
+  it('passes when an unreadable audit is followed by a readable, clean one', () => {
+    const unreadable: AuditRun = { status: 1, stdout: '', stderr: 'npm error code ECONNRESET' };
+    const once = audits(unreadable, CLEAN);
+    expect(once.problems()).toEqual([]);
+    expect(once.calls()).toBe(2);
+    expect(once.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+    ]);
+    const twice = audits(unreadable, unreadable, CLEAN);
+    expect(twice.problems()).toEqual([]);
+    expect(twice.calls()).toBe(3);
+  });
+
+  it('judges the readable audit that follows an unreadable one', () => {
+    const missing = { name: 'left-pad', version: '1.3.0' };
+    const npm = audits({ status: 1, stdout: 'npm ERR!' }, report([], [missing]), CLEAN);
+    expect(npm.problems()).toEqual(['1 missing signatures']);
+    expect(npm.calls()).toBe(2);
+    expect(npm.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+      'npm audit signatures: missing: left-pad@1.3.0',
+    ]);
+  });
+
+  it('refuses an audit that stays unreadable after three audits, with what npm said', () => {
+    const unreadable: AuditRun = {
+      status: 1,
+      stdout: '',
+      stderr: 'npm error code EAI_AGAIN\nnpm error request to registry failed\n',
+    };
+    const npm = audits(unreadable, unreadable, unreadable, CLEAN);
+    expect(npm.problems()).toEqual([
+      'npm audit signatures exited 1 without a readable report',
+      "npm's stderr ends: npm error code EAI_AGAIN | npm error request to registry failed",
+    ]);
+    expect(npm.calls()).toBe(3);
+    expect(npm.logged).toEqual([
+      'npm audit signatures left no readable report: auditing once more',
+      'npm audit signatures left no readable report: auditing once more',
+    ]);
+  });
+
+  it("ends a refusal over an unreadable report with npm's code and the tail of its stderr", () => {
+    const failed = (stderr: string | null): AuditRun => ({ status: 243, stdout: '', stderr });
+    const refusal = (stderr: string | null): string[] =>
+      audits(failed('first'), failed('second'), failed(stderr)).problems();
+    expect(refusal('npm error code E503\nnpm error 503 Service Unavailable\n')).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      "npm's stderr ends: npm error code E503 | npm error 503 Service Unavailable",
+    ]);
+    expect(refusal('npm error\u0007\r\n\tfetch\u202efailed\n\n')).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      "npm's stderr ends: npm error | fetch failed",
+    ]);
+    const long = `${'a'.repeat(150)}\n${'b'.repeat(100)}`;
+    const [, tail] = refusal(long);
+    expect(tail).toBe(`npm's stderr ends: …${'a'.repeat(97)} | ${'b'.repeat(100)}`);
+    expect(refusal(null)).toEqual([
+      'npm audit signatures exited 243 without a readable report',
+      'npm printed nothing on stderr',
+    ]);
+    expect(audits({ ...CLEAN, status: 1, stderr: 'npm error' }).problems()).toEqual([
+      'npm audit signatures exited 1',
+    ]);
   });
 
   it('names each package it objects to, and nothing that lacks the shape npm gives it', () => {
