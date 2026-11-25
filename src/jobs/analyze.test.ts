@@ -150,24 +150,33 @@ describe('mutationReport', () => {
     );
   });
 
-  it('clips a long message and lists at most five faults, counting them all', () => {
+  it('clips each long message to one line of 200 characters', () => {
+    const reason = `${'0'.repeat(150)}\n${'1'.repeat(150)}`;
+    const [fault] = mutationSummary(
+      result([outcome('ts/mutation', [], { status: 'error', reason })]),
+    ).errors;
+    expect(fault?.reason).toBe(`${'0'.repeat(150)} ${'1'.repeat(48)}…`);
+  });
+
+  it('lists every fault in the detail, the report and the summary', async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
     const outcomes = Array.from({ length: 7 }, (_, i) =>
-      outcome('ts/mutation', [], {
-        status: 'error',
-        reason: `${i}`.repeat(300),
-        component: `c${i}`,
-      }),
+      outcome('ts/mutation', [], { status: 'error', reason: `fault ${i}`, component: `c${i}` }),
     );
-    const summary = mutationSummary(result(outcomes));
-    expect(summary.faults).toBe(7);
-    expect(summary.errors.map((f) => f.check)).toEqual([
-      'ts/mutation@c0',
-      'ts/mutation@c1',
-      'ts/mutation@c2',
-      'ts/mutation@c3',
-      'ts/mutation@c4',
-    ]);
-    expect(summary.errors[0]?.reason).toBe(`${'0'.repeat(199)}…`);
+    const d = deps(result(outcomes));
+    const listed = outcomes.map((_, i) => `ts/mutation@c${i}: fault ${i}`);
+    expect((await mutationReport(ctx, d)).detail).toBe(
+      `0 surviving mutant(s) in 0 file(s); 7 engine error(s): ${listed.join('; ')}`,
+    );
+    const written: unknown = JSON.parse(await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8'));
+    expect(written).toMatchObject({
+      faults: 7,
+      errors: outcomes.map((_, i) => ({ check: `ts/mutation@c${i}`, reason: `fault ${i}` })),
+    });
+    expect(d.summaries[0]).toContain('### Engine errors (7)');
+    for (const [i] of outcomes.entries()) {
+      expect(d.summaries[0]).toContain(`- **ts/mutation@c${i}**: \`fault ${i}\``);
+    }
   });
 
   it('masks a secret in the detail, the report and the summary', async () => {

@@ -23,7 +23,6 @@ export const MUTATION_FILE = 'mutation.json';
 const MUTATION_SCHEMA = 'talos.mutation/1';
 
 const LISTED = 20;
-const FAULTS = 5;
 const MESSAGE = 200;
 
 export async function debtRun(ctx: JobContext, deps: AnalyzeDeps): Promise<JobOutcome> {
@@ -46,7 +45,7 @@ export type MutationSummary = {
   readonly files: number;
   readonly faults: number;
   readonly byFile: readonly { readonly file: string; readonly survived: number }[];
-  /** What each engine error said, at most {@link FAULTS} of them. */
+  /** What each engine error said, every one of them. */
   readonly errors: readonly MutationFault[];
 };
 
@@ -85,7 +84,7 @@ export function mutationSummary(result: RunResult): MutationSummary {
     files: byFile.length,
     faults: faults.length,
     byFile: byFile.slice(0, LISTED),
-    errors: faults.slice(0, FAULTS),
+    errors: faults,
   };
 }
 
