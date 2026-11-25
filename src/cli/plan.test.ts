@@ -70,8 +70,10 @@ describe('talos plan', () => {
       JSON.parse(await readFile(join(cwd, 'plan.json'), 'utf8')),
     );
     expect(written).toMatchObject({ mode: 'ready', base, head, branch: 'TL-1' });
-    const line = await readFile(githubOutput, 'utf8');
+    const [line = '', adopted] = (await readFile(githubOutput, 'utf8')).split('\n');
     expect(line.startsWith('matrix=')).toBe(true);
+    expect(adopted).toBe('adopted=true');
+    await expect(readFile(join(cwd, 'verdict.json'), 'utf8')).rejects.toThrow();
     const matrix: unknown = JSON.parse(line.slice('matrix='.length));
     const linux = { os: 'linux', runner: 'ubuntu-latest' };
     const macos = { os: 'macos', runner: 'macos-latest' };
@@ -85,6 +87,50 @@ describe('talos plan', () => {
         { sha: head, tiers: 'commit,head', ...macos, langs: 'ts', php: '' },
       ],
     });
+  });
+
+  it('writes a red verdict with no runs where neither base nor head has talos.yml', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'talos-plan-cli-'));
+    const repo = git(exec, cwd);
+    await repo.run(['init', '-q']);
+    await writeFile(join(cwd, 'README.md'), '# A\n');
+    await repo.run(['add', '-A']);
+    await repo.run([...COMMIT, '-m', 'readme']);
+    const head = (await repo.run(['rev-parse', 'HEAD'])).trim();
+    const event = join(cwd, '..', `${head}.json`);
+    await writeFile(
+      event,
+      JSON.stringify({ pull_request: { base: { sha: head }, head: { sha: head, ref: 'TL-2' } } }),
+    );
+    const githubOutput = join(cwd, '..', `${head}.out`);
+    const io = ioAt(cwd, {
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_EVENT_PATH: event,
+      GITHUB_OUTPUT: githubOutput,
+      GITHUB_REF: 'refs/pull/7/merge',
+    });
+    expect(await plan(['--out', 'plan.json', '--json', 'v.json', '--sarif', 's.sarif'], io)).toBe(
+      0,
+    );
+    expect(io.output.at(-1)).toBe(
+      'ready: repository not adopted: no talos.yml at the base or the head\n',
+    );
+    expect(await readFile(githubOutput, 'utf8')).toBe('matrix={"include":[]}\nadopted=false\n');
+    const written = gatePlanSchema.parse(
+      JSON.parse(await readFile(join(cwd, 'plan.json'), 'utf8')),
+    );
+    expect(written).toMatchObject({ head, runs: [], adopted: false });
+    const verdict: unknown = JSON.parse(await readFile(join(cwd, 'v.json'), 'utf8'));
+    expect(verdict).toMatchObject({
+      schema: 'talos.verdict/1',
+      pr: 7,
+      head,
+      status: 'red',
+      counts: { blocking: 1, faults: 0 },
+      blocking: [{ sha: head, rule: 'talos/not-adopted', file: null }],
+    });
+    const sarif = await readFile(join(cwd, 's.sarif'), 'utf8');
+    expect(sarif).toContain('talos/not-adopted');
   });
 
   it('needs the event', async () => {

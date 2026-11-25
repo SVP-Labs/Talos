@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { gatePlanSchema, planFromEvent, planRange } from './plan.js';
-import { parseConfig } from '../config/load.js';
+import { adoptionFindings, gatePlanSchema, planFromEvent, planRange } from './plan.js';
+import { ConfigError, parseConfig } from '../config/load.js';
 import { exec } from '../exec/exec.js';
 import { type Git, git } from '../repo/git.js';
 
@@ -176,5 +176,54 @@ describe('planFromEvent', () => {
     await expect(planFromEvent('push', {}, repo, config)).rejects.toThrow(
       'the gate runs on pull_request and merge_group, not push',
     );
+  });
+});
+
+describe('planFromEvent where the head has no talos.yml', () => {
+  const pr = (base: string, head: string) => ({
+    pull_request: { base: { sha: base }, head: { sha: head, ref: 'TL-4' } },
+  });
+
+  it('plans nothing, and finds the repository not adopted, when the base has none either', async () => {
+    const { repo, commit } = await scratch();
+    const base = await commit({ 'README.md': '# A\n' });
+    const head = await commit({ 'src/a.ts': 'export {};\n' });
+    const plan = await planFromEvent('pull_request', pr(base, head), repo, undefined);
+    expect(plan).toEqual({
+      mode: 'ready',
+      base,
+      head,
+      commits: [],
+      branch: 'TL-4',
+      runs: [],
+      adopted: false,
+    });
+    expect(gatePlanSchema.parse(structuredClone(plan))).toEqual(plan);
+    expect(adoptionFindings(plan)).toEqual([
+      expect.objectContaining({
+        rule: 'talos/not-adopted',
+        check: 'process/adoption',
+        policy: 'always',
+        sha: head,
+        message: expect.stringContaining('repository not adopted') as unknown,
+      }),
+    ]);
+  });
+
+  it('refuses a head that drops the base branch talos.yml', async () => {
+    const { repo, commit } = await scratch();
+    const base = await commit({ 'talos.yml': talos(TS) });
+    const head = await commit({ 'talos.yml': null });
+    await expect(planFromEvent('pull_request', pr(base, head), repo, undefined)).rejects.toThrow(
+      new ConfigError(`talos.yml is on the base but not at the head ${head}`),
+    );
+  });
+
+  it('finds nothing where the repository is adopted', async () => {
+    const { repo, commit } = await scratch();
+    const base = await commit({ 'talos.yml': talos(TS) });
+    const plan = await planFromEvent('pull_request', pr(base, base), repo, parseConfig(talos(TS)));
+    expect(plan).not.toHaveProperty('adopted');
+    expect(adoptionFindings(plan)).toEqual([]);
   });
 });

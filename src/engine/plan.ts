@@ -4,6 +4,8 @@ import { compareVersions } from '../checks/runtime/versions.js';
 import { CONFIG_FILE, ConfigError, parseConfig } from '../config/load.js';
 import type { TalosConfig } from '../config/schema.js';
 import type { Lang, Os, Tier } from '../core/check.js';
+import type { Reported } from '../core/finding.js';
+import { fingerprint } from '../core/fingerprint.js';
 import { type Git, mergeBase, revList, revParse, showFile } from '../repo/git.js';
 
 /**
@@ -37,6 +39,8 @@ export type GatePlan = {
   /** Who opened the PR, as the event names them; the merge queue's event names nobody. */
   readonly author?: string | undefined;
   readonly runs: readonly RunSpec[];
+  /** False when neither the base nor the head has `talos.yml`: nothing runs. */
+  readonly adopted?: boolean | undefined;
 };
 
 const RUNNERS = {
@@ -173,40 +177,90 @@ async function runsFor(
   );
 }
 
-/** Plans the gate's runs from the event GitHub delivered (`GITHUB_EVENT_PATH`). */
+type EventRange = {
+  readonly mode: Mode;
+  readonly tipOfBase: string;
+  readonly head: string;
+  readonly branch?: string;
+  readonly author?: string | undefined;
+};
+
+function rangeOfEvent(eventName: string, payload: unknown): EventRange {
+  if (eventName === 'merge_group') {
+    const event = mergeGroupEvent.parse(payload).merge_group;
+    return { mode: 'merge-group', tipOfBase: event.base_sha, head: event.head_sha };
+  }
+  if (eventName === 'pull_request' || eventName === 'pull_request_target') {
+    const event = pullRequestEvent.parse(payload).pull_request;
+    return {
+      mode: event.draft ? 'draft' : 'ready',
+      tipOfBase: event.base.sha,
+      head: event.head.sha,
+      ...(event.head.ref ? { branch: event.head.ref } : {}),
+      author: event.user?.login,
+    };
+  }
+  throw new Error(`the gate runs on pull_request and merge_group, not ${eventName}`);
+}
+
+/**
+ * The plan where the head has no `talos.yml`: when the base branch has none either, the
+ * repository is not adopted, and nothing runs. A head that drops the base's `talos.yml` has
+ * nothing to plan by.
+ */
+async function unadoptedPlan(repo: Git, range: EventRange): Promise<GatePlan> {
+  const head = await revParse(repo, range.head);
+  if ((await showFile(repo, range.tipOfBase, CONFIG_FILE)) !== undefined) {
+    throw new ConfigError(`${CONFIG_FILE} is on the base but not at the head ${head}`);
+  }
+  const base = await mergeBase(repo, range.tipOfBase, head);
+  const branch = range.branch === undefined ? {} : { branch: range.branch };
+  return { mode: range.mode, base, head, commits: [], ...branch, runs: [], adopted: false };
+}
+
+/**
+ * Plans the gate's runs from the event GitHub delivered (`GITHUB_EVENT_PATH`), by `talos.yml` at
+ * the head, or by nothing when the head has none.
+ */
 export async function planFromEvent(
   eventName: string,
   payload: unknown,
   repo: Git,
-  config: TalosConfig,
+  config: TalosConfig | undefined,
 ): Promise<GatePlan> {
-  let mode: Mode;
-  let tipOfBase: string;
-  let head: string;
-  let branch: string | undefined;
-  let author: string | undefined;
-  if (eventName === 'merge_group') {
-    const event = mergeGroupEvent.parse(payload).merge_group;
-    mode = 'merge-group';
-    tipOfBase = event.base_sha;
-    head = event.head_sha;
-  } else if (eventName === 'pull_request' || eventName === 'pull_request_target') {
-    const event = pullRequestEvent.parse(payload).pull_request;
-    mode = event.draft ? 'draft' : 'ready';
-    tipOfBase = event.base.sha;
-    head = event.head.sha;
-    branch = event.head.ref;
-    author = event.user?.login;
-  } else {
-    throw new Error(`the gate runs on pull_request and merge_group, not ${eventName}`);
-  }
-  const plan = await planRange(repo, config, {
-    mode,
-    tipOfBase,
-    head,
-    ...(branch ? { branch } : {}),
-  });
-  return author === undefined ? plan : { ...plan, author };
+  const range = rangeOfEvent(eventName, payload);
+  const plan =
+    config === undefined
+      ? await unadoptedPlan(repo, range)
+      : await planRange(repo, config, {
+          mode: range.mode,
+          tipOfBase: range.tipOfBase,
+          head: range.head,
+          ...(range.branch === undefined ? {} : { branch: range.branch }),
+        });
+  return range.author === undefined ? plan : { ...plan, author: range.author };
+}
+
+/** The rule of the one finding a gate makes in a repository that has not adopted Talos. */
+const NOT_ADOPTED = 'talos/not-adopted';
+
+/**
+ * The finding of a plan in a repository that has not adopted Talos: it blocks, as there are no
+ * rules to judge the change by until `talos.yml` lands.
+ */
+export function adoptionFindings(plan: GatePlan): (Reported & { readonly sha: string })[] {
+  if (plan.adopted !== false) return [];
+  return [
+    {
+      rule: NOT_ADOPTED,
+      check: 'process/adoption',
+      message: `repository not adopted: ${CONFIG_FILE} is on neither the base nor the head`,
+      key: CONFIG_FILE,
+      policy: 'always',
+      fingerprint: fingerprint(NOT_ADOPTED, CONFIG_FILE),
+      sha: plan.head,
+    },
+  ];
 }
 
 /**
@@ -238,6 +292,7 @@ export const gatePlanSchema = z.object({
   commits: z.array(z.string()),
   branch: z.string().optional(),
   author: z.string().optional(),
+  adopted: z.boolean().optional(),
   runs: z.array(
     z.object({
       sha: z.string(),
