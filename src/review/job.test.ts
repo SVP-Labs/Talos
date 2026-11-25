@@ -18,6 +18,7 @@ import {
 import { ConfigError } from '../config/load.js';
 import { github, GitHubError } from '../github/api.js';
 import { identities } from '../github/identities.js';
+import { runJobs } from '../jobs/dispatch.js';
 import { configAt } from '../ticket/github.js';
 
 const WHO = identities({});
@@ -855,6 +856,20 @@ describe('reviewJob where the base branch has no talos.yml', () => {
     expect(output(check).summary).toContain('the owner reviews the adoption PR and merges it');
     expect(model.prompts).toEqual([]);
     expect(submitted(fake)).toEqual([]);
+  });
+
+  it("leaves the act job no failed outcome on any PR, the adoption PR's included", async () => {
+    for (const adds of [false, true]) {
+      const { fake, ctx } = unadopted();
+      if (adds) fake.contents.set(`${HEAD}:talos.yml`, 'name: Loose\nprefix: L\n');
+      const outcomes = await runJobs(ctx, {
+        review: (job) => reviewJobWith(job, deps(fakeModel(APPROVE))),
+        labels: () => Promise.resolve([]),
+      });
+      expect(outcomes.map((o) => `${o.job} ${o.result}`)).toEqual(['review skipped']);
+      expect(outcomes[0]?.detail).toMatch(/^talos\.yml is not on the base branch: /);
+      expect(lastCheck(fake).conclusion).toBe('neutral');
+    }
   });
 
   it('ends neutral in the merge queue too, on the group head', async () => {
