@@ -14,9 +14,17 @@ import {
 } from './github.js';
 import { extensionFiles } from './guard.js';
 import { claudeCodeModel } from './model.js';
-import { CHECK_NAME, checkFields, errorFields, reviewerOutcome } from './report.js';
+import {
+  CHECK_NAME,
+  checkFields,
+  errorFields,
+  reviewerOutcome,
+  unadoptedFields,
+} from './report.js';
 import { type ReviewerDeps, type ReviewerRun, runReviewer } from './reviewer.js';
-import { ConfigError } from '../config/load.js';
+import type { Pull } from './types.js';
+import { CONFIG_FILE, ConfigError } from '../config/load.js';
+import type { TalosConfig } from '../config/schema.js';
 import { PACKS } from '../core/registry.js';
 import { exec } from '../exec/exec.js';
 import { type GitHub, GitHubError } from '../github/api.js';
@@ -28,7 +36,7 @@ import {
 } from '../github/checks.js';
 import { type Identities, sameLogin } from '../github/identities.js';
 import type { JobContext, JobOutcome } from '../jobs/context.js';
-import { getIssue } from '../ticket/github.js';
+import { fileAt, getIssue } from '../ticket/github.js';
 import { isTrusted } from '../ticket/trust.js';
 import { assetsDir } from '../version/self.js';
 
@@ -46,6 +54,8 @@ type Target = {
 };
 
 export type Routed = { readonly target: Target } | { readonly skip: string };
+
+const NOT_ADOPTED = `${CONFIG_FILE} is not on the base branch: the repository is not adopted`;
 
 const REVIEWED_ACTIONS: ReadonlySet<string> = new Set([
   'opened',
@@ -127,6 +137,36 @@ export function routeEvent(event: string, payload: unknown, who: Identities): Ro
   return { skip: `no review on ${event}` };
 }
 
+/** The base branch has no `talos.yml`: Talos's adoption has not landed in the repository. */
+class NotAdopted extends Error {
+  override readonly name = 'NotAdopted';
+  readonly base: string;
+
+  constructor(base: string) {
+    super(`${CONFIG_FILE} is not on ${base}: the repository is not adopted`);
+    this.base = base;
+  }
+}
+
+/**
+ * `talos.yml` where the review reads it. When it can't be read there and the base has none
+ * either, the repository is not adopted yet, which is no fault of the PR.
+ */
+async function configFor(
+  gh: GitHub,
+  ctx: JobContext,
+  target: Target,
+  pull: Pull,
+): Promise<TalosConfig> {
+  try {
+    return await ctx.config(target.group?.headSha ?? pull.baseRef);
+  } catch (error) {
+    const base = target.group?.baseSha ?? pull.baseRef;
+    if ((await fileAt(gh, ctx.repo, CONFIG_FILE, base)) !== undefined) throw error;
+    throw new NotAdopted(pull.baseRef);
+  }
+}
+
 async function gather(
   gh: GitHub,
   ctx: JobContext,
@@ -137,7 +177,7 @@ async function gather(
   const pull = await getPull(gh, repo, target.pr);
   const [config, files, reviews, commits, pullEvents, closing, properties, owners] =
     await Promise.all([
-      ctx.config(target.group?.headSha ?? pull.baseRef),
+      configFor(gh, ctx, target, pull),
       listPullFiles(gh, repo, pull.number),
       listReviews(gh, repo, pull.number),
       listPullCommits(gh, repo, pull.number),
@@ -237,6 +277,10 @@ export async function reviewJobWith(ctx: JobContext, deps: ReviewDeps): Promise<
   try {
     return await decideAndPublish(gh, ctx, target, deps);
   } catch (error) {
+    if (error instanceof NotAdopted) {
+      await publish(gh, ctx, target.sha, unadoptedFields(error.base));
+      return [{ job: 'review', result: 'skipped', detail: NOT_ADOPTED }];
+    }
     const detail = safeDetail(error);
     await publish(gh, ctx, target.sha, errorFields(detail)).catch(() => undefined);
     throw error;

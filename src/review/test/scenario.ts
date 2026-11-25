@@ -102,6 +102,8 @@ export function debtScenario(): FakePrGitHub {
       },
     ],
   });
+  fake.contents.set('main:talos.yml', CONFIG);
+  fake.contents.set(`${BASE}:talos.yml`, CONFIG);
   fake.contents.set('main:.github/CODEOWNERS', `* @${OWNER}\n`);
   fake.contents.set('main:CLAUDE.md', '# CLAUDE.md\n\nKeep functions small.\n');
   fake.contents.set(`${HEAD}:src/a/util.ts`, '// util\nexport const a = 2;\nexport const b = 3;\n');
