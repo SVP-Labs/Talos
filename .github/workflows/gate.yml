@@ -133,6 +133,7 @@ jobs:
       base: ${{ steps.plan.outputs.base }}
       head: ${{ steps.plan.outputs.head }}
       tree: ${{ steps.plan.outputs.tree }}
+      adopted: ${{ steps.plan.outputs.adopted }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,27 +155,33 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       # Each run in the matrix carries what it sets up, read at its own commit: `php`, the PHP
-      # minor its PHP components ask for (empty where none runs on its OS), and `langs`.
+      # minor its PHP components ask for (empty where none runs on its OS), and `langs`. Where
+      # neither the base nor the head has talos.yml, the plan says `adopted=false`, nothing runs,
+      # and the plan writes the verdict beside itself: the repository is not adopted.
       - name: Plan the runs
         id: plan
         working-directory: repo
         run: |
-          node ../talos-kit/bootstrap/launch.ts plan --out "$RUNNER_TEMP/talos-plan.json"
-          jq -r '"base=\(.base)", "head=\(.head)"' "$RUNNER_TEMP/talos-plan.json" >> "$GITHUB_OUTPUT"
-          head="$(jq -r '.head' "$RUNNER_TEMP/talos-plan.json")"
+          plan_dir="$RUNNER_TEMP/talos-plan"
+          mkdir -p "$plan_dir"
+          node ../talos-kit/bootstrap/launch.ts plan --out "$plan_dir/talos-plan.json" \
+            --json "$plan_dir/verdict.json" --sarif "$plan_dir/talos.sarif"
+          jq -r '"base=\(.base)", "head=\(.head)"' "$plan_dir/talos-plan.json" >> "$GITHUB_OUTPUT"
+          head="$(jq -r '.head' "$plan_dir/talos-plan.json")"
           tree="$(git rev-parse "$head^{tree}")"
           printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
       - name: Keep the plan for the verdict
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: talos-plan
-          path: ${{ runner.temp }}/talos-plan.json
+          path: ${{ runner.temp }}/talos-plan
           retention-days: 1
           if-no-files-found: error
 
   run:
     name: run ${{ matrix.os }} ${{ matrix.tiers }} ${{ matrix.sha }}
     needs: [pin, plan]
+    if: ${{ needs.plan.outputs.adopted == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -311,6 +318,10 @@ jobs:
   verdict:
     name: verdict (talos ${{ needs.pin.outputs.version }})
     needs: [pin, plan, run]
+    # Runs after every run succeeded, or with none where the repository is not adopted.
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success'
+      && (needs.run.result == 'success' || needs.plan.outputs.adopted == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -343,21 +354,31 @@ jobs:
           name: talos-plan
           path: ${{ runner.temp }}/talos-plan
       - name: Collect the results
+        if: ${{ needs.plan.outputs.adopted == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: talos-result-*
           merge-multiple: true
           path: ${{ runner.temp }}/talos-results
+      # Where the repository is not adopted the plan's verdict is the gate's: its finding makes it
+      # red, with no engine error.
       - name: Judge
         id: judge
         working-directory: repo
+        env:
+          ADOPTED: ${{ needs.plan.outputs.adopted }}
         run: |
           mkdir -p "$RUNNER_TEMP/talos-verdict"
           code=0
-          node ../talos-kit/bootstrap/launch.ts verdict \
-            --plan "$RUNNER_TEMP/talos-plan/talos-plan.json" --results "$RUNNER_TEMP/talos-results" \
-            --sarif "$RUNNER_TEMP/talos-verdict/talos.sarif" --json "$RUNNER_TEMP/talos-verdict/verdict.json" \
-            || code=$?
+          if [[ "$ADOPTED" == false ]]; then
+            cp "$RUNNER_TEMP/talos-plan/verdict.json" "$RUNNER_TEMP/talos-plan/talos.sarif" "$RUNNER_TEMP/talos-verdict/"
+            code="$(jq -r '{"green": 0, "red": 1}[.status] // 2' "$RUNNER_TEMP/talos-verdict/verdict.json")"
+          else
+            node ../talos-kit/bootstrap/launch.ts verdict \
+              --plan "$RUNNER_TEMP/talos-plan/talos-plan.json" --results "$RUNNER_TEMP/talos-results" \
+              --sarif "$RUNNER_TEMP/talos-verdict/talos.sarif" --json "$RUNNER_TEMP/talos-verdict/verdict.json" \
+              || code=$?
+          fi
           printf 'code=%s\n' "$code" >> "$GITHUB_OUTPUT"
       - name: Keep the verdict
         if: ${{ !cancelled() }}

@@ -277,6 +277,7 @@ describe('the gate', () => {
       base: '${{ steps.plan.outputs.base }}',
       head: '${{ steps.plan.outputs.head }}',
       tree: '${{ steps.plan.outputs.tree }}',
+      adopted: '${{ steps.plan.outputs.adopted }}',
     });
     const steps = jobs.run?.steps ?? [];
     const php = steps.findIndex(using('shivammathur/setup-php'));
