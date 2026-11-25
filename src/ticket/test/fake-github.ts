@@ -409,9 +409,6 @@ export class FakeGitHub {
     return ok(
       listed.map((p) => ({
         number: p.number,
-        draft: p.draft,
-        state: p.state,
-        updated_at: p.updated_at,
         head: { ref: p.head, sha: this.refs.get(p.head) ?? 'gone' },
       })),
     );
