@@ -62,6 +62,24 @@ export function errorFields(detail: string): CheckRunFields {
   };
 }
 
+/**
+ * The check run where the base branch has no `talos.yml`: neutral, since there are no rules to
+ * judge the PR by until the repository's adoption lands.
+ */
+export function unadoptedFields(base: string): CheckRunFields {
+  return {
+    conclusion: 'neutral',
+    output: {
+      title: clip(`Not adopted: talos.yml is not on ${base}`, TITLE_MAX),
+      summary: [
+        `${base} has no talos.yml, so the repository is not adopted yet and talos/review has no`,
+        'rules to judge this PR by. It decides on the next push, review or re-run once the PR',
+        `that adds talos.yml has landed on ${base}.`,
+      ].join(' '),
+    },
+  };
+}
+
 /** The job's own line about the reviewer's run; never repository content. */
 export function reviewerOutcome(run: ReviewerRun): JobOutcome {
   switch (run.kind) {

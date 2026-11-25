@@ -18,6 +18,7 @@ import {
 import { ConfigError } from '../config/load.js';
 import { github, GitHubError } from '../github/api.js';
 import { identities } from '../github/identities.js';
+import { configAt } from '../ticket/github.js';
 
 const WHO = identities({});
 const GROUP_SHA = 'd'.repeat(40);
@@ -802,6 +803,77 @@ describe('reviewJob as shipped', () => {
     expect(await reviewJob(jobContext(debtScenario(), { phase: 'analyze' }))).toEqual([
       { job: 'review', result: 'skipped', detail: 'runs in the act phase' },
     ]);
+  });
+});
+
+describe('reviewJob where the base branch has no talos.yml', () => {
+  /** The repository before its adoption lands: `talos.yml` read through the API, as shipped. */
+  function unadopted(overrides: Parameters<typeof jobContext>[1] = {}) {
+    const fake = debtScenario();
+    fake.contents.delete('main:talos.yml');
+    fake.contents.delete(`${BASE}:talos.yml`);
+    const ctx = jobContext(fake, {
+      config: (ref) => configAt(fake.client(), 'o/r', ref),
+      ...overrides,
+    });
+    return { fake, ctx };
+  }
+
+  it('ends skipped with a neutral talos/review naming the cause, never failed', async () => {
+    const { fake, ctx } = unadopted();
+    const model = fakeModel(APPROVE);
+    expect(await reviewJobWith(ctx, deps(model))).toEqual([
+      {
+        job: 'review',
+        result: 'skipped',
+        detail: 'talos.yml is not on the base branch: the repository is not adopted',
+      },
+    ]);
+    const check = lastCheck(fake);
+    expect(check).toMatchObject({ name: 'talos/review', head_sha: HEAD, conclusion: 'neutral' });
+    expect(output(check).title).toBe('Not adopted: talos.yml is not on main');
+    expect(output(check).summary).toContain('main has no talos.yml');
+    expect(model.prompts).toEqual([]);
+    expect(submitted(fake)).toEqual([]);
+  });
+
+  it('ends neutral in the merge queue too, on the group head', async () => {
+    const payload = {
+      action: 'checks_requested',
+      merge_group: {
+        head_sha: GROUP_SHA,
+        head_ref: `refs/heads/gh-readonly-queue/main/pr-${PR}-${BASE}`,
+        base_sha: BASE,
+      },
+    };
+    const { fake, ctx } = unadopted({ event: 'merge_group', payload });
+    const outcomes = await reviewJobWith(ctx, deps(fakeModel(APPROVE)));
+    expect(outcomes.map((o) => o.result)).toEqual(['skipped']);
+    expect(lastCheck(fake)).toMatchObject({ head_sha: GROUP_SHA, conclusion: 'neutral' });
+  });
+
+  it('still fails when the base has a talos.yml it cannot read', async () => {
+    const { fake, ctx } = unadopted();
+    fake.contents.set('main:talos.yml', 'prefix: [');
+    await expect(reviewJobWith(ctx, deps(fakeModel(APPROVE)))).rejects.toBeInstanceOf(ConfigError);
+    expect(lastCheck(fake).conclusion).toBe('failure');
+  });
+
+  it('still fails when the merge group removes the talos.yml its base has', async () => {
+    const payload = {
+      action: 'checks_requested',
+      merge_group: {
+        head_sha: GROUP_SHA,
+        head_ref: `refs/heads/gh-readonly-queue/main/pr-${PR}-${BASE}`,
+        base_sha: BASE,
+      },
+    };
+    const { fake, ctx } = unadopted({ event: 'merge_group', payload });
+    fake.contents.set(`${BASE}:talos.yml`, 'name: Test\nprefix: T\n');
+    await expect(reviewJobWith(ctx, deps(fakeModel(APPROVE)))).rejects.toThrow(
+      `talos.yml not found at ${GROUP_SHA}`,
+    );
+    expect(lastCheck(fake)).toMatchObject({ head_sha: GROUP_SHA, conclusion: 'failure' });
   });
 });
 
