@@ -18,12 +18,14 @@ function strings(text: string): string[] {
 
 /**
  * Whether a path, read from the directory `from` (relative to the component's root), points
- * outside the component: up and out of it, or absolute. `//`, the key generated JSON files
- * carry, is neither.
+ * outside the component: up and out of it, absolute, or templated. TypeScript resolves a
+ * template such as `${configDir}` against the tsconfig that uses it, not the one that declares
+ * it, so its place is unknown and counts as outside. `//`, the key generated JSON files carry,
+ * is none of these.
  */
 function leavesFrom(from: string): (path: string) => boolean {
   return (path) => {
-    if (/^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(path)) return true;
+    if (path.includes('${') || /^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(path)) return true;
     const resolved = posix.join(from, path.replaceAll('\\', '/'));
     return resolved === '..' || resolved.startsWith('../');
   };

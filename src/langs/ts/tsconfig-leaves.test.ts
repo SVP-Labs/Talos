@@ -98,4 +98,20 @@ describe('tsconfigLeaves', () => {
     });
     expect(await tsconfigLeaves(dir)).toBe(false);
   });
+
+  const configDir = ['$', '{configDir}'].join('');
+
+  it.each([
+    ['an extends climbing out', `{ "extends": "${configDir}/../shared/tsconfig.json" }`],
+    ['a reference climbing out', `{ "references": [{ "path": "${configDir}/../shared" }] }`],
+    ['an extends staying inside', `{ "extends": "${configDir}/inner/tsconfig.json" }`],
+    ['a reference staying inside', `{ "references": [{ "path": "${configDir}/inner" }] }`],
+  ])('keeps the rewrite for a templated path: %s', async (_, tsconfig) => {
+    const dir = await component({
+      'tsconfig.json': tsconfig,
+      'inner/tsconfig.json': '{ "compilerOptions": {} }',
+      'shared/tsconfig.json': '{ "compilerOptions": {} }',
+    });
+    expect(await tsconfigLeaves(dir)).toBe(true);
+  });
 });
