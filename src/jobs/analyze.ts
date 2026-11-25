@@ -64,7 +64,7 @@ const SECRETS: readonly (readonly [RegExp, string])[] = [
   [/\b(?:npm|gl(?:pat)|sk|pk|rk)[_-][A-Za-z0-9_-]{16,}/g, MASK],
   [/\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, MASK],
   [/(\/\/)[^/\s:@]+:[^/\s@]+@/g, `$1${MASK}@`],
-  [/\b(Bearer|Basic|token)(\s+)[\w.~+/=-]{12,}/gi, `$1$2${MASK}`],
+  [/\b(Authorization:\s*(?:Bearer|Basic|token)\s+)[\w.~+/=-]{8,}/gi, `$1${MASK}`],
   [
     /\b([\w-]*(?:password|passwd|secret|token|api[_-]?key|credential)s?)(["']?\s*[=:]\s*["']?)[^\s"',;]{8,}/gi,
     `$1$2${MASK}`,

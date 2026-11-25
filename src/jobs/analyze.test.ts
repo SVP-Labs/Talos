@@ -219,6 +219,10 @@ describe('maskSecrets', () => {
       'git clone https://***@example.com/r',
     ],
     ['a bearer header', `Authorization: Bearer ${'t'.repeat(30)}`, 'Authorization: Bearer ***'],
+    ['a basic header', `authorization: Basic ${'ab12'.repeat(4)}=`, 'authorization: Basic ***'],
+    ['a token header', `Authorization: token ${'q'.repeat(20)}`, 'Authorization: token ***'],
+    ['a token assignment', `token=${'a1'.repeat(10)} then`, 'token=*** then'],
+    ['a token entry', `token: ${'b2'.repeat(10)}`, 'token: ***'],
     ['a named value', `DB_PASSWORD=${'p'.repeat(12)} next`, 'DB_PASSWORD=*** next'],
     ['a quoted named value', `"api_key": "${'k'.repeat(20)}"`, '"api_key": "***"'],
     [
@@ -230,8 +234,13 @@ describe('maskSecrets', () => {
     expect(maskSecrets(text)).toBe(masked);
   });
 
-  it('leaves ordinary tool output alone', () => {
-    const text = 'Ran 2496 tests in 3 minutes; 41784 mutants, tokens: 55 (src/a.ts:12)';
+  it.each([
+    'Ran 2496 tests in 3 minutes; 41784 mutants, tokens: 55 (src/a.ts:12)',
+    'basic configuration-checks failed',
+    'Basic configuration-checks failed',
+    'unexpected token src/langs/ts/x.ts at 3:14',
+    'Bearer tokens-and-headers are documented',
+  ])('leaves ordinary tool output alone: %s', (text) => {
     expect(maskSecrets(text)).toBe(text);
   });
 });
