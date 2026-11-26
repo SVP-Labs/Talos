@@ -92,6 +92,7 @@ describe('mutationSummary', () => {
         { file: 'src/a.ts', survived: 2 },
         { file: 'src/b.ts', survived: 1 },
       ],
+      errors: [{ check: 'py/mutation', reason: 'x' }],
     });
     expect(mutationMarkdown(summary)).toContain('| 2 | `src/a.ts` |');
   });
@@ -119,5 +120,89 @@ describe('mutationReport', () => {
     expect((await mutationReport(ctx, deps(result([]), []))).result).toBe('skipped');
     const broken = deps(result([outcome('ts/mutation', [], { status: 'error' })]));
     expect((await mutationReport(ctx, broken)).result).toBe('failed');
+  });
+
+  it("names a faulted mutation run's message in the detail, the report and the summary", async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
+    const reason = 'stryker exited 1 without a report:\n  Initial test run failed `x`  ';
+    const d = deps(
+      result([outcome('ts/mutation', [], { status: 'error', reason, component: 'web' })]),
+    );
+    expect(await mutationReport(ctx, d)).toEqual({
+      job: 'mutation-report',
+      result: 'failed',
+      detail:
+        '0 surviving mutant(s) in 0 file(s); 1 engine error(s): ts/mutation@web: ' +
+        'stryker exited 1 without a report: Initial test run failed `x`',
+    });
+    expect(JSON.parse(await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8'))).toMatchObject({
+      faults: 1,
+      errors: [
+        {
+          check: 'ts/mutation@web',
+          reason: 'stryker exited 1 without a report: Initial test run failed `x`',
+        },
+      ],
+    });
+    expect(d.summaries[0]).toContain('### Engine errors (1)');
+    expect(d.summaries[0]).toContain(
+      "- **ts/mutation@web**: `stryker exited 1 without a report: Initial test run failed 'x'`",
+    );
+  });
+
+  it('clips each long message to one line of 200 characters', () => {
+    const reason = `${'0'.repeat(150)}\n${'1'.repeat(150)}`;
+    const [fault] = mutationSummary(
+      result([outcome('ts/mutation', [], { status: 'error', reason })]),
+    ).errors;
+    expect(fault?.reason).toBe(`${'0'.repeat(150)} ${'1'.repeat(48)}…`);
+  });
+
+  it('lists every fault in the detail, the report and the summary', async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
+    const outcomes = Array.from({ length: 7 }, (_, i) =>
+      outcome('ts/mutation', [], { status: 'error', reason: `fault ${i}`, component: `c${i}` }),
+    );
+    const d = deps(result(outcomes));
+    const listed = outcomes.map((_, i) => `ts/mutation@c${i}: fault ${i}`);
+    expect((await mutationReport(ctx, d)).detail).toBe(
+      `0 surviving mutant(s) in 0 file(s); 7 engine error(s): ${listed.join('; ')}`,
+    );
+    const written: unknown = JSON.parse(await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8'));
+    expect(written).toMatchObject({
+      faults: 7,
+      errors: outcomes.map((_, i) => ({ check: `ts/mutation@c${i}`, reason: `fault ${i}` })),
+    });
+    expect(d.summaries[0]).toContain('### Engine errors (7)');
+    for (const [i] of outcomes.entries()) {
+      expect(d.summaries[0]).toContain(`- **ts/mutation@c${i}**: \`fault ${i}\``);
+    }
+  });
+
+  it('masks a secret in the detail, the report and the summary', async () => {
+    const ctx = await testContext(new FakeGitHub(), { phase: 'analyze' });
+    const token = ['ghp', 'Q7x'.repeat(12)].join('_');
+    const reason = `npm ERR! 401 fetching with ${token}\nstryker exited 1`;
+    const d = deps(result([outcome('ts/mutation', [], { status: 'error', reason })]));
+    const said = 'ts/mutation: npm ERR! 401 fetching with *** stryker exited 1';
+    expect((await mutationReport(ctx, d)).detail).toBe(
+      `0 surviving mutant(s) in 0 file(s); 1 engine error(s): ${said}`,
+    );
+    const written = await readFile(join(ctx.workdir, MUTATION_FILE), 'utf8');
+    expect(written).not.toContain(token);
+    expect(JSON.parse(written)).toMatchObject({
+      errors: [{ check: 'ts/mutation', reason: 'npm ERR! 401 fetching with *** stryker exited 1' }],
+    });
+    expect(d.summaries[0]).not.toContain(token);
+    expect(d.summaries[0]).toContain('`npm ERR! 401 fetching with *** stryker exited 1`');
+  });
+
+  it('masks a secret before clipping, so a cut leaves no part of it', () => {
+    const token = ['github', 'pat', 'Z9'.repeat(40)].join('_');
+    const reason = `${'x'.repeat(180)} ${token}`;
+    const [fault] = mutationSummary(
+      result([outcome('ts/mutation', [], { status: 'error', reason })]),
+    ).errors;
+    expect(fault?.reason).toBe(`${'x'.repeat(180)} ***`);
   });
 });
