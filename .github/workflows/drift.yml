@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Mint talos-release's token to read the organisation's custom properties
         id: listing
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -161,7 +161,7 @@ jobs:
           package-manager-cache: false
       - name: Mint talos-release's token to read the organisation's custom properties
         id: listing
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -178,7 +178,7 @@ jobs:
       - name: Mint talos-release's reading token for that repository alone
         id: read
         if: ${{ steps.pick.outputs.names != '' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -188,7 +188,7 @@ jobs:
       - name: Mint talos-reviewer's filing token for that repository alone
         id: file
         if: ${{ steps.pick.outputs.names != '' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
@@ -219,7 +219,7 @@ jobs:
     steps:
       - name: Mint talos-release's token to read the organisation's rulesets
         id: read
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -227,7 +227,7 @@ jobs:
           permission-organization-administration: read
       - name: Mint talos-reviewer's filing token for this repository
         id: file
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
@@ -338,7 +338,7 @@ jobs:
     steps:
       - name: Mint talos-release's token to read the organisation's custom properties
         id: properties
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -437,7 +437,7 @@ jobs:
       - name: Mint talos-release's token for the canary alone
         id: release
         if: ${{ steps.canary.outputs.name != '' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_RELEASE_APP_ID }}
           private-key: ${{ secrets.TALOS_RELEASE_KEY }}
@@ -447,7 +447,7 @@ jobs:
       - name: Mint talos-reviewer's token for the canary alone
         id: reviewer
         if: ${{ steps.canary.outputs.name != '' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.TALOS_REVIEWER_APP_ID }}
           private-key: ${{ secrets.TALOS_REVIEWER_KEY }}
